@@ -6,6 +6,10 @@ import fs from "fs";
 import { storage } from "./storage";
 import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema } from "@shared/schema";
 import { z } from "zod";
+import OpenAI from "openai";
+
+// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const upload = multer({
   dest: "uploads/",
@@ -315,6 +319,74 @@ function extractParametersFromText(entries: Array<{ content: string; category: s
   return uniqueParams;
 }
 
+// AI-powered parameter extraction using OpenAI
+async function extractParametersWithAI(entries: Array<{ content: string; category: string | null }>): Promise<ExtractedParam[]> {
+  const content = entries.map(e => e.content).join("\n\n");
+  
+  if (!content.trim()) {
+    return [];
+  }
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert at extracting project parameters from unstructured text for anaerobic digestion and biogas projects. 
+          
+Extract the following categories of parameters:
+- feedstock: type of waste/material (e.g., potato waste, dairy manure, food waste), volume/capacity (tons per year), technical specs (TS%, VS/TS ratio, BOD, COD, C:N ratio)
+- location: project location (city, state, county)
+- output_requirements: what the project will produce (RNG, biogas, electricity, compost, digestate handling)
+- pricing: budget, costs, fees, revenue projections
+- constraints: requirements, limitations, equipment specifications, regulatory requirements
+
+For each parameter, provide:
+- category: one of "feedstock", "location", "output_requirements", "pricing", "constraints"
+- name: descriptive name of the parameter
+- value: the extracted value
+- unit: unit of measurement if applicable
+- confidence: "high" if explicitly stated, "medium" if inferred, "low" if uncertain
+
+Respond with JSON in this format:
+{
+  "parameters": [
+    {"category": "feedstock", "name": "Feedstock Type", "value": "...", "unit": null, "confidence": "high"},
+    ...
+  ]
+}`
+        },
+        {
+          role: "user",
+          content: `Extract all project parameters from the following text:\n\n${content}`
+        }
+      ],
+      response_format: { type: "json_object" },
+      max_completion_tokens: 2048,
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    
+    if (!result.parameters || !Array.isArray(result.parameters)) {
+      console.log("AI returned invalid format, falling back to pattern matching");
+      return extractParametersFromText(entries);
+    }
+
+    return result.parameters.map((p: { category: string; name: string; value: string; unit?: string; confidence: string }) => ({
+      category: p.category,
+      name: p.name,
+      value: p.value,
+      unit: p.unit || undefined,
+      source: "ai_extraction",
+      confidence: p.confidence,
+    }));
+  } catch (error) {
+    console.error("AI extraction failed, falling back to pattern matching:", error);
+    return extractParametersFromText(entries);
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -535,8 +607,8 @@ export async function registerRoutes(
       // Get all text entries for this scenario
       const entries = await storage.getTextEntriesByScenario(scenarioId);
       
-      // Extract parameters from text
-      const extractedParams = extractParametersFromText(entries);
+      // Extract parameters using AI (falls back to pattern matching if AI fails)
+      const extractedParams = await extractParametersWithAI(entries);
       
       // Clear existing parameters
       await storage.deleteParametersByScenario(scenarioId);
