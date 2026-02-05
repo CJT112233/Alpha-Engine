@@ -65,8 +65,10 @@ Preferred communication style: Simple, everyday language.
 - Lucide React for icons
 
 ### AI/ML Integration
-- OpenAI SDK (listed in build allowlist for parameter extraction)
-- Google Generative AI SDK (listed in build allowlist)
+- OpenAI SDK for intelligent parameter extraction using GPT-5
+- The system uses AI to extract project parameters from natural language input
+- Falls back to pattern matching if OpenAI API key is not configured
+- Extracted parameters show "AI extracted" badge in the UI when AI is used
 
 ### Document Processing
 - Multer for file upload handling
