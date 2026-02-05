@@ -1,0 +1,261 @@
+Project Alpha (or “the engine”) is the first foundational component of Burnham’s long-term vision to internalize a world-class AI-enabled project development process from idea to steel in the ground (“The Project Factory”). Alpha is designed to take unstructured text inputs and supporting documents, identify and extract the standardized attributes that define a project, and consolidate those elements into a single, unified project input form.
+Scenario-Based Source of Truth
+All authoritative information exists at the Scenario level.
+•	For each Project, Users may create multiple independent Scenarios
+•	Each Scenario maintains its own inputs, outputs and other constraints
+•	Truth is established only when explicitly confirmed by the User
+•	Scenarios are independent but may inherit inputs, assumptions, and outputs from prior Scenarios, with differences tracked explicitly
+Scenario Truth Record
+For each Scenario, the system maintains a structured record containing:
+•	Declared inputs (e.g., feedstock specifications, capacity, location)
+•	Engine generated Outputs, subject to User review, modification and confirmation
+•	Other explicit constraints declared by User
+Declared Inputs
+•	Require explicit declaration of mandatory inputs:
+o	Feedstock Input: User will be required to select the Feedstock Input. This will be a two step process. 
+	Step 1: The user can write or speak the Feedstock and / or uploaded documents. It will Not be a defined form to fill out. 
+	Alpha will be able to extract relevant information from uploaded documents and predict parameters that are not explicitly given.
+	For example, if a User says “100,000 tons of potato waste”, Alpha will estimate all necessary parameters (i.e., VS/TS, BOD, TS%, C:N, etc.)
+	Step 2: All necessary parameters generated will be explicitly presented to User. User can modify and must confirm before finalizing. 
+o	Output Requirements:
+	User will be required to enter text or documents to define Project Output (i.e., “solids will be land applied”, “liquids sent to Moses Lake WWTP” OR must hit Dept of Ecology discharge limits in this Permit / Engineering Report AND make RNG). 
+o	Location:  User will enter a location – Example: “Quincy, Washington”. This will inform cost estimates, code requirements, etc.
+o	Pricing: User will input estimates of value for project inputs and outputs
+o	Constraints / Assumptions: There will be a field where user can add specific documents or constraints (e.g., must use PlanET digester, using Prodeval equipment purchased for $X, must be painted red) to inform the work. 
+•	Preliminary Output:  Unified Project Intake Form (“UPIF”) which takes all of the above and displays it in a standardized format. User can review / edit and must confirm the UPIF before running the remainder of the program.  
+Below I highlight Four Key Features Necessary to build the above:
+1.	Coversational Input Capture
+2.	Document Upload & Processing
+3.	Intelligent Parameter Extraction
+4.	UPIF Review & Confirmation
+
+CONVERSATIONAL INPUT CAPTURE
+Overview
+Conversational Input Capture enables users to provide project information in a natural, flexible way rather than through rigid forms. Users type project details—feedstock specifications, output requirements, location, pricing, and constraints—in whatever format and order they prefer. The system accepts free-form text input where users can describe their project conversationally, providing as much or as little detail as they have available.
+This feature solves the problem of forcing users into predefined input structures before they fully understand what information is needed. By accepting natural language input, it reduces friction at the start of the project evaluation process and allows users to quickly capture their initial project concept. The conversational input serves as the raw material for the Intelligent Parameter Extraction & Prediction feature, which will structure and complete the information.
+Terminology
+•	Scenario: A single project evaluation with its own set of inputs, assumptions, and outputs. Users create scenarios to explore different project configurations.
+•	Feedstock: The input material for the project (e.g., potato waste, dairy manure). Feedstock specifications include volume/capacity and technical parameters.
+•	Output Requirements: What the project will produce or how it will handle processed materials (e.g., "solids land applied," "RNG production," "discharge to WWTP").
+•	Constraints/Assumptions: Specific requirements or conditions that must be incorporated into the project design (e.g., "must use PlanET digester," "equipment purchased for $X").
+Requirements
+REQ-CIC-001: Text Input Interface
+User Story: As a user, I want to type project information in natural language, so that I can quickly capture my project concept without navigating complex forms.
+Acceptance Criteria:
+•	AC-CIC-001.1: When a user creates a new scenario, the system shall provide a text input interface for entering project information.
+•	AC-CIC-001.2: When a user types in the text input interface, the system shall accept free-form natural language text without enforcing specific formats or structures.
+•	AC-CIC-001.3: When a user enters text, the system shall preserve the full text content for processing by downstream features.
+•	AC-CIC-001.4: When a user submits text input, the system shall store the input associated with the scenario.
+REQ-CIC-002: Flexible Input Order
+User Story: As a user, I want to provide project information in any order, so that I can capture details as I think of them without being constrained by a predetermined sequence.
+Acceptance Criteria:
+•	AC-CIC-002.1: When a user provides project information, the system shall accept input covering any combination of feedstock, output requirements, location, pricing, and constraints in any order.
+•	AC-CIC-002.2: When a user provides partial information (e.g., only feedstock and location), the system shall accept and store the provided information without requiring other categories.
+•	AC-CIC-002.3: When a user provides information for multiple categories in a single text entry, the system shall accept and store the combined input.
+REQ-CIC-003: Multi-Entry Input
+User Story: As a user, I want to add information across multiple text entries, so that I can build up my project description incrementally as I gather details.
+Acceptance Criteria:
+•	AC-CIC-003.1: When a user has already provided text input for a scenario, the system shall allow the user to add additional text entries.
+•	AC-CIC-003.2: When a user adds additional text entries, the system shall preserve all previous entries and associate all entries with the scenario.
+•	AC-CIC-003.3: When a user views their scenario, the system shall display all text entries provided for that scenario.
+REQ-CIC-004: Input Categories
+User Story: As a user, I want the system to understand the key categories of project information, so that my inputs can be properly interpreted and structured.
+Acceptance Criteria:
+•	AC-CIC-004.1: When a user provides input, the system shall recognize and capture information related to feedstock specifications (type, volume/capacity, technical parameters).
+•	AC-CIC-004.2: When a user provides input, the system shall recognize and capture information related to output requirements (what the project produces or how materials are handled).
+•	AC-CIC-004.3: When a user provides input, the system shall recognize and capture information related to project location.
+•	AC-CIC-004.4: When a user provides input, the system shall recognize and capture information related to pricing (value of inputs and outputs).
+•	AC-CIC-004.5: When a user provides input, the system shall recognize and capture information related to constraints and assumptions (specific requirements or conditions).
+REQ-CIC-005: Feedstock Parameter Recognition
+User Story: As a user, I want the system to recognize feedstock technical parameters when I provide them, so that my explicit specifications are captured accurately.
+Acceptance Criteria:
+•	AC-CIC-005.1: When a user provides feedstock volume or capacity (tons per year, gallons per year, etc.), the system shall recognize and capture this as a required feedstock parameter.
+•	AC-CIC-005.2: When a user provides feedstock technical parameters (BOD, COD, VS/TS, TS%, N, P, K, TSS, TDS, etc.), the system shall recognize and capture these parameters.
+•	AC-CIC-005.3: When a user provides feedstock parameters using common abbreviations or full names (e.g., "BOD" or "Biochemical Oxygen Demand"), the system shall recognize both formats.
+•	AC-CIC-005.4: When a user provides feedstock parameters with units (e.g., "5000 mg/L BOD"), the system shall capture both the value and the unit.
+Feature Behavior & Rules
+Input Processing Flow
+The conversational input feature operates as the first step in a two-stage process. Users provide information freely in this stage, and the system captures everything without validation or prompting. After users have entered their initial information and uploaded any supporting documents, the Intelligent Parameter Extraction & Prediction feature processes all inputs together to identify what information is present, what is missing, and what can be predicted.
+This separation means the conversational input interface does not need to validate completeness, prompt for missing information, or enforce required fields. Its sole responsibility is to accept and preserve user input in whatever form it arrives.
+No Voice Input in Phase 1
+The initial release supports text input only. Voice input capability is deferred to a future phase. The interface and data model should not preclude adding voice input later, but no voice capture or transcription functionality is required for Phase 1.
+Input Persistence
+All text entries are preserved exactly as entered and associated with the scenario. This creates an audit trail of what the user originally provided and ensures that no information is lost during the extraction and prediction process.
+Relationship to Document Upload
+Conversational text input and document upload are complementary input methods. Users may provide information through text, documents, or both. The conversational input feature focuses on text entry; document upload is handled by a separate feature. Both types of input are processed together by the Intelligent Parameter Extraction & Prediction feature.
+
+DOCUMENT UPLOAD AND PROCESSING
+
+Overview
+Document Upload & Processing enables users to provide project information by uploading existing documents rather than manually retyping information. Users can upload engineering reports, permits, specifications, lab test results, and other relevant documents that contain project details. The system accepts these documents, extracts text content (including from images and scanned PDFs using OCR), and makes the content available for the Intelligent Parameter Extraction & Prediction feature to process.
+This feature solves the problem of users having valuable project information locked in existing documents. Rather than forcing users to read through documents and manually transcribe relevant details, the system can directly process document content alongside conversational text input. This reduces data entry effort and ensures that detailed technical information from formal documents is captured accurately.
+Terminology
+•	Document: Any file uploaded by a user containing project-related information. Documents may include engineering reports, permits, specifications, lab test results, vendor quotes, or other relevant materials.
+•	OCR (Optical Character Recognition): Technology that extracts text from images and scanned documents, enabling the system to process content from non-text-based files.
+•	Text Extraction: The process of retrieving readable text content from uploaded documents, whether from native text formats or through OCR.
+Requirements
+REQ-DUP-001: Document Upload Interface
+User Story: As a user, I want to upload documents to my scenario, so that I can provide project information from existing files without manual retyping.
+Acceptance Criteria:
+•	AC-DUP-001.1: When a user is working on a scenario, the system shall provide an interface for uploading documents.
+•	AC-DUP-001.2: When a user selects files to upload, the system shall accept multiple files in a single upload operation.
+•	AC-DUP-001.3: When a user uploads files, the system shall associate the uploaded documents with the scenario.
+•	AC-DUP-001.4: When a user uploads a file, the system shall display confirmation that the upload was successful.
+REQ-DUP-002: Supported File Formats
+User Story: As a user, I want to upload documents in common business formats, so that I can use the files I already have without format conversion.
+Acceptance Criteria:
+•	AC-DUP-002.1: When a user uploads a PDF file, the system shall accept and process the file.
+•	AC-DUP-002.2: When a user uploads a Microsoft Word document (.doc or .docx), the system shall accept and process the file.
+•	AC-DUP-002.3: When a user uploads a Microsoft PowerPoint file (.ppt or .pptx), the system shall accept and process the file.
+•	AC-DUP-002.4: When a user uploads a Microsoft Excel file (.xls or .xlsx), the system shall accept and process the file.
+•	AC-DUP-002.5: When a user uploads an image file (common formats including .jpg, .jpeg, .png, .tiff), the system shall accept and process the file.
+•	AC-DUP-002.6: When a user attempts to upload a file in an unsupported format, the system shall notify the user that the format is not supported.
+REQ-DUP-003: Text Extraction from Documents
+User Story: As a user, I want the system to extract text from my uploaded documents, so that the content can be analyzed for project parameters.
+Acceptance Criteria:
+•	AC-DUP-003.1: When a user uploads a text-based document (Word, PowerPoint, Excel, text-based PDF), the system shall extract the text content from the document.
+•	AC-DUP-003.2: When a user uploads an image or scanned PDF, the system shall use OCR to extract text content from the document.
+•	AC-DUP-003.3: When text extraction is complete, the system shall store the extracted text associated with the document and scenario.
+•	AC-DUP-003.4: When text extraction fails or produces no readable content, the system shall notify the user that the document could not be processed.
+REQ-DUP-004: Document Management
+User Story: As a user, I want to view, remove, and replace uploaded documents, so that I can manage the documents associated with my scenario.
+Acceptance Criteria:
+•	AC-DUP-004.1: When a user views their scenario, the system shall display a list of all uploaded documents with file names.
+•	AC-DUP-004.2: When a user selects an uploaded document, the system shall allow the user to remove the document from the scenario.
+•	AC-DUP-004.3: When a user removes a document, the system shall delete the document and its extracted content from the scenario.
+•	AC-DUP-004.4: When a user uploads a new document with the same name as an existing document, the system shall treat it as a separate document unless the user explicitly chooses to replace the existing document.
+REQ-DUP-005: Processing Status
+User Story: As a user, I want to know when my documents are being processed and when they're ready, so that I understand when I can proceed with parameter extraction.
+Acceptance Criteria:
+•	AC-DUP-005.1: When a document is uploaded and text extraction is in progress, the system shall indicate that processing is underway.
+•	AC-DUP-005.2: When text extraction is complete, the system shall indicate that the document is ready for parameter extraction.
+•	AC-DUP-005.3: When multiple documents are being processed, the system shall show the processing status for each document independently.
+REQ-DUP-006: No File Size or Quantity Limits
+User Story: As a user, I want to upload as many documents as needed without size restrictions, so that I can provide all relevant project information regardless of file size or document count.
+Acceptance Criteria:
+•	AC-DUP-006.1: When a user uploads documents, the system shall not impose a limit on the number of documents per scenario.
+•	AC-DUP-006.2: When a user uploads documents, the system shall not impose file size limits that would prevent upload of typical engineering documents.
+•	AC-DUP-006.3: When a user uploads very large files or many files, the system shall process them without failure, though processing time may increase.
+Feature Behavior & Rules
+This section clarifies how the requirements behave in practice and how they interact. It explains cross-requirement interactions, defaults, constraints, and edge conditions without prescribing UI or user flows.
+
+INTELLIGENT PARAMETER EXTRACTION
+Overview
+Intelligent Parameter Extraction & Prediction analyzes user-provided information—from conversational input, uploaded documents, and direct data entry—to automatically populate UPIF parameters. The feature uses AI to identify relevant project details within unstructured content, map those details to specific UPIF fields, and predict values for parameters not explicitly stated. This eliminates the tedious manual process of filling out lengthy forms field-by-field. Users provide information in whatever format is most convenient, and the system translates that information into a structured UPIF, dramatically reducing scenario setup time and cognitive load.
+Terminology
+•	Parameter Extraction: The process of identifying specific UPIF field values within unstructured user input (text, documents, conversation).
+•	Parameter Prediction: The process of inferring likely values for UPIF fields not explicitly mentioned by the user, based on context and related information.
+•	UPIF (Unified Project Information Form): The structured data model containing all parameters needed to define a scenario.
+•	Confidence Score: A measure of how certain the system is that an extracted or predicted parameter value is correct.
+Requirements
+REQ-IPEP-001: Multi-Source Information Analysis
+User Story: As a user, I want the system to analyze all information I've provided across different input methods, so that I don't have to manually consolidate data from multiple sources.
+Acceptance Criteria:
+•	AC-IPEP-001.1: When a user has provided conversational input, the system shall analyze that text for extractable parameters.
+•	AC-IPEP-001.2: When a user has uploaded documents with extracted text, the system shall analyze that content for extractable parameters.
+•	AC-IPEP-001.3: When a user has provided information through multiple input methods, the system shall analyze all sources collectively to extract parameters.
+•	AC-IPEP-001.4: When analyzing multiple sources, the system shall synthesize information across sources rather than treating each source in isolation.
+REQ-IPEP-002: Parameter Extraction from Unstructured Content
+User Story: As a user, I want the system to identify UPIF parameter values within my unstructured input, so that I don't have to manually map information to form fields.
+Acceptance Criteria:
+•	AC-IPEP-002.1: When user-provided content contains information matching a UPIF parameter, the system shall extract that value and associate it with the correct parameter.
+•	AC-IPEP-002.2: When a parameter value is stated explicitly (e.g., "the project site is 5 acres"), the system shall extract the value with high confidence.
+•	AC-IPEP-002.3: When a parameter value is stated implicitly or requires interpretation (e.g., "a small residential lot"), the system shall extract a reasonable value based on context.
+•	AC-IPEP-002.4: When multiple values for the same parameter are found across different sources, the system shall resolve conflicts by prioritizing the most recent or most specific information.
+REQ-IPEP-003: Parameter Prediction
+User Story: As a user, I want the system to predict reasonable values for parameters I haven't explicitly provided, so that I can start with a more complete scenario without filling every field manually.
+Acceptance Criteria:
+•	AC-IPEP-003.1: When a UPIF parameter has not been explicitly mentioned by the user, the system shall predict a value based on related parameters and context.
+•	AC-IPEP-003.2: When predicting parameter values, the system shall use domain knowledge and typical relationships between parameters (e.g., predicting soil type based on geographic location).
+•	AC-IPEP-003.3: When predicting parameter values, the system shall assign a confidence score indicating the reliability of the prediction.
+•	AC-IPEP-003.4: When a predicted value has low confidence, the system shall still populate the parameter but clearly indicate the prediction is uncertain.
+REQ-IPEP-004: Confidence Scoring
+User Story: As a user, I want to know which parameter values are certain and which are predictions, so that I can focus my review on uncertain values.
+Acceptance Criteria:
+•	AC-IPEP-004.1: When a parameter value is extracted or predicted, the system shall assign a confidence score indicating certainty.
+•	AC-IPEP-004.2: When a parameter value is explicitly stated in user input, the system shall assign a high confidence score.
+•	AC-IPEP-004.3: When a parameter value is predicted based on indirect information, the system shall assign a lower confidence score.
+•	AC-IPEP-004.4: When displaying parameters to the user, the system shall communicate confidence levels in a way that helps users prioritize review.
+REQ-IPEP-005: UPIF Population
+User Story: As a user, I want extracted and predicted parameters to automatically populate the UPIF, so that I see a pre-filled form rather than starting from scratch.
+Acceptance Criteria:
+•	AC-IPEP-005.1: When parameter extraction and prediction are complete, the system shall populate the UPIF with all extracted and predicted values.
+•	AC-IPEP-005.2: When populating the UPIF, the system shall preserve any values the user has manually entered, giving user input priority over automated extraction.
+•	AC-IPEP-005.3: When a parameter has both an extracted value and a predicted value, the system shall use the extracted value.
+•	AC-IPEP-005.4: When the UPIF is populated, the system shall make the populated form available for user review and confirmation.
+REQ-IPEP-006: Continuous Re-Analysis
+User Story: As a user, I want the system to re-analyze and update parameters when I add new information, so that the UPIF stays current as I provide more details.
+Acceptance Criteria:
+•	AC-IPEP-006.1: When a user adds new conversational input to a scenario, the system shall re-analyze all available information and update extracted and predicted parameters.
+•	AC-IPEP-006.2: When a user uploads additional documents to a scenario, the system shall re-analyze all available information and update extracted and predicted parameters.
+•	AC-IPEP-006.3: When re-analyzing, the system shall not overwrite parameters the user has manually reviewed and confirmed.
+•	AC-IPEP-006.4: When re-analyzing results in new or changed parameter values, the system shall notify the user that updates are available for review.
+Feature Behavior & Rules
+Analysis Triggers: Parameter extraction and prediction occur automatically whenever new information becomes available. When a user submits conversational input, uploads a document that completes text extraction, or manually enters a parameter value, the system triggers re-analysis. This ensures the UPIF reflects the most current and complete information without requiring the user to explicitly request updates.
+Conflict Resolution: When multiple sources provide different values for the same parameter, the system applies a priority hierarchy: user-confirmed values (highest priority), explicitly stated values from the most recent input, explicitly stated values from earlier input, and predicted values (lowest priority). If two explicit statements conflict and neither has been user-confirmed, the system uses the more recent statement and flags the conflict for user review.
+Prediction Strategy: The system predicts parameter values using multiple strategies: inferring from related parameters (e.g., predicting construction timeline based on project scope), applying domain defaults (e.g., standard setback requirements for a given jurisdiction), and using statistical patterns from similar scenarios. Predictions are always labeled as such and never treated as confirmed facts. The system prioritizes conservative predictions that are likely to be safe or typical rather than optimistic predictions that might be incorrect.
+Confidence Thresholds: Confidence scores range from 0 to 1. Extracted values explicitly stated in user input typically score 0.8 or higher. Predictions based on strong contextual clues score 0.5 to 0.8. Speculative predictions based on weak signals score below 0.5. The system populates parameters regardless of confidence level but uses confidence to determine how prominently to flag values for user review.
+Incremental Refinement: As users provide more information over time, parameter values become more accurate and confidence scores increase. A parameter might start as a low-confidence prediction, then be refined to a medium-confidence extraction when a document mentions it indirectly, and finally become a high-confidence extraction when the user explicitly confirms it. The system maintains this progression transparently, allowing users to see how parameter certainty evolves.
+Preservation of User Intent: Once a user has reviewed and confirmed a parameter value—either by explicitly approving it or by manually editing it—the system treats that value as locked. Subsequent re-analysis will not overwrite user-confirmed values, even if new information suggests a different value. This prevents the system from undoing user decisions. However, if new information strongly conflicts with a confirmed value, the system may flag the conflict for user attention without automatically changing the value.
+Empty Parameters: Not all UPIF parameters will have extracted or predicted values. If the system finds no relevant information for a parameter and cannot make a reasonable prediction, the parameter remains empty. This is preferable to populating every field with low-confidence guesses. Users can fill empty parameters manually or provide additional information to enable extraction or prediction.
+UPIF Review & Confirmation
+Overview
+UPIF Review & Confirmation provides users with a structured interface to review, validate, and edit the automatically populated UPIF before finalizing their scenario. After the system extracts and predicts parameter values, users need to verify accuracy, correct errors, and fill any remaining gaps. This feature presents the UPIF in a reviewable format, highlights parameters that need attention (low confidence, conflicts, empty fields), and allows users to make corrections efficiently. By guiding users through a focused review process rather than requiring them to validate every field, the feature ensures scenario accuracy while minimizing review time.
+Terminology
+•	Confirmation: The act of a user explicitly approving a parameter value, indicating they have reviewed it and believe it to be correct.
+•	Flagged Parameter: A parameter that requires user attention due to low confidence, conflicts, missing value, or validation errors.
+•	Validation: Automated checks that verify parameter values meet format, range, and logical consistency requirements.
+•	Scenario Finalization: The process of completing UPIF review and locking the scenario configuration for downstream use.
+Requirements
+REQ-URC-001: UPIF Display
+User Story: As a user, I want to view the complete UPIF with all extracted and predicted parameters, so that I can see what the system has populated and what needs my attention.
+Acceptance Criteria:
+•	AC-URC-001.1: When a user accesses the UPIF review interface, the system shall display all UPIF parameters organized in a logical structure.
+•	AC-URC-001.2: When displaying parameters, the system shall show the current value for each parameter (extracted, predicted, or empty).
+•	AC-URC-001.3: When displaying parameters, the system shall indicate the source of each value (extracted from which input, predicted, or user-entered).
+•	AC-URC-001.4: When displaying parameters, the system shall show confidence scores or indicators for extracted and predicted values.
+REQ-URC-002: Parameter Prioritization
+User Story: As a user, I want to see which parameters need my attention most urgently, so that I can focus my review effort efficiently.
+Acceptance Criteria:
+•	AC-URC-002.1: When displaying the UPIF, the system shall visually distinguish parameters that require attention from those that are likely correct.
+•	AC-URC-002.2: When a parameter has low confidence (below a defined threshold), the system shall flag it for user review.
+•	AC-URC-002.3: When a parameter is empty and required for scenario completion, the system shall flag it for user input.
+•	AC-URC-002.4: When a parameter has conflicting values from different sources, the system shall flag the conflict for user resolution.
+•	AC-URC-002.5: When a parameter fails validation rules, the system shall flag the validation error for user correction.
+REQ-URC-003: Parameter Editing
+User Story: As a user, I want to edit any parameter value, so that I can correct errors and provide missing information.
+Acceptance Criteria:
+•	AC-URC-003.1: When a user selects a parameter, the system shall allow the user to edit the parameter value.
+•	AC-URC-003.2: When a user edits a parameter, the system shall provide appropriate input controls based on the parameter type (text field, dropdown, date picker, numeric input, etc.).
+•	AC-URC-003.3: When a user saves an edited parameter value, the system shall mark that parameter as user-confirmed.
+•	AC-URC-003.4: When a user edits a parameter, the system shall validate the new value against parameter constraints and notify the user of any validation errors.
+REQ-URC-004: Validation Feedback
+User Story: As a user, I want to know if my parameter values are valid and consistent, so that I can fix problems before finalizing the scenario.
+Acceptance Criteria:
+•	AC-URC-004.1: When a parameter value violates format requirements (e.g., invalid date format, non-numeric value in numeric field), the system shall display a validation error.
+•	AC-URC-004.2: When a parameter value is outside acceptable ranges (e.g., negative area, future date for historical event), the system shall display a validation error.
+•	AC-URC-004.3: When parameter values are logically inconsistent with each other (e.g., end date before start date), the system shall display a validation error.
+•	AC-URC-004.4: When all required parameters are populated and all values pass validation, the system shall indicate that the UPIF is ready for finalization.
+REQ-URC-005: Bulk Actions
+User Story: As a user, I want to quickly confirm multiple parameters at once, so that I don't have to individually approve every correct value.
+Acceptance Criteria:
+•	AC-URC-005.1: When a user views a group of related parameters, the system shall provide an option to confirm all parameters in the group at once.
+•	AC-URC-005.2: When a user confirms multiple parameters, the system shall mark all selected parameters as user-confirmed.
+•	AC-URC-005.3: When a user attempts to bulk-confirm parameters that include validation errors, the system shall prevent confirmation and highlight the problematic parameters.
+REQ-URC-006: Scenario Finalization
+User Story: As a user, I want to finalize my scenario when I'm satisfied with the UPIF, so that I can proceed to use the scenario for its intended purpose.
+Acceptance Criteria:
+•	AC-URC-006.1: When all required parameters are populated and validated, the system shall enable the user to finalize the scenario.
+•	AC-URC-006.2: When a user finalizes a scenario, the system shall lock the UPIF configuration and make it available for downstream processes.
+•	AC-URC-006.3: When required parameters are missing or validation errors exist, the system shall prevent finalization and direct the user to resolve the issues.
+•	AC-URC-006.4: When a user finalizes a scenario, the system shall provide confirmation that finalization was successful.
+REQ-URC-007: Re-Opening for Edits
+User Story: As a user, I want to re-open a finalized scenario to make changes, so that I can correct mistakes or update information after finalization.
+Acceptance Criteria:
+•	AC-URC-007.1: When a user views a finalized scenario, the system shall provide an option to re-open the scenario for editing.
+•	AC-URC-007.2: When a user re-opens a finalized scenario, the system shall unlock the UPIF and allow parameter editing.
+•	AC-URC-007.3: When a scenario is re-opened, the system shall notify any downstream processes that depend on the scenario that the configuration has changed.
+•	AC-URC-007.4: When a user makes changes to a re-opened scenario, the system shall require re-finalization before the updated configuration is available to downstream processes.
+Feature Behavior & Rules
+This section clarifies how the requirements behave in practice and how they interact. It explains cross-requirement interactions, defaults, constraints, and edge conditions without prescribing UI or user flows.
+
