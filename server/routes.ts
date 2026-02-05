@@ -638,9 +638,26 @@ export async function registerRoutes(
       
       const feedstockType = extractedParams.find(p => p.name === "Feedstock Type")?.value;
       const volumeParam = extractedParams.find(p => p.name === "Volume/Capacity");
-      const location = extractedParams.find(p => p.name === "Project Location")?.value;
+      const location = extractedParams.find(p => p.name === "Project Location")?.value 
+        || extractedParams.filter(p => p.category === "location").map(p => p.value).join(", ");
       const outputParams = extractedParams.filter(p => p.category === "output_requirements");
       const constraints = extractedParams.filter(p => p.category === "constraints").map(p => p.value);
+      
+      // Extract pricing parameters
+      const pricingParams = extractedParams.filter(p => p.category === "pricing");
+      const pricingInputs: Record<string, string> = {};
+      const pricingOutputs: Record<string, string> = {};
+      
+      for (const p of pricingParams) {
+        const value = p.unit ? `${p.value} ${p.unit}` : p.value;
+        // Classify as input (costs/budget) or output (revenue)
+        const nameLower = p.name.toLowerCase();
+        if (nameLower.includes("revenue") || nameLower.includes("price") || nameLower.includes("credit") || nameLower.includes("sale")) {
+          pricingOutputs[p.name] = value;
+        } else {
+          pricingInputs[p.name] = value;
+        }
+      }
       
       const upifData = {
         scenarioId,
@@ -650,6 +667,8 @@ export async function registerRoutes(
         outputRequirements: outputParams.map(p => `${p.name}: ${p.value}`).join("; "),
         location,
         constraints,
+        pricingInputs: Object.keys(pricingInputs).length > 0 ? pricingInputs : null,
+        pricingOutputs: Object.keys(pricingOutputs).length > 0 ? pricingOutputs : null,
         isConfirmed: false,
       };
       
