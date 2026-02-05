@@ -328,6 +328,12 @@ async function extractParametersWithAI(entries: Array<{ content: string; categor
     return [];
   }
 
+  // Check for API key
+  if (!process.env.OPENAI_API_KEY) {
+    console.log("AI extraction: No OPENAI_API_KEY configured, using pattern matching");
+    return extractParametersFromText(entries);
+  }
+
   console.log("AI extraction: Starting extraction with OpenAI for content length:", content.length);
 
   try {
