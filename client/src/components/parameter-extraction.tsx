@@ -250,7 +250,9 @@ export function ParameterExtraction({
                               {param.confidence || "medium"} confidence
                             </Badge>
                             <Badge variant="outline" className="text-xs">
-                              {param.source === "user_input"
+                              {param.source === "ai_extraction"
+                                ? "AI extracted"
+                                : param.source === "user_input"
                                 ? "From input"
                                 : param.source === "document"
                                 ? "From document"

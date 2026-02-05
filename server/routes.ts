@@ -324,8 +324,11 @@ async function extractParametersWithAI(entries: Array<{ content: string; categor
   const content = entries.map(e => e.content).join("\n\n");
   
   if (!content.trim()) {
+    console.log("AI extraction: No content to extract from");
     return [];
   }
+
+  console.log("AI extraction: Starting extraction with OpenAI for content length:", content.length);
 
   try {
     const response = await openai.chat.completions.create({
@@ -366,13 +369,15 @@ Respond with JSON in this format:
       max_completion_tokens: 2048,
     });
 
+    console.log("AI extraction: Received response from OpenAI");
     const result = JSON.parse(response.choices[0].message.content || "{}");
     
     if (!result.parameters || !Array.isArray(result.parameters)) {
-      console.log("AI returned invalid format, falling back to pattern matching");
+      console.log("AI returned invalid format, falling back to pattern matching. Response:", response.choices[0].message.content);
       return extractParametersFromText(entries);
     }
 
+    console.log("AI extraction: Successfully extracted", result.parameters.length, "parameters");
     return result.parameters.map((p: { category: string; name: string; value: string; unit?: string; confidence: string }) => ({
       category: p.category,
       name: p.name,
@@ -382,7 +387,7 @@ Respond with JSON in this format:
       confidence: p.confidence,
     }));
   } catch (error) {
-    console.error("AI extraction failed, falling back to pattern matching:", error);
+    console.error("AI extraction failed, falling back to pattern matching. Error:", error);
     return extractParametersFromText(entries);
   }
 }
