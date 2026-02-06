@@ -336,58 +336,109 @@ async function extractParametersWithAI(entries: Array<{ content: string; categor
 
   console.log("AI extraction: Starting extraction with OpenAI for content length:", content.length);
 
+  const systemPrompt = `You are a senior biogas and anaerobic digestion project engineer conducting a detailed project intake review. Your job is to extract EVERY relevant technical, commercial, and logistical parameter from unstructured project descriptions.
+
+APPROACH:
+1. Read the entire text carefully and identify every piece of factual information: numbers, locations, materials, requirements, dates, costs, technical specifications, and implied details.
+2. For each fact, classify it into the appropriate category.
+3. Create a separate parameter entry for each distinct piece of information. Do NOT combine multiple facts into one parameter.
+
+CATEGORIES:
+- feedstock: Waste/material types, volumes and quantities, composition data (TS%, VS/TS ratio, BOD, COD, C:N ratio, moisture content), seasonal variations, number of sources/suppliers, current disposal methods, feedstock availability, hauling distances
+- location: City, state, county, region, GPS coordinates, site details, proximity to gas pipelines or electrical grid, zoning information, land area/acreage, elevation, climate considerations
+- output_requirements: Desired products (RNG, electricity, compressed biogas, compost, digestate, soil amendments), capacity/production targets, pipeline interconnection details, offtake agreements, power purchase agreements, gas quality specs (BTU, siloxane limits, H2S limits)
+- pricing: Capital costs (CAPEX), operating costs (OPEX), tipping fees, commodity prices (RNG $/MMBtu, electricity $/kWh), revenue projections, tax credits (ITC, PTC), incentives (LCFS credits, RINs, D3 RINs), ROI targets, payback period, financing details, grants
+- constraints: Regulatory requirements (EPA, state DEQ, air permits, NPDES), timeline/deadlines, equipment preferences or specifications, technology preferences (mesophilic vs thermophilic, CSTR vs plug flow), existing infrastructure, partnership structures, labor considerations, odor requirements, noise limits, setback distances, environmental impact requirements
+
+EXAMPLE INPUT:
+"We have a dairy operation in Yakima County, WA with 5,000 head of cattle producing about 150 tons of manure daily. We also receive 20,000 tons/year of food waste from a nearby processor at a $45/ton tipping fee. Goal is RNG injection into the Williams NW Pipeline, probably around 800 scfm of raw biogas. Budget is $25M with a target 15% IRR. We're expecting D3 RIN credits at about $2.50/RIN. Need to meet Washington State LCFS requirements and have the air permit submitted by Q2 2027. Project needs to be online by Q3 2027. We prefer a thermophilic digester design."
+
+EXAMPLE OUTPUT:
+{"parameters": [
+  {"category": "feedstock", "name": "Primary Feedstock", "value": "Dairy manure", "unit": null, "confidence": "high"},
+  {"category": "feedstock", "name": "Herd Size", "value": "5,000", "unit": "head of cattle", "confidence": "high"},
+  {"category": "feedstock", "name": "Primary Feedstock Volume", "value": "150", "unit": "tons/day", "confidence": "high"},
+  {"category": "feedstock", "name": "Secondary Feedstock", "value": "Food processing waste", "unit": null, "confidence": "high"},
+  {"category": "feedstock", "name": "Secondary Feedstock Volume", "value": "20,000", "unit": "tons/year", "confidence": "high"},
+  {"category": "feedstock", "name": "Number of Feedstock Sources", "value": "2", "unit": "sources", "confidence": "medium"},
+  {"category": "location", "name": "County", "value": "Yakima County", "unit": null, "confidence": "high"},
+  {"category": "location", "name": "State", "value": "Washington", "unit": null, "confidence": "high"},
+  {"category": "output_requirements", "name": "Primary Output", "value": "Renewable Natural Gas (RNG)", "unit": null, "confidence": "high"},
+  {"category": "output_requirements", "name": "Pipeline Interconnection", "value": "Williams NW Pipeline", "unit": null, "confidence": "high"},
+  {"category": "output_requirements", "name": "Raw Biogas Production Target", "value": "800", "unit": "scfm", "confidence": "high"},
+  {"category": "pricing", "name": "Tipping Fee Revenue", "value": "$45", "unit": "per ton", "confidence": "high"},
+  {"category": "pricing", "name": "Capital Budget", "value": "$25,000,000", "unit": null, "confidence": "high"},
+  {"category": "pricing", "name": "Target IRR", "value": "15%", "unit": null, "confidence": "high"},
+  {"category": "pricing", "name": "D3 RIN Credit Value", "value": "$2.50", "unit": "per RIN", "confidence": "high"},
+  {"category": "constraints", "name": "Regulatory Requirement", "value": "Washington State LCFS compliance", "unit": null, "confidence": "high"},
+  {"category": "constraints", "name": "Air Permit Deadline", "value": "Q2 2027", "unit": null, "confidence": "high"},
+  {"category": "constraints", "name": "Target Online Date", "value": "Q3 2027", "unit": null, "confidence": "high"},
+  {"category": "constraints", "name": "Digester Technology Preference", "value": "Thermophilic", "unit": null, "confidence": "high"}
+]}
+
+RULES:
+- Be EXHAUSTIVE. Extract every quantitative value, date, location, material, cost, and requirement mentioned.
+- A typical paragraph should yield 8-15+ parameters. If you find fewer than 5, re-read the text - you are missing details.
+- Create SEPARATE parameter entries for each distinct fact. Never combine "Feedstock Type" and "Volume" into one parameter.
+- Use specific, descriptive parameter names (e.g., "Primary Feedstock Volume" not "Volume", "Capital Budget" not "Cost").
+- Always include units when they are stated or can be reasonably inferred.
+- Look for IMPLIED information too: if someone mentions "dairy farm in eastern Washington," extract both a feedstock source (dairy manure) AND a location.
+- For confidence levels: "high" = explicitly stated with a specific value, "medium" = clearly implied or partially stated, "low" = requires assumption or is ambiguous.
+
+COMMONLY MISSED DETAILS - check for these:
+- Seasonal variations in feedstock availability
+- Current disposal methods (what happens to waste now?)
+- Distance/proximity mentions (miles to pipeline, nearest town)
+- Timeline or deadline references (permits, construction, operations)
+- Regulatory or permit mentions (EPA, DEQ, LCFS, RFS)
+- Number of sources, facilities, or partners
+- Implied infrastructure needs (RNG implies gas cleanup + pipeline interconnect)
+- Financial incentives (tax credits, RINs, LCFS credits, grants)
+- Technology specifications (digester type, gas cleanup method)
+- Environmental requirements (odor, noise, setbacks, emissions)
+
+Return ONLY the JSON object with the "parameters" array.`;
+
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-5",
       messages: [
         {
           role: "system",
-          content: `You are an expert at extracting project parameters from unstructured text for anaerobic digestion and biogas projects. 
-          
-Extract the following categories of parameters:
-- feedstock: type of waste/material (e.g., potato waste, dairy manure, food waste), volume/capacity (tons per year), technical specs (TS%, VS/TS ratio, BOD, COD, C:N ratio)
-- location: project location (city, state, county)
-- output_requirements: what the project will produce (RNG, biogas, electricity, compost, digestate handling)
-- pricing: budget, costs, fees, revenue projections
-- constraints: requirements, limitations, equipment specifications, regulatory requirements
-
-For each parameter, provide:
-- category: one of "feedstock", "location", "output_requirements", "pricing", "constraints"
-- name: descriptive name of the parameter
-- value: the extracted value
-- unit: unit of measurement if applicable
-- confidence: "high" if explicitly stated, "medium" if inferred, "low" if uncertain
-
-Respond with JSON in this format:
-{
-  "parameters": [
-    {"category": "feedstock", "name": "Feedstock Type", "value": "...", "unit": null, "confidence": "high"},
-    ...
-  ]
-}`
+          content: systemPrompt,
         },
         {
           role: "user",
-          content: `Extract all project parameters from the following text:\n\n${content}`
+          content: `Carefully analyze the following project description and extract ALL parameters. Be thorough - capture every detail mentioned or clearly implied:\n\n${content}`
         }
       ],
       response_format: { type: "json_object" },
-      max_completion_tokens: 2048,
+      max_completion_tokens: 16384,
     });
 
-    console.log("AI extraction: Received response from OpenAI");
-    const result = JSON.parse(response.choices[0].message.content || "{}");
+    const rawResponse = response.choices[0].message.content || "{}";
+    console.log("AI extraction: Received response from OpenAI, length:", rawResponse.length);
+    console.log("AI extraction: Token usage - prompt:", response.usage?.prompt_tokens, "completion:", response.usage?.completion_tokens);
+    
+    const result = JSON.parse(rawResponse);
     
     if (!result.parameters || !Array.isArray(result.parameters)) {
-      console.log("AI returned invalid format, falling back to pattern matching. Response:", response.choices[0].message.content);
+      console.log("AI returned invalid format, falling back to pattern matching. Raw response:", rawResponse.substring(0, 500));
       return extractParametersFromText(entries);
     }
 
     console.log("AI extraction: Successfully extracted", result.parameters.length, "parameters");
+    console.log("AI extraction: Categories breakdown:", 
+      result.parameters.reduce((acc: Record<string, number>, p: { category: string }) => {
+        acc[p.category] = (acc[p.category] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>)
+    );
+
     return result.parameters.map((p: { category: string; name: string; value: string; unit?: string; confidence: string }) => ({
       category: p.category,
       name: p.name,
-      value: p.value,
+      value: String(p.value),
       unit: p.unit || undefined,
       source: "ai_extraction",
       confidence: p.confidence,
