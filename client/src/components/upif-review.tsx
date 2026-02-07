@@ -21,6 +21,15 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
+function formatDisplayValue(val: string): string {
+  if (!val) return val;
+  return val.replace(/(?<![.\d])\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?/g, (match) => {
+    const num = Number(match.replace(/,/g, ""));
+    if (isNaN(num)) return match;
+    return num.toLocaleString();
+  });
+}
+
 interface UpifReviewProps {
   scenarioId: string;
   upif: UpifRecord | undefined;
@@ -113,7 +122,7 @@ function FeedstockSpecsTable({
                           />
                         ) : (
                           <span className="text-sm" data-testid={`text-spec-${key}`}>
-                            {spec.value}{spec.unit ? ` ${spec.unit}` : ""}
+                            {formatDisplayValue(spec.value)}{spec.unit ? ` ${spec.unit}` : ""}
                           </span>
                         )}
                       </td>
@@ -241,7 +250,7 @@ function OutputSpecsTable({
                           />
                         ) : (
                           <span className="text-sm" data-testid={`text-output-spec-${key}`}>
-                            {spec.value}{spec.unit ? ` ${spec.unit}` : ""}
+                            {formatDisplayValue(spec.value)}{spec.unit ? ` ${spec.unit}` : ""}
                           </span>
                         )}
                       </td>
@@ -845,7 +854,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                       <Label className="text-xs text-muted-foreground">Volume / Capacity</Label>
                       <p className="text-sm font-medium" data-testid={`text-feedstock-volume-${idx}`}>
                         {fs.feedstockVolume
-                          ? `${fs.feedstockVolume} ${fs.feedstockUnit || ""}`
+                          ? `${formatDisplayValue(fs.feedstockVolume)} ${fs.feedstockUnit || ""}`
                           : "Not specified"}
                       </p>
                     </div>

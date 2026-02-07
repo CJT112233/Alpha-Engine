@@ -23,6 +23,82 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
 });
 
+function formatNumericValue(val: string): string {
+  if (!val) return val;
+  return val.replace(/(?<![.\d])\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?/g, (match) => {
+    const num = Number(match.replace(/,/g, ""));
+    if (isNaN(num)) return match;
+    return num.toLocaleString();
+  });
+}
+
+function postProcessPdfText(rawText: string): string {
+  const lines = rawText.split("\n");
+  const processed: string[] = [];
+  let inTable = false;
+  let tableHeaders: string[] = [];
+  let tablesFound = 0;
+
+  const tableHeaderPatterns = [
+    /^(Parameter|Element|Alternative|Item|Component|Pollutant|Constituent|Category|Description|Metric|Variable|Criteria|Criterion)\s+/i,
+  ];
+
+  const tableHeaderKeywords = [
+    "Units", "Limit", "Current", "Loading", "Low", "High", "Base",
+    "CAPEX", "OPEX", "Alt.", "Value", "Result", "Average", "Maximum",
+    "Minimum", "Target", "Actual", "Standard", "Concentration", "Flow",
+    "Cost", "Price", "Total", "Projected", "Annual",
+  ];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) {
+      if (inTable) {
+        inTable = false;
+        tableHeaders = [];
+        processed.push("");
+      }
+      continue;
+    }
+
+    const matchesHeaderPattern = tableHeaderPatterns.some(p => p.test(line));
+    const hasKeywords = tableHeaderKeywords.some(kw => line.includes(kw));
+    const hasMultipleColumns = line.split(/\s{2,}/).length >= 3;
+
+    if ((matchesHeaderPattern && hasKeywords) || (hasMultipleColumns && hasKeywords && !inTable)) {
+      const cells = line.split(/\s{2,}/);
+      if (cells.length >= 3) {
+        inTable = true;
+        tableHeaders = cells;
+        tablesFound++;
+        processed.push("");
+        processed.push("| " + tableHeaders.join(" | ") + " |");
+        processed.push("| " + tableHeaders.map(() => "---").join(" | ") + " |");
+        continue;
+      }
+    }
+
+    if (inTable && line && !line.startsWith("Table") && !/^\d+\s+[A-Z]/.test(line)) {
+      const cells = line.split(/\s{2,}/);
+      if (cells.length >= 2 && cells.length <= tableHeaders.length + 2) {
+        processed.push("| " + cells.join(" | ") + " |");
+        continue;
+      } else {
+        inTable = false;
+        tableHeaders = [];
+      }
+    }
+
+    processed.push(line);
+  }
+
+  if (tablesFound > 0) {
+    console.log(`PDF post-processing: converted ${tablesFound} table(s) to structured format`);
+  }
+
+  return processed.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 async function extractTextFromFile(filePath: string, mimeType: string, originalName: string): Promise<string | null> {
   try {
     const ext = path.extname(originalName).toLowerCase();
@@ -31,7 +107,9 @@ async function extractTextFromFile(filePath: string, mimeType: string, originalN
       const pdfParse = (await import("pdf-parse")).default;
       const dataBuffer = fs.readFileSync(filePath);
       const data = await pdfParse(dataBuffer);
-      return data.text?.trim() || null;
+      const rawText = data.text?.trim() || null;
+      if (!rawText) return null;
+      return postProcessPdfText(rawText);
     }
 
     if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || ext === ".docx") {
@@ -1193,7 +1271,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
 
           if (feedstock.feedstockVolume) {
             doc.font("Helvetica").fontSize(10).fillColor("#555555")
-              .text(`Volume: ${feedstock.feedstockVolume} ${feedstock.feedstockUnit || ""}`, leftMargin, currentY);
+              .text(`Volume: ${formatNumericValue(feedstock.feedstockVolume)} ${feedstock.feedstockUnit || ""}`, leftMargin, currentY);
             currentY = doc.y + 6;
           }
 
@@ -1229,7 +1307,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
 
               const rows = items.map(([, spec]) => [
                 spec.displayName || "",
-                spec.value || "",
+                formatNumericValue(spec.value || ""),
                 spec.unit || "",
                 spec.source === "user_provided" ? "User" : "Estimated",
                 (spec.provenance || "").substring(0, 60),
@@ -1303,7 +1381,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
 
             const rows = items.map(([, spec]) => [
               spec.displayName || "",
-              spec.value || "",
+              formatNumericValue(spec.value || ""),
               spec.unit || "",
               (spec.source || "").replace(/_/g, " "),
               spec.confidence || "",

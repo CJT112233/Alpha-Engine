@@ -15,6 +15,7 @@ The core workflow follows a scenario-based approach where:
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+Number formatting: Always display numbers with comma separators for thousands (e.g., 10,000 not 10000).
 
 ## System Architecture
 

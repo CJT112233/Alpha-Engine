@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Progress } from "@/components/ui/progress";
-import { FileUp, File, FileText, Image, Trash2, Upload, CheckCircle2, AlertCircle } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { FileUp, File, FileText, Image, Trash2, Upload, CheckCircle2, AlertCircle, Eye, ChevronDown, ChevronUp } from "lucide-react";
 import type { Document } from "@shared/schema";
 import { format } from "date-fns";
 import { queryClient } from "@/lib/queryClient";
@@ -17,6 +17,10 @@ interface DocumentUploadProps {
   documents: Document[];
   isLoading: boolean;
   isLocked: boolean;
+}
+
+function formatNumber(n: number): string {
+  return n.toLocaleString();
 }
 
 const formatFileSize = (bytes: string | number) => {
@@ -43,6 +47,8 @@ const supportedFormats = [
 export function DocumentUpload({ scenarioId, documents, isLoading, isLocked }: DocumentUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -66,7 +72,7 @@ export function DocumentUpload({ scenarioId, documents, isLoading, isLocked }: D
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "documents"] });
       toast({
         title: "Document uploaded",
-        description: "Your document has been uploaded and is being processed.",
+        description: "Your document has been uploaded and text has been extracted.",
       });
     },
     onError: () => {
@@ -125,6 +131,18 @@ export function DocumentUpload({ scenarioId, documents, isLoading, isLocked }: D
     const files = Array.from(e.target.files || []);
     files.forEach((file) => uploadMutation.mutate(file));
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const toggleExpanded = (docId: string) => {
+    setExpandedDocs(prev => {
+      const next = new Set(prev);
+      if (next.has(docId)) {
+        next.delete(docId);
+      } else {
+        next.add(docId);
+      }
+      return next;
+    });
   };
 
   return (
@@ -196,15 +214,15 @@ export function DocumentUpload({ scenarioId, documents, isLoading, isLocked }: D
             <ul className="text-sm text-muted-foreground space-y-1">
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                Text extraction from PDFs and documents
+                Text extraction from PDFs, Word, and Excel
               </li>
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                OCR for scanned images
+                Table structure preservation
               </li>
               <li className="flex items-center gap-2">
                 <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                Automatic parameter recognition
+                Automatic parameter recognition via AI
               </li>
             </ul>
           </div>
@@ -234,54 +252,124 @@ export function DocumentUpload({ scenarioId, documents, isLoading, isLocked }: D
               </p>
             </div>
           ) : (
-            <ScrollArea className="h-[350px] pr-4">
+            <ScrollArea className="h-[400px] pr-4">
               <div className="space-y-3">
-                {documents.map((doc) => (
-                  <div
-                    key={doc.id}
-                    className="flex items-start gap-3 p-3 rounded-md border bg-card"
-                    data-testid={`document-${doc.id}`}
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                      {getFileIcon(doc.mimeType)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{doc.originalName}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{formatFileSize(doc.size)}</span>
-                        <span>-</span>
-                        <span>{format(new Date(doc.createdAt), "MMM d, h:mm a")}</span>
+                {documents.map((doc) => {
+                  const hasText = !!(doc.extractedText && doc.extractedText.trim());
+                  const charCount = hasText ? doc.extractedText!.length : 0;
+                  const isExpanded = expandedDocs.has(doc.id);
+                  const previewText = hasText
+                    ? doc.extractedText!.substring(0, 300) + (doc.extractedText!.length > 300 ? "..." : "")
+                    : null;
+
+                  return (
+                    <div
+                      key={doc.id}
+                      className="p-3 rounded-md border bg-card"
+                      data-testid={`document-${doc.id}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted text-muted-foreground shrink-0">
+                          {getFileIcon(doc.mimeType)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate" data-testid={`text-doc-name-${doc.id}`}>{doc.originalName}</p>
+                          <div className="flex items-center flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span>{formatFileSize(doc.size)}</span>
+                            <span>-</span>
+                            <span>{format(new Date(doc.createdAt), "MMM d, h:mm a")}</span>
+                          </div>
+                          <div className="flex items-center flex-wrap gap-2 mt-2">
+                            {hasText ? (
+                              <Badge variant="secondary" className="text-xs" data-testid={`badge-extracted-${doc.id}`}>
+                                <CheckCircle2 className="h-3 w-3 mr-1" />
+                                Text extracted ({formatNumber(charCount)} chars)
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-muted-foreground" data-testid={`badge-no-text-${doc.id}`}>
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                No text extracted
+                              </Badge>
+                            )}
+                            {hasText && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                onClick={() => setPreviewDoc(doc)}
+                                data-testid={`button-preview-${doc.id}`}
+                              >
+                                <Eye className="h-3 w-3 mr-1" />
+                                Preview
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        {!isLocked && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-muted-foreground"
+                            onClick={() => {
+                              if (confirm("Delete this document?")) {
+                                deleteMutation.mutate(doc.id);
+                              }
+                            }}
+                            disabled={deleteMutation.isPending}
+                            data-testid={`button-delete-document-${doc.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
-                      {doc.extractedText && (
-                        <Badge variant="secondary" className="mt-2 text-xs">
-                          <CheckCircle2 className="h-3 w-3 mr-1" />
-                          Text extracted
-                        </Badge>
+                      {hasText && (
+                        <div className="mt-2 ml-[52px]">
+                          <button
+                            className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer"
+                            onClick={() => toggleExpanded(doc.id)}
+                            data-testid={`button-toggle-preview-${doc.id}`}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="h-3 w-3" />
+                            ) : (
+                              <ChevronDown className="h-3 w-3" />
+                            )}
+                            {isExpanded ? "Hide snippet" : "Show snippet"}
+                          </button>
+                          {isExpanded && (
+                            <div className="mt-1 p-2 rounded bg-muted text-xs text-muted-foreground font-mono whitespace-pre-wrap max-h-[120px] overflow-y-auto" data-testid={`text-snippet-${doc.id}`}>
+                              {previewText}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
-                    {!isLocked && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => {
-                          if (confirm("Delete this document?")) {
-                            deleteMutation.mutate(doc.id);
-                          }
-                        }}
-                        disabled={deleteMutation.isPending}
-                        data-testid={`button-delete-document-${doc.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </ScrollArea>
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!previewDoc} onOpenChange={(open) => { if (!open) setPreviewDoc(null); }}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Extracted Text
+            </DialogTitle>
+            <DialogDescription>
+              {previewDoc?.originalName} — {previewDoc?.extractedText ? formatNumber(previewDoc.extractedText.length) : 0} characters extracted
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[60vh] mt-2">
+            <pre className="text-sm whitespace-pre-wrap font-mono p-4 bg-muted rounded-md" data-testid="text-extracted-preview">
+              {previewDoc?.extractedText || "No text available"}
+            </pre>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
