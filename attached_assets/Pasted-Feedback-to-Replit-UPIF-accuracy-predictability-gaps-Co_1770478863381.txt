@@ -1,0 +1,88 @@
+Feedback to Replit: UPIF accuracy + predictability gaps
+Context
+I’m testing the Scenario intake flow that:
+1.	extracts parameters from free-form text, and
+2.	generates a Unified Project Intake Form (UPIF) from those parameters.
+What worked (Parameter extraction)
+From my text input, the extracted parameters were mostly correct but incomplete
+What didn’t work (UPIF generation correctness)
+The UPIF had major issues:
+•	Mismatch between extracted parameters and UPIF fields
+Information present in extracted parameters (feedstock volume/specs, digestate routing) did not consistently appear in the UPIF.
+•	Feedstock specifications not generated
+The biggest gap: when I say “potato waste,” the UPIF should populate the key estimated feedstock properties needed for basis-of-design (e.g., VS/TS, TS%, C:N, etc.). Instead, it largely repeated what I typed and did not create the details.
+Expected behavior
+1.	Deterministic mapping: Every extracted parameter should map to a specific UPIF section/field with consistent naming and placement.
+2.	Feedstock details: Given a feedstock type + volume, automatically generate a complete set of feedstock design parameters (with provenance/assumptions), then present them for user review and confirmation. 
+Recommendations to make it more robust + predictable
+1) Enforce a strict “single source of truth” handoff
+•	The extracted parameters must guide the UPIF. If it appears as an extracted parameter, it should also appear in the UPIF
+2) Separate “extraction” vs “inference/enrichment”
+Right now it feels like extraction is decent, but inference is missing or inconsistent.
+•	Step A: Extract what user said (verbatim facts)
+•	Step B: Enrich with estimates (feedstock properties) using a consistent library/table + clear assumptions
+•	Step C: Generate UPIF
+5) Feedstock property defaults (the core need)
+For “potato waste,” the UPIF should produce a complete “Feedstock Specs” block, including:
+•	TS%, VS/TS, C:N, and any other standard parameters your model requires
+•	a label like “Estimated (default)” vs “User-provided”
+•	a source field (e.g., a weblink or two that sources where the extracted parameter came from)
+Minimum Feedstock Parameters (Required)
+These should be populated either from user input OR inferred from feedstock type defaults.
+1. Identity & Flow
+•	Feedstock name / category
+(e.g., Potato waste, Food waste, Dairy manure)
+•	Annual quantity
+(TPY or wet tons/year)
+•	Delivery form
+(solid, slurry, liquid, mixed)
+•	Receiving condition
+(raw, pre-processed, packaged, depackaged)
+
+2. Physical Characteristics
+•	Total Solids (TS, % wet basis)
+•	Volatile Solids (VS, % of TS)
+•	VS/TS
+•	Moisture content (% or derived from TS)
+•	Bulk density (as received) expressed as lb/ton or lb/gal
+
+3. Organic & Biochemical Properties
+•	C:N ratio
+•	Biodegradable fraction of VS (%) (or assumed AD degradability class)
+•	Methane potential (BMP, m³ CH₄ / kg VS) (or inferred yield factor)
+
+4. Contaminants & Inerts
+•	Inert/contaminant fraction (% by mass)
+(plastics, grit, packaging remnants)
+•	Expected preprocessing requirement
+(screening, depackaging, grinding)
+
+6. Data Provenance (Critical)
+For every inferred value, include:
+•	Source 
+(provide some logic for how generated)
+•	Confidence level
+(High / Medium / Low)
+
+Extended Feedstock Parameters (Nice-to-Have)
+These can be extracted or inferred if available, but are not required to generate a viable UPIF.
+Chemical / Nutrient Detail
+•	Total Kjeldahl Nitrogen (TKN)
+•	Ammonia-N
+•	Phosphorus
+•	Potassium
+•	Sulfur content
+Process Impacts
+•	Lipid / protein / carbohydrate fraction 
+•	FOG
+•	Foaming risk (qualitative)
+•	Inhibition risk (salts, ammonia, sulfur)
+Regulatory / Handling
+•	Pathogen risk class
+•	Odor potential
+•	Vector attraction potential
+Supply Chain
+•	Typical delivery frequency
+•	Storage stability (days)
+•	Temperature at delivery
+
