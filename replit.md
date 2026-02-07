@@ -9,7 +9,8 @@ The core workflow follows a scenario-based approach where:
 2. Each scenario maintains independent inputs, outputs, and constraints
 3. Users provide project details through free-form text and document uploads
 4. The system extracts and categorizes parameters (feedstock, output requirements, location, constraints)
-5. Parameters are consolidated into a standardized UPIF for user review and confirmation
+5. Extracted feedstock parameters are enriched with design defaults from a built-in knowledge base (TS%, VS/TS, C:N, BMP, etc.) with provenance tracking
+6. Parameters are consolidated into a standardized UPIF for user review and confirmation
 
 ## User Preferences
 
@@ -69,6 +70,10 @@ Preferred communication style: Simple, everyday language.
 - The system uses AI to extract project parameters from natural language input
 - Falls back to pattern matching if OpenAI API key is not configured
 - Extracted parameters show "AI extracted" badge in the UI when AI is used
+- **Feedstock Enrichment**: After AI extraction, feedstock types are matched against a built-in knowledge base (`shared/feedstock-library.ts`) containing design parameters for common AD feedstocks (Potato Waste, Dairy Manure, Food Waste, FOG, Crop Residue, Poultry Litter, Swine Manure, Municipal Wastewater Sludge)
+- Each enriched parameter includes: value, unit, source (user_provided vs estimated_default), confidence level, provenance (literature citation/reasoning), and display grouping (identity, physical, biochemical, contaminants, extended)
+- User-provided values override estimated defaults when available
+- Pricing functionality has been removed and will be re-added in a future update
 
 ### Document Processing
 - Multer for file upload handling

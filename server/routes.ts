@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema } from "@shared/schema";
 import { z } from "zod";
 import OpenAI from "openai";
+import { enrichFeedstockSpecs, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -641,22 +642,112 @@ export async function registerRoutes(
         });
       }
       
-      // Create or update UPIF
+      // Create or update UPIF with deterministic parameter mapping
       const existingUpif = await storage.getUpifByScenario(scenarioId);
       
-      const feedstockType = extractedParams.find(p => p.name === "Feedstock Type")?.value;
-      const volumeParam = extractedParams.find(p => p.name === "Volume/Capacity");
-      const location = extractedParams.find(p => p.name === "Project Location")?.value 
-        || extractedParams.filter(p => p.category === "location").map(p => p.value).join(", ");
+      // Step 1: Deterministic mapping - find feedstock type from multiple possible parameter names
+      const feedstockType = extractedParams.find(p => 
+        p.category === "feedstock" && 
+        (p.name === "Feedstock Type" || p.name === "Primary Feedstock" || p.name.toLowerCase().includes("feedstock type"))
+      )?.value;
+      
+      // Map volume from multiple possible names
+      const volumeParam = extractedParams.find(p => 
+        p.category === "feedstock" && 
+        (p.name === "Volume/Capacity" || p.name === "Primary Feedstock Volume" || 
+         p.name.toLowerCase().includes("volume") || p.name.toLowerCase().includes("quantity") ||
+         p.name.toLowerCase().includes("annual"))
+      );
+      
+      // Collect all location info
+      const locationParams = extractedParams.filter(p => p.category === "location");
+      const location = locationParams.length > 0
+        ? locationParams.map(p => `${p.value}`).join(", ")
+        : "";
+      
+      // Collect all output requirements
       const outputParams = extractedParams.filter(p => p.category === "output_requirements");
-      const constraints = extractedParams.filter(p => p.category === "constraints").map(p => p.value);
+      
+      // Collect all constraints
+      const constraints = extractedParams.filter(p => p.category === "constraints").map(p => 
+        p.name !== "Constraint" ? `${p.name}: ${p.value}` : p.value
+      );
+      
+      // Step 2: Enrichment - collect user-provided feedstock params for enrichment
+      const userFeedstockParams: Record<string, { value: string; unit?: string }> = {};
+      const feedstockTechnicalParams = extractedParams.filter(p => 
+        p.category === "feedstock" && 
+        p.name !== "Feedstock Type" && p.name !== "Primary Feedstock" &&
+        p.name !== "Volume/Capacity" && p.name !== "Primary Feedstock Volume" &&
+        !p.name.toLowerCase().includes("feedstock type") &&
+        !p.name.toLowerCase().includes("secondary feedstock")
+      );
+      
+      for (const param of feedstockTechnicalParams) {
+        const normalizedName = param.name.toLowerCase().trim();
+        let mappedName = param.name;
+        
+        const isVolumeMetric = normalizedName.includes("annual") || normalizedName.includes("quantity") || 
+          normalizedName.includes("daily") || normalizedName.includes("average") ||
+          normalizedName.includes("generation") || normalizedName.includes("onsite") ||
+          normalizedName.includes("number of") || normalizedName.includes("facility type") ||
+          normalizedName.includes("source");
+        
+        if (isVolumeMetric) {
+          continue;
+        }
+        
+        if (normalizedName.includes("vs/ts") || normalizedName.includes("vs:ts") || normalizedName.includes("volatile solids to total solids")) {
+          mappedName = "VS/TS";
+        } else if (normalizedName.includes("total solids") || normalizedName === "ts%" || normalizedName === "ts (%)") {
+          mappedName = "Total Solids";
+        } else if (normalizedName.includes("volatile solids") || normalizedName === "vs" || normalizedName === "vs (% of ts)") {
+          mappedName = "Volatile Solids";
+        } else if (normalizedName.includes("c:n") || normalizedName.includes("c/n") || normalizedName.includes("carbon") && normalizedName.includes("nitrogen")) {
+          mappedName = "C:N Ratio";
+        } else if (normalizedName.includes("moisture")) {
+          mappedName = "Moisture Content";
+        } else if (normalizedName.includes("bulk density") || normalizedName.includes("density")) {
+          mappedName = "Bulk Density";
+        } else if (normalizedName.includes("bmp") || normalizedName.includes("biochemical methane") || normalizedName.includes("methane potential")) {
+          mappedName = "BMP";
+        } else if (normalizedName.includes("biodegradable fraction") || normalizedName.includes("biodegradability")) {
+          mappedName = "Biodegradable Fraction";
+        }
+        
+        userFeedstockParams[mappedName] = { 
+          value: param.value || "", 
+          unit: param.unit || undefined 
+        };
+      }
+      
+      // Step 3: Enrich feedstock specs using the knowledge base
+      let feedstockSpecs: Record<string, EnrichedFeedstockSpec> | undefined;
+      if (feedstockType) {
+        feedstockSpecs = enrichFeedstockSpecs(feedstockType, userFeedstockParams);
+        console.log("Enrichment: Generated", Object.keys(feedstockSpecs).length, "feedstock specs for", feedstockType);
+        const userProvided = Object.values(feedstockSpecs).filter(s => s.source === "user_provided").length;
+        const estimated = Object.values(feedstockSpecs).filter(s => s.source === "estimated_default").length;
+        console.log("Enrichment:", userProvided, "user-provided,", estimated, "estimated defaults");
+      }
+      
+      // Build feedstock parameters (legacy format for backward compat)
+      const feedstockParameters: Record<string, { value: string; unit: string }> = {};
+      for (const param of feedstockTechnicalParams) {
+        feedstockParameters[param.name] = { 
+          value: param.value || "", 
+          unit: param.unit || "" 
+        };
+      }
       
       const upifData = {
         scenarioId,
         feedstockType,
         feedstockVolume: volumeParam?.value,
         feedstockUnit: volumeParam?.unit,
-        outputRequirements: outputParams.map(p => `${p.name}: ${p.value}`).join("; "),
+        feedstockParameters: Object.keys(feedstockParameters).length > 0 ? feedstockParameters : undefined,
+        feedstockSpecs: feedstockSpecs && Object.keys(feedstockSpecs).length > 0 ? feedstockSpecs : undefined,
+        outputRequirements: outputParams.map(p => `${p.name}: ${p.value}${p.unit ? ` ${p.unit}` : ""}`).join("; "),
         location,
         constraints,
         isConfirmed: false,

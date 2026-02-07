@@ -84,6 +84,16 @@ export const upifRecords = pgTable("upif_records", {
   feedstockVolume: text("feedstock_volume"),
   feedstockUnit: text("feedstock_unit"),
   feedstockParameters: jsonb("feedstock_parameters").$type<Record<string, { value: string; unit: string }>>(),
+  feedstockSpecs: jsonb("feedstock_specs").$type<Record<string, {
+    value: string;
+    unit: string;
+    source: "user_provided" | "estimated_default";
+    confidence: "high" | "medium" | "low";
+    provenance: string;
+    group: "identity" | "physical" | "biochemical" | "contaminants" | "extended";
+    displayName: string;
+    sortOrder: number;
+  }>>(),
   outputRequirements: text("output_requirements"),
   location: text("location"),
   constraints: text("constraints").array(),

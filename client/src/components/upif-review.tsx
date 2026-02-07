@@ -8,11 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2 } from "lucide-react";
+import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers } from "lucide-react";
 import type { UpifRecord } from "@shared/schema";
+import { feedstockGroupLabels, feedstockGroupOrder, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -37,9 +39,131 @@ const upifFormSchema = z.object({
 
 type UpifFormValues = z.infer<typeof upifFormSchema>;
 
+const groupIcons: Record<string, React.ReactNode> = {
+  identity: <Layers className="h-3.5 w-3.5" />,
+  physical: <Beaker className="h-3.5 w-3.5" />,
+  biochemical: <FlaskConical className="h-3.5 w-3.5" />,
+  contaminants: <Bug className="h-3.5 w-3.5" />,
+  extended: <Settings2 className="h-3.5 w-3.5" />,
+};
+
+const confidenceBadgeClass: Record<string, string> = {
+  high: "bg-green-500/10 text-green-700 dark:text-green-400",
+  medium: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
+  low: "bg-red-500/10 text-red-700 dark:text-red-400",
+};
+
+function FeedstockSpecsTable({
+  specs,
+  isEditing,
+  onSpecUpdate,
+}: {
+  specs: Record<string, EnrichedFeedstockSpec>;
+  isEditing: boolean;
+  onSpecUpdate?: (key: string, value: string) => void;
+}) {
+  const grouped: Record<string, Array<[string, EnrichedFeedstockSpec]>> = {};
+
+  for (const [key, spec] of Object.entries(specs)) {
+    if (!grouped[spec.group]) {
+      grouped[spec.group] = [];
+    }
+    grouped[spec.group].push([key, spec]);
+  }
+
+  for (const group of Object.keys(grouped)) {
+    grouped[group].sort((a, b) => a[1].sortOrder - b[1].sortOrder);
+  }
+
+  return (
+    <div className="space-y-5">
+      {feedstockGroupOrder.map((groupKey) => {
+        const items = grouped[groupKey];
+        if (!items || items.length === 0) return null;
+
+        return (
+          <div key={groupKey}>
+            <div className="flex items-center gap-2 mb-2">
+              {groupIcons[groupKey]}
+              <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {feedstockGroupLabels[groupKey]}
+              </h5>
+            </div>
+            <div className="border rounded-md overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Parameter</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[25%]">Value</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[15%]">Source</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Provenance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map(([key, spec]) => (
+                    <tr key={key} className="border-b last:border-b-0">
+                      <td className="p-2">
+                        <span className="font-medium text-sm">{spec.displayName}</span>
+                      </td>
+                      <td className="p-2">
+                        {isEditing ? (
+                          <Input
+                            defaultValue={spec.value}
+                            className="h-7 text-sm"
+                            onChange={(e) => onSpecUpdate?.(key, e.target.value)}
+                            data-testid={`input-spec-${key}`}
+                          />
+                        ) : (
+                          <span className="text-sm" data-testid={`text-spec-${key}`}>
+                            {spec.value}{spec.unit ? ` ${spec.unit}` : ""}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        <Badge
+                          variant="secondary"
+                          className={`text-xs ${spec.source === "user_provided"
+                            ? "bg-blue-500/10 text-blue-700 dark:text-blue-400"
+                            : "bg-orange-500/10 text-orange-700 dark:text-orange-400"
+                          }`}
+                        >
+                          {spec.source === "user_provided" ? "User" : "Estimated"}
+                        </Badge>
+                        <Badge
+                          variant="secondary"
+                          className={`text-xs ml-1 ${confidenceBadgeClass[spec.confidence]}`}
+                        >
+                          {spec.confidence}
+                        </Badge>
+                      </td>
+                      <td className="p-2">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-xs text-muted-foreground cursor-help line-clamp-2">
+                              {spec.provenance}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-sm">
+                            <p className="text-xs">{spec.provenance}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenarioStatus }: UpifReviewProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
+  const [specEdits, setSpecEdits] = useState<Record<string, string>>({});
   const isConfirmed = scenarioStatus === "confirmed";
 
   const form = useForm<UpifFormValues>({
@@ -54,16 +178,37 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
     },
   });
 
+  const feedstockSpecs = upif?.feedstockSpecs as Record<string, EnrichedFeedstockSpec> | null | undefined;
+  const hasSpecs = feedstockSpecs && Object.keys(feedstockSpecs).length > 0;
+
   const updateUpifMutation = useMutation({
     mutationFn: async (data: UpifFormValues) => {
+      let updatedSpecs = feedstockSpecs;
+      if (Object.keys(specEdits).length > 0 && updatedSpecs) {
+        updatedSpecs = { ...updatedSpecs };
+        for (const [key, value] of Object.entries(specEdits)) {
+          if (updatedSpecs[key]) {
+            updatedSpecs[key] = {
+              ...updatedSpecs[key],
+              value,
+              source: "user_provided",
+              confidence: "high",
+              provenance: "User-provided override",
+            };
+          }
+        }
+      }
+
       return apiRequest("PATCH", `/api/scenarios/${scenarioId}/upif`, {
         ...data,
         constraints: data.constraints?.split("\n").filter(Boolean),
+        feedstockSpecs: updatedSpecs,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "upif"] });
       setIsEditing(false);
+      setSpecEdits({});
       toast({
         title: "UPIF updated",
         description: "Your changes have been saved.",
@@ -171,6 +316,12 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
     );
   }
 
+  const specStats = hasSpecs ? {
+    total: Object.keys(feedstockSpecs!).length,
+    userProvided: Object.values(feedstockSpecs!).filter(s => s.source === "user_provided").length,
+    estimated: Object.values(feedstockSpecs!).filter(s => s.source === "estimated_default").length,
+  } : null;
+
   return (
     <Card>
       <CardHeader>
@@ -204,6 +355,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                   location: upif?.location || "",
                   constraints: upif?.constraints?.join("\n") || "",
                 });
+                setSpecEdits({});
                 setIsEditing(true);
               }}
               data-testid="button-edit-upif"
@@ -231,7 +383,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                       <FormItem>
                         <FormLabel>Feedstock Type</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., Potato Waste" {...field} />
+                          <Input placeholder="e.g., Potato Waste" {...field} data-testid="input-feedstock-type" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -245,7 +397,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                         <FormItem>
                           <FormLabel>Volume</FormLabel>
                           <FormControl>
-                            <Input placeholder="e.g., 100,000" {...field} />
+                            <Input placeholder="e.g., 100,000" {...field} data-testid="input-feedstock-volume" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -258,7 +410,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                         <FormItem>
                           <FormLabel>Unit</FormLabel>
                           <FormControl>
-                            <Input placeholder="e.g., tons/year" {...field} />
+                            <Input placeholder="e.g., tons/year" {...field} data-testid="input-feedstock-unit" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -279,7 +431,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                       <FormItem>
                         <FormLabel>Project Location</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., Quincy, Washington" {...field} />
+                          <Input placeholder="e.g., Quincy, Washington" {...field} data-testid="input-location" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -287,6 +439,30 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                   />
                 </div>
               </div>
+
+              {hasSpecs && (
+                <>
+                  <Separator />
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <FlaskConical className="h-4 w-4" />
+                      <h4 className="font-medium">Feedstock Design Parameters</h4>
+                      <Badge variant="secondary" className="text-xs">
+                        Edit values below to override defaults
+                      </Badge>
+                    </div>
+                    <FeedstockSpecsTable
+                      specs={feedstockSpecs!}
+                      isEditing={true}
+                      onSpecUpdate={(key, value) => {
+                        setSpecEdits(prev => ({ ...prev, [key]: value }));
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+
+              <Separator />
 
               <div className="space-y-4">
                 <h4 className="flex items-center gap-2 font-medium">
@@ -304,6 +480,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                           className="resize-none"
                           rows={3}
                           {...field}
+                          data-testid="input-output-requirements"
                         />
                       </FormControl>
                       <FormMessage />
@@ -328,6 +505,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                           className="resize-none"
                           rows={4}
                           {...field}
+                          data-testid="input-constraints"
                         />
                       </FormControl>
                       <FormMessage />
@@ -348,7 +526,10 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsEditing(false)}
+                  onClick={() => {
+                    setIsEditing(false);
+                    setSpecEdits({});
+                  }}
                 >
                   <X className="h-4 w-4 mr-2" />
                   Cancel
@@ -379,18 +560,6 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                         : "Not specified"}
                     </p>
                   </div>
-                  {upif.feedstockParameters && Object.keys(upif.feedstockParameters).length > 0 && (
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Technical Parameters</Label>
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        {Object.entries(upif.feedstockParameters).map(([key, val]) => (
-                          <Badge key={key} variant="secondary" className="text-xs">
-                            {key}: {val.value} {val.unit}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -406,6 +575,45 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                 </div>
               </div>
             </div>
+
+            {hasSpecs && (
+              <>
+                <Separator />
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <h4 className="flex items-center gap-2 font-medium text-sm">
+                      <FlaskConical className="h-4 w-4 text-primary" />
+                      Feedstock Design Parameters
+                    </h4>
+                    {specStats && (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-400">
+                          {specStats.userProvided} user-provided
+                        </Badge>
+                        <Badge variant="secondary" className="text-xs bg-orange-500/10 text-orange-700 dark:text-orange-400">
+                          {specStats.estimated} estimated defaults
+                        </Badge>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p className="text-xs">
+                              Estimated defaults are sourced from published literature for {upif.feedstockType}. 
+                              Click "Edit" to override any value with your own data.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    )}
+                  </div>
+                  <FeedstockSpecsTable
+                    specs={feedstockSpecs!}
+                    isEditing={false}
+                  />
+                </div>
+              </>
+            )}
 
             <Separator />
 

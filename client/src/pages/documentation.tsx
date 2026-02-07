@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, BookOpen, Beaker, FileUp, Sparkles, FileText, MessageSquare, MapPin, Settings2, FileOutput } from "lucide-react";
+import { ArrowLeft, BookOpen, Beaker, FileUp, Sparkles, FileText, MessageSquare, MapPin, Settings2, FileOutput, FlaskConical } from "lucide-react";
 
 export default function Documentation() {
   return (
@@ -257,11 +257,13 @@ export default function Documentation() {
                   4
                 </div>
                 <div>
-                  <h4 className="font-medium">Extract Parameters</h4>
+                  <h4 className="font-medium">Extract & Enrich Parameters</h4>
                   <p className="text-sm text-muted-foreground mt-1">
                     Click "Extract Parameters" to have the AI analyze your inputs and identify 
-                    project specifications. The system will also predict missing parameters based 
-                    on industry knowledge.
+                    project specifications. The system then automatically enriches your data by 
+                    matching feedstock types against a built-in knowledge base of design parameters 
+                    (TS%, VS/TS, C:N ratio, BMP, and more). Each enriched value is labeled as 
+                    "User-provided" or "Estimated default" with source provenance and confidence level.
                   </p>
                 </div>
               </div>
@@ -273,9 +275,10 @@ export default function Documentation() {
                 <div>
                   <h4 className="font-medium">Review & Confirm</h4>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Review the extracted parameters, make any necessary edits, and confirm each value. 
-                    Once all parameters are confirmed, proceed to the UPIF for final review and 
-                    confirmation.
+                    Review the extracted parameters and enriched feedstock design specs. The UPIF 
+                    shows a complete table of feedstock properties organized by category (Physical, 
+                    Biochemical, Contaminants, etc.) with provenance for each value. Override any 
+                    estimated defaults with your own data, then confirm the UPIF to finalize.
                   </p>
                 </div>
               </div>
