@@ -8,6 +8,9 @@ import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema } from
 import { z } from "zod";
 import OpenAI from "openai";
 import { enrichFeedstockSpecs, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
+import * as XLSX from "xlsx";
+import pdfParse from "pdf-parse";
+import mammoth from "mammoth";
 
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -16,6 +19,53 @@ const upload = multer({
   dest: "uploads/",
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
 });
+
+async function extractTextFromFile(filePath: string, mimeType: string, originalName: string): Promise<string | null> {
+  try {
+    const ext = path.extname(originalName).toLowerCase();
+
+    if (mimeType === "application/pdf" || ext === ".pdf") {
+      const dataBuffer = fs.readFileSync(filePath);
+      const data = await pdfParse(dataBuffer);
+      return data.text?.trim() || null;
+    }
+
+    if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || ext === ".docx") {
+      const result = await mammoth.extractRawText({ path: filePath });
+      return result.value?.trim() || null;
+    }
+
+    if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        mimeType === "application/vnd.ms-excel" ||
+        ext === ".xlsx" || ext === ".xls" || ext === ".csv") {
+      const workbook = XLSX.readFile(filePath);
+      const textParts: string[] = [];
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        const csv = XLSX.utils.sheet_to_csv(sheet);
+        if (csv.trim()) {
+          textParts.push(`[Sheet: ${sheetName}]\n${csv}`);
+        }
+      }
+      return textParts.join("\n\n").trim() || null;
+    }
+
+    if (mimeType === "text/plain" || mimeType === "text/csv" ||
+        ext === ".txt" || ext === ".csv" || ext === ".md") {
+      const text = fs.readFileSync(filePath, "utf-8");
+      return text.trim() || null;
+    }
+
+    if (ext === ".doc") {
+      return null;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error extracting text from file:", error);
+    return null;
+  }
+}
 
 // Helper to categorize text input based on content
 function categorizeInput(content: string): string | null {
