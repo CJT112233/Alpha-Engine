@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles, Download, Lock, Unlock } from "lucide-react";
+import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles, Download, Lock, Unlock, Plus, Minus } from "lucide-react";
 import type { UpifRecord, FeedstockEntry, ConfirmedFields } from "@shared/schema";
 import { feedstockGroupLabels, feedstockGroupOrder, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { outputGroupLabels, outputGroupOrder, type EnrichedOutputSpec } from "@shared/output-criteria-library";
@@ -87,6 +87,45 @@ function ConfirmToggle({
         <p className="text-xs">{isConfirmed ? "Confirmed — locked from re-generation" : "Click to confirm and lock this value"}</p>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+function CollapsibleSection({
+  icon,
+  title,
+  children,
+  defaultOpen = false,
+  rightContent,
+  testId,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+  rightContent?: React.ReactNode;
+  testId: string;
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <div className="space-y-3">
+      <button
+        type="button"
+        className="flex items-center justify-between w-full group cursor-pointer"
+        onClick={() => setIsOpen(prev => !prev)}
+        data-testid={testId}
+      >
+        <div className="flex items-center gap-2">
+          {icon}
+          <h4 className="font-medium text-sm">{title}</h4>
+          {rightContent}
+        </div>
+        <div className="flex items-center gap-1 text-muted-foreground">
+          {isOpen ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+        </div>
+      </button>
+      {isOpen && children}
+    </div>
   );
 }
 
@@ -1052,14 +1091,14 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
           </Form>
         ) : (
           <div className="space-y-6">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Beaker className="h-4 w-4 text-primary" />
-                <h4 className="font-medium text-sm">Feedstock Specifications</h4>
-                {feedstocks.length > 1 && (
-                  <Badge variant="secondary" className="text-xs">{feedstocks.length} feedstocks</Badge>
-                )}
-              </div>
+            <CollapsibleSection
+              icon={<Beaker className="h-4 w-4 text-primary" />}
+              title="Feedstock Specifications"
+              testId="toggle-section-feedstock"
+              rightContent={feedstocks.length > 1 ? (
+                <Badge variant="secondary" className="text-xs">{feedstocks.length} feedstocks</Badge>
+              ) : undefined}
+            >
               {hasFeedstocks ? feedstocks.map((fs, idx) => {
                 const specs = fs.feedstockSpecs as Record<string, EnrichedFeedstockSpec> | undefined;
                 const hasSpecs = specs && Object.keys(specs).length > 0;
@@ -1145,15 +1184,15 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   <p className="text-sm text-muted-foreground">No feedstocks identified</p>
                 </div>
               )}
-            </div>
+            </CollapsibleSection>
 
             <Separator />
 
-            <div className="space-y-4">
-              <h4 className="flex items-center gap-2 font-medium text-sm">
-                <MapPin className="h-4 w-4 text-primary" />
-                Location
-              </h4>
+            <CollapsibleSection
+              icon={<MapPin className="h-4 w-4 text-primary" />}
+              title="Location"
+              testId="toggle-section-location"
+            >
               <div className="pl-2 flex items-center gap-2">
                 {!isConfirmed && (
                   <ConfirmToggle
@@ -1166,15 +1205,15 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   {upif.location || "Not specified"}
                 </p>
               </div>
-            </div>
+            </CollapsibleSection>
 
             <Separator />
 
-            <div className="space-y-4">
-              <h4 className="flex items-center gap-2 font-medium text-sm">
-                <FileOutput className="h-4 w-4 text-primary" />
-                Output Requirements
-              </h4>
+            <CollapsibleSection
+              icon={<FileOutput className="h-4 w-4 text-primary" />}
+              title="Output Requirements"
+              testId="toggle-section-output-requirements"
+            >
               <div className="pl-2 flex items-center gap-2">
                 {!isConfirmed && (
                   <ConfirmToggle
@@ -1187,17 +1226,16 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   {upif.outputRequirements || "Not specified"}
                 </p>
               </div>
-            </div>
+            </CollapsibleSection>
 
             {hasOutputSpecs && (
               <>
                 <Separator />
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <h4 className="flex items-center gap-2 font-medium text-sm">
-                      <FileOutput className="h-4 w-4 text-primary" />
-                      Output Acceptance Criteria
-                    </h4>
+                <CollapsibleSection
+                  icon={<FileOutput className="h-4 w-4 text-primary" />}
+                  title="Output Acceptance Criteria"
+                  testId="toggle-section-output-criteria"
+                  rightContent={
                     <div className="flex items-center gap-2">
                       {(() => {
                         const allSpecs = Object.values(outputSpecs!).flatMap(s => Object.values(s));
@@ -1235,7 +1273,8 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                         </TooltipContent>
                       </Tooltip>
                     </div>
-                  </div>
+                  }
+                >
                   {Object.entries(outputSpecs!).map(([profileName, specs]) => (
                     <div key={profileName} className="space-y-3">
                       <h5 className="text-sm font-semibold" data-testid={`text-output-profile-readonly-${profileName}`}>{profileName}</h5>
@@ -1249,17 +1288,17 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                       />
                     </div>
                   ))}
-                </div>
+                </CollapsibleSection>
               </>
             )}
 
             <Separator />
 
-            <div className="space-y-4">
-              <h4 className="flex items-center gap-2 font-medium text-sm">
-                <Settings2 className="h-4 w-4 text-primary" />
-                Constraints & Assumptions
-              </h4>
+            <CollapsibleSection
+              icon={<Settings2 className="h-4 w-4 text-primary" />}
+              title="Constraints & Assumptions"
+              testId="toggle-section-constraints"
+            >
               <div className="pl-2">
                 {upif.constraints && upif.constraints.length > 0 ? (
                   <ul className="space-y-1">
@@ -1281,7 +1320,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   <p className="text-sm text-muted-foreground">No constraints specified</p>
                 )}
               </div>
-            </div>
+            </CollapsibleSection>
           </div>
         )}
       </CardContent>
