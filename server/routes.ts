@@ -4,7 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
-import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema, type FeedstockEntry } from "@shared/schema";
+import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema, type FeedstockEntry, type ConfirmedFields } from "@shared/schema";
 import { z } from "zod";
 import OpenAI from "openai";
 import { enrichFeedstockSpecs, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
@@ -1007,18 +1007,82 @@ export async function registerRoutes(
       
       console.log("Output enrichment: Total output profiles enriched:", Object.keys(outputSpecs).length);
       
+      const newOutputRequirements = outputParams.map(p => `${p.name}: ${p.value}${p.unit ? ` ${p.unit}` : ""}`).join("; ");
+
+      const cf = (existingUpif?.confirmedFields as ConfirmedFields | null) || {};
+      const oldFeedstocks = (existingUpif?.feedstocks as FeedstockEntry[] | null) || [];
+      const oldOutputSpecs = existingUpif?.outputSpecs as Record<string, Record<string, EnrichedOutputSpec>> | null;
+
+      const mergedFeedstocks = feedstockEntries.length > 0 ? feedstockEntries : [];
+      if (cf.feedstocks && existingUpif) {
+        for (const [idxStr, confirmed] of Object.entries(cf.feedstocks)) {
+          const idx = parseInt(idxStr);
+          const oldFs = oldFeedstocks[idx];
+          if (!oldFs) continue;
+          const newFs = mergedFeedstocks[idx];
+          if (!newFs) {
+            mergedFeedstocks[idx] = oldFs;
+            continue;
+          }
+          if (confirmed.feedstockType) newFs.feedstockType = oldFs.feedstockType;
+          if (confirmed.feedstockVolume) newFs.feedstockVolume = oldFs.feedstockVolume;
+          if (confirmed.feedstockUnit) newFs.feedstockUnit = oldFs.feedstockUnit;
+          if (confirmed.feedstockSpecs && oldFs.feedstockSpecs && newFs.feedstockSpecs) {
+            for (const [specKey, isLocked] of Object.entries(confirmed.feedstockSpecs)) {
+              if (isLocked && oldFs.feedstockSpecs[specKey]) {
+                newFs.feedstockSpecs[specKey] = oldFs.feedstockSpecs[specKey];
+              }
+            }
+          }
+        }
+      }
+
+      let mergedOutputSpecs: Record<string, Record<string, EnrichedOutputSpec>> | undefined = Object.keys(outputSpecs).length > 0 ? outputSpecs : undefined;
+      if (cf.outputSpecs && oldOutputSpecs) {
+        for (const [profile, specConfirms] of Object.entries(cf.outputSpecs)) {
+          if (!oldOutputSpecs[profile]) continue;
+          const hasAnyConfirmed = Object.values(specConfirms).some(Boolean);
+          if (!hasAnyConfirmed) continue;
+          if (!mergedOutputSpecs) mergedOutputSpecs = {};
+          if (!mergedOutputSpecs[profile]) {
+            mergedOutputSpecs[profile] = {};
+          }
+          for (const [specKey, isLocked] of Object.entries(specConfirms)) {
+            if (isLocked && oldOutputSpecs[profile][specKey]) {
+              mergedOutputSpecs[profile][specKey] = oldOutputSpecs[profile][specKey];
+            }
+          }
+        }
+      }
+
+      const mergedLocation = cf.location && existingUpif?.location ? existingUpif.location : location;
+      const mergedOutputReq = cf.outputRequirements && existingUpif?.outputRequirements ? existingUpif.outputRequirements : newOutputRequirements;
+
+      const mergedConstraints = [...constraints];
+      if (cf.constraints && existingUpif?.constraints) {
+        for (const [idxStr, isLocked] of Object.entries(cf.constraints)) {
+          const idx = parseInt(idxStr);
+          if (isLocked && existingUpif.constraints[idx] !== undefined) {
+            mergedConstraints[idx] = existingUpif.constraints[idx];
+          }
+        }
+      }
+
+      const mergedPrimary = mergedFeedstocks[0];
+
       const upifData = {
         scenarioId,
-        feedstockType: primaryFeedstock?.feedstockType,
-        feedstockVolume: primaryFeedstock?.feedstockVolume,
-        feedstockUnit: primaryFeedstock?.feedstockUnit,
-        feedstockParameters: primaryFeedstock?.feedstockParameters,
-        feedstockSpecs: primaryFeedstock?.feedstockSpecs,
-        feedstocks: feedstockEntries.length > 0 ? feedstockEntries : undefined,
-        outputRequirements: outputParams.map(p => `${p.name}: ${p.value}${p.unit ? ` ${p.unit}` : ""}`).join("; "),
-        outputSpecs: Object.keys(outputSpecs).length > 0 ? outputSpecs : undefined,
-        location,
-        constraints,
+        feedstockType: mergedPrimary?.feedstockType,
+        feedstockVolume: mergedPrimary?.feedstockVolume,
+        feedstockUnit: mergedPrimary?.feedstockUnit,
+        feedstockParameters: mergedPrimary?.feedstockParameters,
+        feedstockSpecs: mergedPrimary?.feedstockSpecs,
+        feedstocks: mergedFeedstocks.length > 0 ? mergedFeedstocks : undefined,
+        outputRequirements: mergedOutputReq,
+        outputSpecs: mergedOutputSpecs,
+        location: mergedLocation,
+        constraints: mergedConstraints,
+        confirmedFields: Object.keys(cf).length > 0 ? cf : undefined,
         isConfirmed: false,
       };
       

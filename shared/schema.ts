@@ -95,6 +95,19 @@ export type FeedstockEntry = {
   feedstockSpecs?: EnrichedFeedstockSpecRecord;
 };
 
+export type ConfirmedFields = {
+  location?: boolean;
+  outputRequirements?: boolean;
+  constraints?: Record<number, boolean>;
+  feedstocks?: Record<number, {
+    feedstockType?: boolean;
+    feedstockVolume?: boolean;
+    feedstockUnit?: boolean;
+    feedstockSpecs?: Record<string, boolean>;
+  }>;
+  outputSpecs?: Record<string, Record<string, boolean>>;
+};
+
 // UPIF - Unified Project Intake Form
 export const upifRecords = pgTable("upif_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -118,6 +131,7 @@ export const upifRecords = pgTable("upif_records", {
   }>>>(),
   location: text("location"),
   constraints: text("constraints").array(),
+  confirmedFields: jsonb("confirmed_fields").$type<ConfirmedFields>(),
   isConfirmed: boolean("is_confirmed").default(false),
   confirmedAt: timestamp("confirmed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

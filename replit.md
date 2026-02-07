@@ -51,6 +51,12 @@ Number formatting: Always display numbers with comma separators for thousands (e
   - `feedstocks` JSONB array stores multiple FeedstockEntry objects, each with independent type, volume, unit, parameters, and enriched specs
   - Legacy single-feedstock fields (feedstockType, feedstockVolume, feedstockUnit, feedstockSpecs) still populated from primary feedstock for backward compatibility
   - UI synthesizes a single-entry feedstocks array from legacy fields when feedstocks column is empty
+  - `confirmedFields` JSONB stores per-line-item confirmation state (ConfirmedFields type)
+    - Supports confirming individual feedstock specs, output specs, location, output requirements, constraints
+    - Confirmed fields are locked in edit mode (shown as read-only with lock icon)
+    - Re-generation (POST /extract) preserves confirmed values and only updates unconfirmed fields
+    - ConfirmToggle component (lock/unlock icon) in read-only view toggles confirmation per item
+    - Confirmation state is persisted immediately via PATCH /api/scenarios/:id/upif
 
 ### Key Design Patterns
 - **Shared Types**: Schema definitions in `shared/` directory used by both client and server

@@ -12,14 +12,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles, Download } from "lucide-react";
-import type { UpifRecord, FeedstockEntry } from "@shared/schema";
+import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles, Download, Lock, Unlock } from "lucide-react";
+import type { UpifRecord, FeedstockEntry, ConfirmedFields } from "@shared/schema";
 import { feedstockGroupLabels, feedstockGroupOrder, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { outputGroupLabels, outputGroupOrder, type EnrichedOutputSpec } from "@shared/output-criteria-library";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 function formatDisplayValue(val: string): string {
   if (!val) return val;
@@ -60,14 +60,50 @@ const confidenceBadgeClass: Record<string, string> = {
   low: "bg-red-500/10 text-red-700 dark:text-red-400",
 };
 
+function ConfirmToggle({
+  isConfirmed,
+  onToggle,
+  testId,
+}: {
+  isConfirmed: boolean;
+  onToggle: () => void;
+  testId: string;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className={`toggle-elevate ${isConfirmed ? "toggle-elevated text-green-600 dark:text-green-400" : "text-muted-foreground"}`}
+          onClick={onToggle}
+          data-testid={testId}
+        >
+          {isConfirmed ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="left">
+        <p className="text-xs">{isConfirmed ? "Confirmed — locked from re-generation" : "Click to confirm and lock this value"}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function FeedstockSpecsTable({
   specs,
   isEditing,
   onSpecUpdate,
+  confirmedSpecs,
+  onToggleConfirm,
+  showConfirmToggles,
 }: {
   specs: Record<string, EnrichedFeedstockSpec>;
   isEditing: boolean;
   onSpecUpdate?: (key: string, value: string) => void;
+  confirmedSpecs?: Record<string, boolean>;
+  onToggleConfirm?: (key: string) => void;
+  showConfirmToggles?: boolean;
 }) {
   const grouped: Record<string, Array<[string, EnrichedFeedstockSpec]>> = {};
 
@@ -100,63 +136,76 @@ function FeedstockSpecsTable({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/30">
-                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Parameter</th>
-                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[25%]">Value</th>
+                    {showConfirmToggles && <th className="p-2 w-[40px]"></th>}
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[28%]">Parameter</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[23%]">Value</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[15%]">Source</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map(([key, spec]) => (
-                    <tr key={key} className="border-b last:border-b-0">
-                      <td className="p-2">
-                        <span className="font-medium text-sm">{spec.displayName}</span>
-                      </td>
-                      <td className="p-2">
-                        {isEditing ? (
-                          <Input
-                            defaultValue={spec.value}
-                            className="h-7 text-sm"
-                            onChange={(e) => onSpecUpdate?.(key, e.target.value)}
-                            data-testid={`input-spec-${key}`}
-                          />
-                        ) : (
-                          <span className="text-sm" data-testid={`text-spec-${key}`}>
-                            {formatDisplayValue(spec.value)}{spec.unit ? ` ${spec.unit}` : ""}
-                          </span>
+                  {items.map(([key, spec]) => {
+                    const isLocked = confirmedSpecs?.[key] === true;
+                    return (
+                      <tr key={key} className={`border-b last:border-b-0 ${isLocked ? "bg-green-500/5" : ""}`}>
+                        {showConfirmToggles && (
+                          <td className="p-1 text-center">
+                            <ConfirmToggle
+                              isConfirmed={isLocked}
+                              onToggle={() => onToggleConfirm?.(key)}
+                              testId={`toggle-confirm-spec-${key}`}
+                            />
+                          </td>
                         )}
-                      </td>
-                      <td className="p-2">
-                        <Badge
-                          variant="secondary"
-                          className={`text-xs ${spec.source === "user_provided"
-                            ? "bg-blue-500/10 text-blue-700 dark:text-blue-400"
-                            : "bg-orange-500/10 text-orange-700 dark:text-orange-400"
-                          }`}
-                        >
-                          {spec.source === "user_provided" ? "User" : "Estimated"}
-                        </Badge>
-                        <Badge
-                          variant="secondary"
-                          className={`text-xs ml-1 ${confidenceBadgeClass[spec.confidence]}`}
-                        >
-                          {spec.confidence}
-                        </Badge>
-                      </td>
-                      <td className="p-2">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="text-xs text-muted-foreground cursor-help line-clamp-2">
-                              {spec.provenance}
+                        <td className="p-2">
+                          <span className="font-medium text-sm">{spec.displayName}</span>
+                        </td>
+                        <td className="p-2">
+                          {isEditing && !isLocked ? (
+                            <Input
+                              defaultValue={spec.value}
+                              className="h-7 text-sm"
+                              onChange={(e) => onSpecUpdate?.(key, e.target.value)}
+                              data-testid={`input-spec-${key}`}
+                            />
+                          ) : (
+                            <span className="text-sm" data-testid={`text-spec-${key}`}>
+                              {formatDisplayValue(spec.value)}{spec.unit ? ` ${spec.unit}` : ""}
                             </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="left" className="max-w-sm">
-                            <p className="text-xs">{spec.provenance}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </td>
-                    </tr>
-                  ))}
+                          )}
+                        </td>
+                        <td className="p-2">
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs ${spec.source === "user_provided"
+                              ? "bg-blue-500/10 text-blue-700 dark:text-blue-400"
+                              : "bg-orange-500/10 text-orange-700 dark:text-orange-400"
+                            }`}
+                          >
+                            {spec.source === "user_provided" ? "User" : "Estimated"}
+                          </Badge>
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs ml-1 ${confidenceBadgeClass[spec.confidence]}`}
+                          >
+                            {spec.confidence}
+                          </Badge>
+                        </td>
+                        <td className="p-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-xs text-muted-foreground cursor-help line-clamp-2">
+                                {spec.provenance}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="max-w-sm">
+                              <p className="text-xs">{spec.provenance}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -191,11 +240,17 @@ function OutputSpecsTable({
   specs,
   isEditing,
   onSpecUpdate,
+  confirmedSpecs,
+  onToggleConfirm,
+  showConfirmToggles,
 }: {
   profileName: string;
   specs: Record<string, EnrichedOutputSpec>;
   isEditing: boolean;
   onSpecUpdate?: (profileName: string, key: string, value: string) => void;
+  confirmedSpecs?: Record<string, boolean>;
+  onToggleConfirm?: (key: string) => void;
+  showConfirmToggles?: boolean;
 }) {
   const grouped: Record<string, Array<[string, EnrichedOutputSpec]>> = {};
 
@@ -228,60 +283,73 @@ function OutputSpecsTable({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/30">
-                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Criterion</th>
-                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[25%]">Requirement</th>
+                    {showConfirmToggles && <th className="p-2 w-[40px]"></th>}
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[28%]">Criterion</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[23%]">Requirement</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[15%]">Source</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map(([key, spec]) => (
-                    <tr key={key} className="border-b last:border-b-0">
-                      <td className="p-2">
-                        <span className="font-medium text-sm">{spec.displayName}</span>
-                      </td>
-                      <td className="p-2">
-                        {isEditing ? (
-                          <Input
-                            defaultValue={spec.value}
-                            className="h-7 text-sm"
-                            onChange={(e) => onSpecUpdate?.(profileName, key, e.target.value)}
-                            data-testid={`input-output-spec-${key}`}
-                          />
-                        ) : (
-                          <span className="text-sm" data-testid={`text-output-spec-${key}`}>
-                            {formatDisplayValue(spec.value)}{spec.unit ? ` ${spec.unit}` : ""}
-                          </span>
+                  {items.map(([key, spec]) => {
+                    const isLocked = confirmedSpecs?.[key] === true;
+                    return (
+                      <tr key={key} className={`border-b last:border-b-0 ${isLocked ? "bg-green-500/5" : ""}`}>
+                        {showConfirmToggles && (
+                          <td className="p-1 text-center">
+                            <ConfirmToggle
+                              isConfirmed={isLocked}
+                              onToggle={() => onToggleConfirm?.(key)}
+                              testId={`toggle-confirm-output-${key}`}
+                            />
+                          </td>
                         )}
-                      </td>
-                      <td className="p-2">
-                        <Badge
-                          variant="secondary"
-                          className={`text-xs ${sourceLabels[spec.source]?.className || ""}`}
-                        >
-                          {sourceLabels[spec.source]?.label || spec.source}
-                        </Badge>
-                        <Badge
-                          variant="secondary"
-                          className={`text-xs ml-1 ${confidenceBadgeClass[spec.confidence]}`}
-                        >
-                          {spec.confidence}
-                        </Badge>
-                      </td>
-                      <td className="p-2">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="text-xs text-muted-foreground cursor-help line-clamp-2">
-                              {spec.provenance}
+                        <td className="p-2">
+                          <span className="font-medium text-sm">{spec.displayName}</span>
+                        </td>
+                        <td className="p-2">
+                          {isEditing && !isLocked ? (
+                            <Input
+                              defaultValue={spec.value}
+                              className="h-7 text-sm"
+                              onChange={(e) => onSpecUpdate?.(profileName, key, e.target.value)}
+                              data-testid={`input-output-spec-${key}`}
+                            />
+                          ) : (
+                            <span className="text-sm" data-testid={`text-output-spec-${key}`}>
+                              {formatDisplayValue(spec.value)}{spec.unit ? ` ${spec.unit}` : ""}
                             </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="left" className="max-w-sm">
-                            <p className="text-xs">{spec.provenance}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </td>
-                    </tr>
-                  ))}
+                          )}
+                        </td>
+                        <td className="p-2">
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs ${sourceLabels[spec.source]?.className || ""}`}
+                          >
+                            {sourceLabels[spec.source]?.label || spec.source}
+                          </Badge>
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs ml-1 ${confidenceBadgeClass[spec.confidence]}`}
+                          >
+                            {spec.confidence}
+                          </Badge>
+                        </td>
+                        <td className="p-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-xs text-muted-foreground cursor-help line-clamp-2">
+                                {spec.provenance}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="left" className="max-w-sm">
+                              <p className="text-xs">{spec.provenance}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -299,6 +367,62 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
   const [feedstockEdits, setFeedstockEdits] = useState<Record<number, Partial<FeedstockEntry>>>({});
   const [feedstockSpecEdits, setFeedstockSpecEdits] = useState<Record<number, Record<string, string>>>({});
   const isConfirmed = scenarioStatus === "confirmed";
+
+  const [localConfirmedFields, setLocalConfirmedFields] = useState<ConfirmedFields>(
+    (upif?.confirmedFields as ConfirmedFields | null) || {}
+  );
+
+  useEffect(() => {
+    setLocalConfirmedFields((upif?.confirmedFields as ConfirmedFields | null) || {});
+  }, [upif?.confirmedFields]);
+
+  const syncConfirmedFields = useCallback((newCf: ConfirmedFields) => {
+    setLocalConfirmedFields(newCf);
+    apiRequest("PATCH", `/api/scenarios/${scenarioId}/upif`, { confirmedFields: newCf })
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "upif"] });
+      })
+      .catch(() => {
+        toast({ title: "Error", description: "Failed to save confirmation state.", variant: "destructive" });
+      });
+  }, [scenarioId, toast]);
+
+  const toggleFieldConfirm = useCallback((path: string) => {
+    setLocalConfirmedFields(prev => {
+      const next = { ...prev };
+      if (path === "location") {
+        next.location = !prev.location;
+      } else if (path === "outputRequirements") {
+        next.outputRequirements = !prev.outputRequirements;
+      } else if (path.startsWith("constraints.")) {
+        const idx = parseInt(path.split(".")[1]);
+        next.constraints = { ...(prev.constraints || {}) };
+        next.constraints[idx] = !next.constraints[idx];
+      } else if (path.startsWith("feedstocks.")) {
+        const parts = path.split(".");
+        const fsIdx = parseInt(parts[1]);
+        const field = parts[2];
+        next.feedstocks = { ...(prev.feedstocks || {}) };
+        next.feedstocks[fsIdx] = { ...(next.feedstocks[fsIdx] || {}) };
+        if (field === "feedstockType" || field === "feedstockVolume" || field === "feedstockUnit") {
+          (next.feedstocks[fsIdx] as Record<string, boolean | Record<string, boolean> | undefined>)[field] = !(prev.feedstocks?.[fsIdx] as Record<string, boolean | undefined> | undefined)?.[field];
+        } else if (field === "feedstockSpecs") {
+          const specKey = parts[3];
+          next.feedstocks[fsIdx].feedstockSpecs = { ...(next.feedstocks[fsIdx].feedstockSpecs || {}) };
+          next.feedstocks[fsIdx].feedstockSpecs![specKey] = !next.feedstocks[fsIdx].feedstockSpecs![specKey];
+        }
+      } else if (path.startsWith("outputSpecs.")) {
+        const parts = path.split(".");
+        const profile = parts[1];
+        const specKey = parts[2];
+        next.outputSpecs = { ...(prev.outputSpecs || {}) };
+        next.outputSpecs[profile] = { ...(next.outputSpecs[profile] || {}) };
+        next.outputSpecs[profile][specKey] = !next.outputSpecs[profile][specKey];
+      }
+      syncConfirmedFields(next);
+      return next;
+    });
+  }, [syncConfirmedFields]);
 
   const form = useForm<UpifFormValues>({
     resolver: zodResolver(upifFormSchema),
@@ -325,6 +449,31 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
   const outputSpecs = upif?.outputSpecs as Record<string, Record<string, EnrichedOutputSpec>> | null | undefined;
   const hasOutputSpecs = outputSpecs && Object.keys(outputSpecs).length > 0;
   const [outputSpecEdits, setOutputSpecEdits] = useState<Record<string, Record<string, string>>>({});
+
+  const confirmedCount = (() => {
+    let count = 0;
+    if (localConfirmedFields.location) count++;
+    if (localConfirmedFields.outputRequirements) count++;
+    if (localConfirmedFields.constraints) {
+      count += Object.values(localConfirmedFields.constraints).filter(Boolean).length;
+    }
+    if (localConfirmedFields.feedstocks) {
+      for (const fs of Object.values(localConfirmedFields.feedstocks)) {
+        if (fs.feedstockType) count++;
+        if (fs.feedstockVolume) count++;
+        if (fs.feedstockUnit) count++;
+        if (fs.feedstockSpecs) {
+          count += Object.values(fs.feedstockSpecs).filter(Boolean).length;
+        }
+      }
+    }
+    if (localConfirmedFields.outputSpecs) {
+      for (const profile of Object.values(localConfirmedFields.outputSpecs)) {
+        count += Object.values(profile).filter(Boolean).length;
+      }
+    }
+    return count;
+  })();
 
   const updateUpifMutation = useMutation({
     mutationFn: async (data: UpifFormValues) => {
@@ -490,7 +639,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId] });
       toast({
         title: "UPIF generated",
-        description: "AI has analyzed your inputs and generated the project intake form.",
+        description: confirmedCount > 0
+          ? `AI has re-analyzed your inputs. ${confirmedCount} confirmed item(s) were preserved.`
+          : "AI has analyzed your inputs and generated the project intake form.",
       });
     },
     onError: () => {
@@ -566,11 +717,17 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
             <CardDescription>
               {isConfirmed
                 ? `Confirmed on ${upif.confirmedAt ? format(new Date(upif.confirmedAt), "MMMM d, yyyy 'at' h:mm a") : "N/A"}`
-                : "Review and confirm all project specifications"}
+                : "Review and confirm individual line items, then re-generate to update only unconfirmed fields"}
             </CardDescription>
           </div>
           {!isConfirmed && !isEditing && (
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              {confirmedCount > 0 && (
+                <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-700 dark:text-green-400">
+                  <Lock className="h-3 w-3 mr-1" />
+                  {confirmedCount} confirmed
+                </Badge>
+              )}
               <Button
                 variant="outline"
                 onClick={() => extractParametersMutation.mutate()}
@@ -616,46 +773,69 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   {feedstocks.map((fs, idx) => {
                     const specs = fs.feedstockSpecs as Record<string, EnrichedFeedstockSpec> | undefined;
                     const hasSpecs = specs && Object.keys(specs).length > 0;
+                    const fsConfirm = localConfirmedFields.feedstocks?.[idx];
                     return (
                       <div key={idx} className="border rounded-md p-4 space-y-4">
                         <h5 className="text-sm font-semibold">Feedstock {idx + 1}</h5>
                         <div className="space-y-3">
                           <div>
                             <Label className="text-xs text-muted-foreground">Type</Label>
-                            <Input
-                              defaultValue={fs.feedstockType || ""}
-                              placeholder="e.g., Dairy Manure"
-                              onChange={(e) => setFeedstockEdits(prev => ({
-                                ...prev,
-                                [idx]: { ...(prev[idx] || {}), feedstockType: e.target.value },
-                              }))}
-                              data-testid={`input-feedstock-type-${idx}`}
-                            />
+                            {fsConfirm?.feedstockType ? (
+                              <div className="flex items-center gap-2">
+                                <Lock className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                                <span className="text-sm font-medium">{fs.feedstockType || "Not specified"}</span>
+                                <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-700 dark:text-green-400">Confirmed</Badge>
+                              </div>
+                            ) : (
+                              <Input
+                                defaultValue={fs.feedstockType || ""}
+                                placeholder="e.g., Dairy Manure"
+                                onChange={(e) => setFeedstockEdits(prev => ({
+                                  ...prev,
+                                  [idx]: { ...(prev[idx] || {}), feedstockType: e.target.value },
+                                }))}
+                                data-testid={`input-feedstock-type-${idx}`}
+                              />
+                            )}
                           </div>
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <Label className="text-xs text-muted-foreground">Volume</Label>
-                              <Input
-                                defaultValue={fs.feedstockVolume || ""}
-                                placeholder="e.g., 100,000"
-                                onChange={(e) => setFeedstockEdits(prev => ({
-                                  ...prev,
-                                  [idx]: { ...(prev[idx] || {}), feedstockVolume: e.target.value },
-                                }))}
-                                data-testid={`input-feedstock-volume-${idx}`}
-                              />
+                              {fsConfirm?.feedstockVolume ? (
+                                <div className="flex items-center gap-2">
+                                  <Lock className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                                  <span className="text-sm font-medium">{fs.feedstockVolume ? formatDisplayValue(fs.feedstockVolume) : "Not specified"}</span>
+                                </div>
+                              ) : (
+                                <Input
+                                  defaultValue={fs.feedstockVolume || ""}
+                                  placeholder="e.g., 100,000"
+                                  onChange={(e) => setFeedstockEdits(prev => ({
+                                    ...prev,
+                                    [idx]: { ...(prev[idx] || {}), feedstockVolume: e.target.value },
+                                  }))}
+                                  data-testid={`input-feedstock-volume-${idx}`}
+                                />
+                              )}
                             </div>
                             <div>
                               <Label className="text-xs text-muted-foreground">Unit</Label>
-                              <Input
-                                defaultValue={fs.feedstockUnit || ""}
-                                placeholder="e.g., tons/year"
-                                onChange={(e) => setFeedstockEdits(prev => ({
-                                  ...prev,
-                                  [idx]: { ...(prev[idx] || {}), feedstockUnit: e.target.value },
-                                }))}
-                                data-testid={`input-feedstock-unit-${idx}`}
-                              />
+                              {fsConfirm?.feedstockUnit ? (
+                                <div className="flex items-center gap-2">
+                                  <Lock className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                                  <span className="text-sm font-medium">{fs.feedstockUnit || "Not specified"}</span>
+                                </div>
+                              ) : (
+                                <Input
+                                  defaultValue={fs.feedstockUnit || ""}
+                                  placeholder="e.g., tons/year"
+                                  onChange={(e) => setFeedstockEdits(prev => ({
+                                    ...prev,
+                                    [idx]: { ...(prev[idx] || {}), feedstockUnit: e.target.value },
+                                  }))}
+                                  data-testid={`input-feedstock-unit-${idx}`}
+                                />
+                              )}
                             </div>
                           </div>
                         </div>
@@ -664,7 +844,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                             <div className="flex items-center gap-2">
                               <FlaskConical className="h-3.5 w-3.5" />
                               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Design Parameters</span>
-                              <Badge variant="secondary" className="text-xs">Edit values to override</Badge>
+                              <Badge variant="secondary" className="text-xs">Edit unlocked values to override</Badge>
                             </div>
                             <FeedstockSpecsTable
                               specs={specs!}
@@ -675,6 +855,8 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                                   [idx]: { ...(prev[idx] || {}), [key]: value },
                                 }));
                               }}
+                              confirmedSpecs={localConfirmedFields.feedstocks?.[idx]?.feedstockSpecs}
+                              showConfirmToggles={false}
                             />
                           </div>
                         )}
@@ -689,19 +871,27 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   <MapPin className="h-4 w-4" />
                   Location
                 </h4>
-                <FormField
-                  control={form.control}
-                  name="location"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Project Location</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Quincy, Washington" {...field} data-testid="input-location" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {localConfirmedFields.location ? (
+                  <div className="flex items-center gap-2 pl-2">
+                    <Lock className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                    <span className="text-sm font-medium">{upif.location || "Not specified"}</span>
+                    <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-700 dark:text-green-400">Confirmed</Badge>
+                  </div>
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name="location"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Project Location</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Quincy, Washington" {...field} data-testid="input-location" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
 
               <Separator />
@@ -711,24 +901,32 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   <FileOutput className="h-4 w-4" />
                   Output Requirements
                 </h4>
-                <FormField
-                  control={form.control}
-                  name="outputRequirements"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Describe project outputs..."
-                          className="resize-none"
-                          rows={3}
-                          {...field}
-                          data-testid="input-output-requirements"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {localConfirmedFields.outputRequirements ? (
+                  <div className="flex items-center gap-2 pl-2">
+                    <Lock className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                    <span className="text-sm">{upif.outputRequirements || "Not specified"}</span>
+                    <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-700 dark:text-green-400">Confirmed</Badge>
+                  </div>
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name="outputRequirements"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Describe project outputs..."
+                            className="resize-none"
+                            rows={3}
+                            {...field}
+                            data-testid="input-output-requirements"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
 
               {hasOutputSpecs && (
@@ -739,7 +937,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                       <FileOutput className="h-4 w-4" />
                       <h4 className="font-medium">Output Acceptance Criteria</h4>
                       <Badge variant="secondary" className="text-xs">
-                        Edit values below to override defaults
+                        Edit unlocked values below to override defaults
                       </Badge>
                     </div>
                     {Object.entries(outputSpecs!).map(([profileName, specs]) => (
@@ -755,6 +953,8 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                               [profile]: { ...(prev[profile] || {}), [key]: value },
                             }));
                           }}
+                          confirmedSpecs={localConfirmedFields.outputSpecs?.[profileName]}
+                          showConfirmToggles={false}
                         />
                       </div>
                     ))}
@@ -769,24 +969,60 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   <Settings2 className="h-4 w-4" />
                   Constraints & Assumptions
                 </h4>
-                <FormField
-                  control={form.control}
-                  name="constraints"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Textarea
-                          placeholder="One constraint per line..."
-                          className="resize-none"
-                          rows={4}
-                          {...field}
-                          data-testid="input-constraints"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {localConfirmedFields.constraints && Object.values(localConfirmedFields.constraints).some(Boolean) ? (
+                  <div className="space-y-2">
+                    {upif.constraints && upif.constraints.map((c, idx) => {
+                      const isLockedConstraint = localConfirmedFields.constraints?.[idx];
+                      if (isLockedConstraint) {
+                        return (
+                          <div key={idx} className="flex items-center gap-2 pl-2">
+                            <Lock className="h-3.5 w-3.5 text-green-600 dark:text-green-400 shrink-0" />
+                            <span className="text-sm">{c}</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
+                    <FormField
+                      control={form.control}
+                      name="constraints"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs text-muted-foreground">Unconfirmed constraints (editable)</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              placeholder="One constraint per line..."
+                              className="resize-none"
+                              rows={4}
+                              {...field}
+                              data-testid="input-constraints"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name="constraints"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <Textarea
+                            placeholder="One constraint per line..."
+                            className="resize-none"
+                            rows={4}
+                            {...field}
+                            data-testid="input-constraints"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
 
               <div className="flex gap-2">
@@ -832,13 +1068,23 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   userProvided: Object.values(specs!).filter(s => s.source === "user_provided").length,
                   estimated: Object.values(specs!).filter(s => s.source === "estimated_default").length,
                 } : null;
+                const fsConfirm = localConfirmedFields.feedstocks?.[idx];
 
                 return (
                   <div key={idx} className="border rounded-md p-4 space-y-4" data-testid={`feedstock-card-${idx}`}>
                     <div className="flex items-center justify-between gap-4 flex-wrap">
-                      <h5 className="text-sm font-semibold" data-testid={`text-feedstock-type-${idx}`}>
-                        {feedstocks.length > 1 ? `Feedstock ${idx + 1}: ` : ""}{fs.feedstockType || "Not specified"}
-                      </h5>
+                      <div className="flex items-center gap-2">
+                        {!isConfirmed && (
+                          <ConfirmToggle
+                            isConfirmed={!!fsConfirm?.feedstockType}
+                            onToggle={() => toggleFieldConfirm(`feedstocks.${idx}.feedstockType`)}
+                            testId={`toggle-confirm-feedstock-type-${idx}`}
+                          />
+                        )}
+                        <h5 className="text-sm font-semibold" data-testid={`text-feedstock-type-${idx}`}>
+                          {feedstocks.length > 1 ? `Feedstock ${idx + 1}: ` : ""}{fs.feedstockType || "Not specified"}
+                        </h5>
+                      </div>
                       {specStats && (
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-400">
@@ -850,13 +1096,22 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                         </div>
                       )}
                     </div>
-                    <div className="pl-2">
-                      <Label className="text-xs text-muted-foreground">Volume / Capacity</Label>
-                      <p className="text-sm font-medium" data-testid={`text-feedstock-volume-${idx}`}>
-                        {fs.feedstockVolume
-                          ? `${formatDisplayValue(fs.feedstockVolume)} ${fs.feedstockUnit || ""}`
-                          : "Not specified"}
-                      </p>
+                    <div className="pl-2 flex items-center gap-2">
+                      {!isConfirmed && (
+                        <ConfirmToggle
+                          isConfirmed={!!fsConfirm?.feedstockVolume}
+                          onToggle={() => toggleFieldConfirm(`feedstocks.${idx}.feedstockVolume`)}
+                          testId={`toggle-confirm-feedstock-volume-${idx}`}
+                        />
+                      )}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Volume / Capacity</Label>
+                        <p className="text-sm font-medium" data-testid={`text-feedstock-volume-${idx}`}>
+                          {fs.feedstockVolume
+                            ? `${formatDisplayValue(fs.feedstockVolume)} ${fs.feedstockUnit || ""}`
+                            : "Not specified"}
+                        </p>
+                      </div>
                     </div>
                     {hasSpecs && (
                       <div className="space-y-3 pt-1">
@@ -869,8 +1124,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                             </TooltipTrigger>
                             <TooltipContent className="max-w-xs">
                               <p className="text-xs">
-                                Estimated defaults are sourced from published literature for {fs.feedstockType}.
-                                Click "Edit" to override any value with your own data.
+                                Use the lock icons to confirm individual values. Confirmed values are preserved when you re-generate.
                               </p>
                             </TooltipContent>
                           </Tooltip>
@@ -878,6 +1132,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                         <FeedstockSpecsTable
                           specs={specs!}
                           isEditing={false}
+                          confirmedSpecs={localConfirmedFields.feedstocks?.[idx]?.feedstockSpecs}
+                          onToggleConfirm={!isConfirmed ? (key) => toggleFieldConfirm(`feedstocks.${idx}.feedstockSpecs.${key}`) : undefined}
+                          showConfirmToggles={!isConfirmed}
                         />
                       </div>
                     )}
@@ -897,7 +1154,14 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                 <MapPin className="h-4 w-4 text-primary" />
                 Location
               </h4>
-              <div className="pl-6">
+              <div className="pl-2 flex items-center gap-2">
+                {!isConfirmed && (
+                  <ConfirmToggle
+                    isConfirmed={!!localConfirmedFields.location}
+                    onToggle={() => toggleFieldConfirm("location")}
+                    testId="toggle-confirm-location"
+                  />
+                )}
                 <p className="text-sm font-medium" data-testid="text-location">
                   {upif.location || "Not specified"}
                 </p>
@@ -911,7 +1175,14 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                 <FileOutput className="h-4 w-4 text-primary" />
                 Output Requirements
               </h4>
-              <div className="pl-6">
+              <div className="pl-2 flex items-center gap-2">
+                {!isConfirmed && (
+                  <ConfirmToggle
+                    isConfirmed={!!localConfirmedFields.outputRequirements}
+                    onToggle={() => toggleFieldConfirm("outputRequirements")}
+                    testId="toggle-confirm-output-requirements"
+                  />
+                )}
                 <p className="text-sm" data-testid="text-output-requirements">
                   {upif.outputRequirements || "Not specified"}
                 </p>
@@ -959,8 +1230,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                         </TooltipTrigger>
                         <TooltipContent className="max-w-xs">
                           <p className="text-xs">
-                            Acceptance criteria are populated from industry standards (FERC/NAESB, EPA Part 503, municipal pretreatment). 
-                            Click "Edit" to override any value with project-specific requirements.
+                            Use the lock icons to confirm individual criteria. Confirmed values are preserved when you re-generate.
                           </p>
                         </TooltipContent>
                       </Tooltip>
@@ -973,6 +1243,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                         profileName={profileName}
                         specs={specs}
                         isEditing={false}
+                        confirmedSpecs={localConfirmedFields.outputSpecs?.[profileName]}
+                        onToggleConfirm={!isConfirmed ? (key) => toggleFieldConfirm(`outputSpecs.${profileName}.${key}`) : undefined}
+                        showConfirmToggles={!isConfirmed}
                       />
                     </div>
                   ))}
@@ -987,12 +1260,19 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                 <Settings2 className="h-4 w-4 text-primary" />
                 Constraints & Assumptions
               </h4>
-              <div className="pl-6">
+              <div className="pl-2">
                 {upif.constraints && upif.constraints.length > 0 ? (
                   <ul className="space-y-1">
                     {upif.constraints.map((constraint, idx) => (
-                      <li key={idx} className="text-sm flex items-start gap-2">
-                        <span className="text-primary mt-1">-</span>
+                      <li key={idx} className="text-sm flex items-center gap-2">
+                        {!isConfirmed && (
+                          <ConfirmToggle
+                            isConfirmed={!!localConfirmedFields.constraints?.[idx]}
+                            onToggle={() => toggleFieldConfirm(`constraints.${idx}`)}
+                            testId={`toggle-confirm-constraint-${idx}`}
+                          />
+                        )}
+                        <span className="text-primary mt-0.5">-</span>
                         {constraint}
                       </li>
                     ))}
@@ -1010,7 +1290,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
             <div className="text-sm text-muted-foreground">
               {!isConfirmed
-                ? "Confirming this UPIF will lock all inputs and parameters for this scenario."
+                ? confirmedCount > 0
+                  ? `${confirmedCount} item(s) confirmed. Re-generating will preserve confirmed values and update the rest.`
+                  : "Lock individual items to preserve them during re-generation. Confirming the entire UPIF will finalize the scenario."
                 : "This UPIF has been confirmed and locked."}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
