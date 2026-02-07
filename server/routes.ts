@@ -11,6 +11,9 @@ import { enrichFeedstockSpecs, type EnrichedFeedstockSpec } from "@shared/feedst
 import { enrichOutputSpecs, matchOutputType, type EnrichedOutputSpec } from "@shared/output-criteria-library";
 import * as XLSX from "xlsx";
 import mammoth from "mammoth";
+import PDFDocument from "pdfkit";
+import { feedstockGroupLabels, feedstockGroupOrder } from "@shared/feedstock-library";
+import { outputGroupLabels, outputGroupOrder } from "@shared/output-criteria-library";
 
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -966,6 +969,415 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error confirming scenario:", error);
       res.status(500).json({ error: "Failed to confirm scenario" });
+    }
+  });
+
+  // PDF Table Drawing Helper
+  function drawTable(
+    doc: InstanceType<typeof PDFDocument>,
+    headers: string[],
+    rows: string[][],
+    startX: number,
+    startY: number,
+    colWidths: number[],
+    options?: { fontSize?: number; margin?: number }
+  ): number {
+    const fontSize = options?.fontSize || 8;
+    const margin = options?.margin || 50;
+    const rowHeight = 18;
+    const pageHeight = 792;
+    let y = startY;
+
+    const drawRow = (cells: string[], bold: boolean, bgColor?: string) => {
+      if (y + rowHeight > pageHeight - margin - 30) {
+        doc.addPage();
+        y = margin;
+      }
+      if (bgColor) {
+        doc.save();
+        doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), rowHeight).fill(bgColor);
+        doc.restore();
+      }
+      let x = startX;
+      for (let i = 0; i < cells.length; i++) {
+        doc.font(bold ? "Helvetica-Bold" : "Helvetica")
+          .fontSize(fontSize)
+          .fillColor("#333333")
+          .text(cells[i] || "", x + 3, y + 4, {
+            width: colWidths[i] - 6,
+            height: rowHeight - 4,
+            ellipsis: true,
+            lineBreak: false,
+          });
+        x += colWidths[i];
+      }
+      const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+      doc.strokeColor("#cccccc").lineWidth(0.5)
+        .moveTo(startX, y + rowHeight).lineTo(startX + tableWidth, y + rowHeight).stroke();
+      y += rowHeight;
+    };
+
+    drawRow(headers, true, "#e8e8e8");
+    rows.forEach((row, idx) => {
+      drawRow(row, false, idx % 2 === 1 ? "#f5f5f5" : undefined);
+    });
+
+    return y;
+  }
+
+  // PDF Export Route
+  app.get("/api/scenarios/:scenarioId/upif/export-pdf", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId;
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) {
+        return res.status(404).json({ error: "Scenario not found" });
+      }
+      const project = await storage.getProject(scenario.projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      const upif = await storage.getUpifByScenario(scenarioId);
+      if (!upif) {
+        return res.status(404).json({ error: "No UPIF found for this scenario" });
+      }
+
+      const isDraft = scenario.status !== "confirmed";
+
+      // Build feedstock list
+      const feedstocks: FeedstockEntry[] = upif.feedstocks && upif.feedstocks.length > 0
+        ? upif.feedstocks
+        : upif.feedstockType
+          ? [{
+              feedstockType: upif.feedstockType,
+              feedstockVolume: upif.feedstockVolume || undefined,
+              feedstockUnit: upif.feedstockUnit || undefined,
+              feedstockSpecs: upif.feedstockSpecs || undefined,
+            }]
+          : [];
+
+      // Generate AI summary
+      let aiSummary = "";
+      try {
+        const feedstockDesc = feedstocks.map(f =>
+          `${f.feedstockType}${f.feedstockVolume ? ` (${f.feedstockVolume} ${f.feedstockUnit || ""})` : ""}`
+        ).join(", ");
+
+        const prompt = `Write a concise one-paragraph project summary for a biogas/anaerobic digestion project intake form. The project "${project.name}" (scenario: "${scenario.name}") involves the following:
+- Feedstock(s): ${feedstockDesc || "Not specified"}
+- Location: ${upif.location || "Not specified"}
+- Output requirements: ${upif.outputRequirements || "Not specified"}
+- Constraints: ${upif.constraints?.join("; ") || "None specified"}
+
+Provide a professional, technical summary in 3-5 sentences.`;
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-5",
+          messages: [{ role: "user", content: prompt }],
+          max_completion_tokens: 300,
+        });
+        aiSummary = completion.choices[0]?.message?.content?.trim() || "";
+      } catch (err) {
+        console.error("OpenAI summary generation failed, using fallback:", err);
+      }
+
+      if (!aiSummary) {
+        const parts: string[] = [];
+        parts.push(`This project intake form documents the "${project.name}" project (scenario: "${scenario.name}").`);
+        if (feedstocks.length > 0) {
+          const desc = feedstocks.map(f => `${f.feedstockType}${f.feedstockVolume ? ` at ${f.feedstockVolume} ${f.feedstockUnit || ""}` : ""}`).join(", ");
+          parts.push(`The proposed feedstock(s) include ${desc}.`);
+        }
+        if (upif.location) parts.push(`The project is located in ${upif.location}.`);
+        if (upif.outputRequirements) parts.push(`Output requirements: ${upif.outputRequirements}.`);
+        if (upif.constraints && upif.constraints.length > 0) parts.push(`Key constraints: ${upif.constraints.join("; ")}.`);
+        aiSummary = parts.join(" ");
+      }
+
+      // Create PDF
+      const doc = new PDFDocument({
+        size: "LETTER",
+        margins: { top: 50, bottom: 50, left: 50, right: 50 },
+        bufferPages: true,
+      });
+
+      const chunks: Buffer[] = [];
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+      const pdfReady = new Promise<Buffer>((resolve) => {
+        doc.on("end", () => resolve(Buffer.concat(chunks)));
+      });
+
+      const pageWidth = 612;
+      const contentWidth = pageWidth - 100;
+      const leftMargin = 50;
+
+      const addWatermark = () => {
+        if (!isDraft) return;
+        doc.save();
+        doc.fontSize(120)
+          .font("Helvetica-Bold")
+          .fillColor("#cccccc")
+          .opacity(0.15)
+          .translate(pageWidth / 2, 792 / 2)
+          .rotate(-45, { origin: [0, 0] })
+          .text("DRAFT", -200, -50, { align: "center" });
+        doc.restore();
+        doc.opacity(1);
+      };
+
+      doc.on("pageAdded", () => {
+        addWatermark();
+      });
+
+      // First page watermark
+      addWatermark();
+
+      // Header
+      doc.font("Helvetica-Bold").fontSize(18).fillColor("#222222")
+        .text("UNIFIED PROJECT INTAKE FORM", leftMargin, 50, { align: "center", width: contentWidth });
+
+      doc.font("Helvetica-Bold").fontSize(14).fillColor("#444444")
+        .text(project.name, leftMargin, doc.y + 6, { align: "center", width: contentWidth });
+
+      doc.font("Helvetica").fontSize(11).fillColor("#666666")
+        .text(scenario.name, leftMargin, doc.y + 4, { align: "center", width: contentWidth });
+
+      const dateStr = upif.createdAt ? new Date(upif.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "";
+      doc.font("Helvetica").fontSize(9).fillColor("#888888")
+        .text(dateStr, leftMargin, doc.y + 6, { align: "right", width: contentWidth });
+
+      const statusText = isDraft ? "DRAFT" : "CONFIRMED";
+      const statusColor = isDraft ? "#d97706" : "#16a34a";
+      doc.font("Helvetica-Bold").fontSize(9).fillColor(statusColor)
+        .text(`Status: ${statusText}`, leftMargin, doc.y + 2, { align: "right", width: contentWidth });
+
+      // Horizontal rule
+      let currentY = doc.y + 10;
+      doc.strokeColor("#cccccc").lineWidth(1)
+        .moveTo(leftMargin, currentY).lineTo(leftMargin + contentWidth, currentY).stroke();
+      currentY += 15;
+
+      // AI Summary Section
+      doc.font("Helvetica-Bold").fontSize(13).fillColor("#222222")
+        .text("Project Summary", leftMargin, currentY);
+      currentY = doc.y + 6;
+
+      doc.font("Helvetica").fontSize(10).fillColor("#333333")
+        .text(aiSummary, leftMargin, currentY, { width: contentWidth, lineGap: 2 });
+      currentY = doc.y + 12;
+
+      doc.strokeColor("#cccccc").lineWidth(0.5)
+        .moveTo(leftMargin, currentY).lineTo(leftMargin + contentWidth, currentY).stroke();
+      currentY += 15;
+
+      // Feedstock Information Section
+      doc.font("Helvetica-Bold").fontSize(13).fillColor("#222222")
+        .text("Feedstock Information", leftMargin, currentY);
+      currentY = doc.y + 8;
+
+      if (feedstocks.length === 0) {
+        doc.font("Helvetica").fontSize(10).fillColor("#666666")
+          .text("No feedstock information available.", leftMargin, currentY, { width: contentWidth });
+        currentY = doc.y + 10;
+      } else {
+        for (const feedstock of feedstocks) {
+          if (currentY > 700) {
+            doc.addPage();
+            currentY = 50;
+          }
+
+          doc.font("Helvetica-Bold").fontSize(11).fillColor("#333333")
+            .text(feedstock.feedstockType, leftMargin, currentY);
+          currentY = doc.y + 4;
+
+          if (feedstock.feedstockVolume) {
+            doc.font("Helvetica").fontSize(10).fillColor("#555555")
+              .text(`Volume: ${feedstock.feedstockVolume} ${feedstock.feedstockUnit || ""}`, leftMargin, currentY);
+            currentY = doc.y + 6;
+          }
+
+          if (feedstock.feedstockSpecs && Object.keys(feedstock.feedstockSpecs).length > 0) {
+            const specs = feedstock.feedstockSpecs;
+            const grouped: Record<string, Array<[string, any]>> = {};
+
+            for (const [key, spec] of Object.entries(specs)) {
+              const group = spec.group || "extended";
+              if (!grouped[group]) grouped[group] = [];
+              grouped[group].push([key, spec]);
+            }
+
+            for (const group of Object.keys(grouped)) {
+              grouped[group].sort((a, b) => (a[1].sortOrder || 0) - (b[1].sortOrder || 0));
+            }
+
+            const colWidths = [130, 100, 60, 70, 152];
+            const headers = ["Parameter", "Value", "Unit", "Source", "Notes"];
+
+            for (const groupKey of feedstockGroupOrder) {
+              const items = grouped[groupKey];
+              if (!items || items.length === 0) continue;
+
+              if (currentY > 700) {
+                doc.addPage();
+                currentY = 50;
+              }
+
+              doc.font("Helvetica-Bold").fontSize(9).fillColor("#555555")
+                .text(feedstockGroupLabels[groupKey] || groupKey, leftMargin, currentY);
+              currentY = doc.y + 4;
+
+              const rows = items.map(([, spec]) => [
+                spec.displayName || "",
+                spec.value || "",
+                spec.unit || "",
+                spec.source === "user_provided" ? "User" : "Estimated",
+                (spec.provenance || "").substring(0, 60),
+              ]);
+
+              currentY = drawTable(doc, headers, rows, leftMargin, currentY, colWidths);
+              currentY += 6;
+            }
+          }
+          currentY += 8;
+        }
+      }
+
+      // Output Requirements Section
+      if (currentY > 680) {
+        doc.addPage();
+        currentY = 50;
+      }
+
+      doc.strokeColor("#cccccc").lineWidth(0.5)
+        .moveTo(leftMargin, currentY).lineTo(leftMargin + contentWidth, currentY).stroke();
+      currentY += 15;
+
+      doc.font("Helvetica-Bold").fontSize(13).fillColor("#222222")
+        .text("Output Requirements & Acceptance Criteria", leftMargin, currentY);
+      currentY = doc.y + 8;
+
+      if (upif.outputRequirements) {
+        doc.font("Helvetica").fontSize(10).fillColor("#333333")
+          .text(upif.outputRequirements, leftMargin, currentY, { width: contentWidth });
+        currentY = doc.y + 10;
+      }
+
+      if (upif.outputSpecs && Object.keys(upif.outputSpecs).length > 0) {
+        for (const [profileName, criteria] of Object.entries(upif.outputSpecs)) {
+          if (currentY > 680) {
+            doc.addPage();
+            currentY = 50;
+          }
+
+          doc.font("Helvetica-Bold").fontSize(11).fillColor("#333333")
+            .text(profileName, leftMargin, currentY);
+          currentY = doc.y + 4;
+
+          const grouped: Record<string, Array<[string, any]>> = {};
+          for (const [key, spec] of Object.entries(criteria)) {
+            const group = spec.group || "regulatory";
+            if (!grouped[group]) grouped[group] = [];
+            grouped[group].push([key, spec]);
+          }
+
+          for (const group of Object.keys(grouped)) {
+            grouped[group].sort((a, b) => (a[1].sortOrder || 0) - (b[1].sortOrder || 0));
+          }
+
+          const colWidths = [110, 80, 55, 75, 55, 137];
+          const headers = ["Criterion", "Value", "Unit", "Source", "Confidence", "Notes"];
+
+          for (const groupKey of outputGroupOrder) {
+            const items = grouped[groupKey];
+            if (!items || items.length === 0) continue;
+
+            if (currentY > 700) {
+              doc.addPage();
+              currentY = 50;
+            }
+
+            doc.font("Helvetica-Bold").fontSize(9).fillColor("#555555")
+              .text(outputGroupLabels[groupKey] || groupKey, leftMargin, currentY);
+            currentY = doc.y + 4;
+
+            const rows = items.map(([, spec]) => [
+              spec.displayName || "",
+              spec.value || "",
+              spec.unit || "",
+              (spec.source || "").replace(/_/g, " "),
+              spec.confidence || "",
+              (spec.provenance || "").substring(0, 50),
+            ]);
+
+            currentY = drawTable(doc, headers, rows, leftMargin, currentY, colWidths);
+            currentY += 6;
+          }
+          currentY += 8;
+        }
+      }
+
+      // Location & Constraints
+      if (currentY > 680) {
+        doc.addPage();
+        currentY = 50;
+      }
+
+      doc.strokeColor("#cccccc").lineWidth(0.5)
+        .moveTo(leftMargin, currentY).lineTo(leftMargin + contentWidth, currentY).stroke();
+      currentY += 15;
+
+      doc.font("Helvetica-Bold").fontSize(13).fillColor("#222222")
+        .text("Location", leftMargin, currentY);
+      currentY = doc.y + 4;
+
+      doc.font("Helvetica").fontSize(10).fillColor("#333333")
+        .text(upif.location || "Not specified", leftMargin, currentY, { width: contentWidth });
+      currentY = doc.y + 12;
+
+      doc.font("Helvetica-Bold").fontSize(13).fillColor("#222222")
+        .text("Constraints", leftMargin, currentY);
+      currentY = doc.y + 4;
+
+      if (upif.constraints && upif.constraints.length > 0) {
+        for (const constraint of upif.constraints) {
+          if (currentY > 750) {
+            doc.addPage();
+            currentY = 50;
+          }
+          doc.font("Helvetica").fontSize(10).fillColor("#333333")
+            .text(`  \u2022  ${constraint}`, leftMargin, currentY, { width: contentWidth });
+          currentY = doc.y + 2;
+        }
+      } else {
+        doc.font("Helvetica").fontSize(10).fillColor("#666666")
+          .text("No constraints specified.", leftMargin, currentY, { width: contentWidth });
+      }
+
+      // Add page numbers and footer to all pages
+      const totalPages = doc.bufferedPageRange().count;
+      for (let i = 0; i < totalPages; i++) {
+        doc.switchToPage(i);
+        doc.font("Helvetica").fontSize(9).fillColor("#888888")
+          .text(`Page ${i + 1} of ${totalPages}`, leftMargin, 760, { align: "center", width: contentWidth });
+        doc.font("Helvetica").fontSize(8).fillColor("#aaaaaa")
+          .text("Generated by Project Alpha", leftMargin, 760, { align: "right", width: contentWidth });
+      }
+
+      doc.end();
+
+      const pdfBuffer = await pdfReady;
+
+      const safeName = scenario.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="UPIF-${safeName}.pdf"`,
+        "Content-Length": pdfBuffer.length.toString(),
+      });
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error exporting UPIF PDF:", error);
+      res.status(500).json({ error: "Failed to export PDF" });
     }
   });
 

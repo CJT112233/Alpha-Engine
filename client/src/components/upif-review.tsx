@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles } from "lucide-react";
+import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles, Download } from "lucide-react";
 import type { UpifRecord, FeedstockEntry } from "@shared/schema";
 import { feedstockGroupLabels, feedstockGroupOrder, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { outputGroupLabels, outputGroupOrder, type EnrichedOutputSpec } from "@shared/output-criteria-library";
@@ -286,6 +286,7 @@ function OutputSpecsTable({
 export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioStatus }: UpifReviewProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [feedstockEdits, setFeedstockEdits] = useState<Record<number, Partial<FeedstockEntry>>>({});
   const [feedstockSpecEdits, setFeedstockSpecEdits] = useState<Record<number, Record<string, string>>>({});
   const isConfirmed = scenarioStatus === "confirmed";
@@ -403,6 +404,30 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
       });
     },
   });
+
+  const handleExportPdf = async () => {
+    setIsExportingPdf(true);
+    try {
+      const response = await fetch(`/api/scenarios/${scenarioId}/upif/export-pdf`);
+      if (!response.ok) throw new Error("Failed to export PDF");
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+      const filename = filenameMatch ? filenameMatch[1] : `UPIF-${scenarioId}.pdf`;
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to export PDF.", variant: "destructive" });
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   const confirmUpifMutation = useMutation({
     mutationFn: async () => {
@@ -971,24 +996,39 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
           </div>
         )}
       </CardContent>
-      {!isConfirmed && !isEditing && (
+      {!isEditing && upif && (
         <CardFooter className="border-t pt-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
             <div className="text-sm text-muted-foreground">
-              Confirming this UPIF will lock all inputs and parameters for this scenario.
+              {!isConfirmed
+                ? "Confirming this UPIF will lock all inputs and parameters for this scenario."
+                : "This UPIF has been confirmed and locked."}
             </div>
-            <Button
-              onClick={() => {
-                if (confirm("Are you sure you want to confirm this UPIF? This will lock the scenario.")) {
-                  confirmUpifMutation.mutate();
-                }
-              }}
-              disabled={confirmUpifMutation.isPending}
-              data-testid="button-confirm-upif"
-            >
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-              {confirmUpifMutation.isPending ? "Confirming..." : "Confirm UPIF"}
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                onClick={handleExportPdf}
+                disabled={isExportingPdf}
+                data-testid="button-export-pdf"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {isExportingPdf ? "Exporting..." : "Export PDF"}
+              </Button>
+              {!isConfirmed && (
+                <Button
+                  onClick={() => {
+                    if (confirm("Are you sure you want to confirm this UPIF? This will lock the scenario.")) {
+                      confirmUpifMutation.mutate();
+                    }
+                  }}
+                  disabled={confirmUpifMutation.isPending}
+                  data-testid="button-confirm-upif"
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  {confirmUpifMutation.isPending ? "Confirming..." : "Confirm UPIF"}
+                </Button>
+              )}
+            </div>
           </div>
         </CardFooter>
       )}
