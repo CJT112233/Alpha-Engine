@@ -54,7 +54,7 @@ Preferred communication style: Simple, everyday language.
 ### Key Design Patterns
 - **Shared Types**: Schema definitions in `shared/` directory used by both client and server
 - **API Request Helper**: Centralized `apiRequest` function for consistent error handling
-- **Component Composition**: Modular UI components for each workflow step (ConversationalInput, DocumentUpload, ParameterExtraction, UpifReview)
+- **Component Composition**: Modular UI components for each workflow step (ConversationalInput, DocumentUpload, UpifReview)
 - **Path Aliases**: `@/` for client source, `@shared/` for shared types
 
 ## External Dependencies

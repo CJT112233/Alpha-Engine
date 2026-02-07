@@ -5,14 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, MessageSquare, FileUp, Sparkles, FileText, Check, Trash2, AlertCircle } from "lucide-react";
-import type { Scenario, Project, TextEntry, Document, ExtractedParameter, UpifRecord } from "@shared/schema";
+import { ArrowLeft, MessageSquare, FileUp, FileText, Check, Trash2, AlertCircle } from "lucide-react";
+import type { Scenario, Project, TextEntry, Document, UpifRecord } from "@shared/schema";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ConversationalInput } from "@/components/conversational-input";
 import { DocumentUpload } from "@/components/document-upload";
-import { ParameterExtraction } from "@/components/parameter-extraction";
 import { UpifReview } from "@/components/upif-review";
 
 export default function ScenarioDetail() {
@@ -30,10 +29,6 @@ export default function ScenarioDetail() {
 
   const { data: documents, isLoading: documentsLoading } = useQuery<Document[]>({
     queryKey: ["/api/scenarios", id, "documents"],
-  });
-
-  const { data: parameters, isLoading: parametersLoading } = useQuery<ExtractedParameter[]>({
-    queryKey: ["/api/scenarios", id, "parameters"],
   });
 
   const { data: upif, isLoading: upifLoading } = useQuery<UpifRecord>({
@@ -61,28 +56,6 @@ export default function ScenarioDetail() {
       toast({
         title: "Error",
         description: "Failed to delete scenario. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const extractParametersMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("POST", `/api/scenarios/${id}/extract`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", id, "parameters"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", id, "upif"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", id] });
-      toast({
-        title: "Parameters extracted",
-        description: "AI has extracted parameters from your inputs. Please review.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to extract parameters. Please try again.",
         variant: "destructive",
       });
     },
@@ -118,7 +91,6 @@ export default function ScenarioDetail() {
   }
 
   const hasInputs = (textEntries?.length || 0) > 0 || (documents?.length || 0) > 0;
-  const hasParameters = (parameters?.length || 0) > 0;
 
   return (
     <div className="flex-1 overflow-auto">
@@ -164,16 +136,6 @@ export default function ScenarioDetail() {
             </div>
           </div>
           <div className="flex gap-2">
-            {hasInputs && !hasParameters && (
-              <Button
-                onClick={() => extractParametersMutation.mutate()}
-                disabled={extractParametersMutation.isPending}
-                data-testid="button-extract-parameters"
-              >
-                <Sparkles className="h-4 w-4 mr-2" />
-                {extractParametersMutation.isPending ? "Extracting..." : "Extract Parameters"}
-              </Button>
-            )}
             <Button
               variant="outline"
               size="icon"
@@ -207,7 +169,7 @@ export default function ScenarioDetail() {
         )}
 
         <Tabs defaultValue="input" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="input" className="flex items-center gap-2" data-testid="tab-input">
               <MessageSquare className="h-4 w-4" />
               <span className="hidden sm:inline">Input</span>
@@ -215,10 +177,6 @@ export default function ScenarioDetail() {
             <TabsTrigger value="documents" className="flex items-center gap-2" data-testid="tab-documents">
               <FileUp className="h-4 w-4" />
               <span className="hidden sm:inline">Documents</span>
-            </TabsTrigger>
-            <TabsTrigger value="parameters" className="flex items-center gap-2" data-testid="tab-parameters">
-              <Sparkles className="h-4 w-4" />
-              <span className="hidden sm:inline">Parameters</span>
             </TabsTrigger>
             <TabsTrigger value="upif" className="flex items-center gap-2" data-testid="tab-upif">
               <FileText className="h-4 w-4" />
@@ -244,24 +202,12 @@ export default function ScenarioDetail() {
             />
           </TabsContent>
 
-          <TabsContent value="parameters" className="space-y-4">
-            <ParameterExtraction
-              scenarioId={id!}
-              parameters={parameters || []}
-              isLoading={parametersLoading}
-              hasInputs={hasInputs}
-              onExtract={() => extractParametersMutation.mutate()}
-              isExtracting={extractParametersMutation.isPending}
-              isLocked={scenario.status === "confirmed"}
-            />
-          </TabsContent>
-
           <TabsContent value="upif" className="space-y-4">
             <UpifReview
               scenarioId={id!}
               upif={upif}
               isLoading={upifLoading}
-              hasParameters={hasParameters}
+              hasInputs={hasInputs}
               scenarioStatus={scenario.status}
             />
           </TabsContent>

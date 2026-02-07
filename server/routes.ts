@@ -924,17 +924,6 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/scenarios/:scenarioId/confirm-parameters", async (req: Request, res: Response) => {
-    try {
-      await storage.confirmAllParameters(req.params.scenarioId);
-      const params = await storage.getParametersByScenario(req.params.scenarioId);
-      res.json(params);
-    } catch (error) {
-      console.error("Error confirming parameters:", error);
-      res.status(500).json({ error: "Failed to confirm parameters" });
-    }
-  });
-
   // UPIF
   app.get("/api/scenarios/:scenarioId/upif", async (req: Request, res: Response) => {
     try {

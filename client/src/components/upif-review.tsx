@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf } from "lucide-react";
+import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles } from "lucide-react";
 import type { UpifRecord, FeedstockEntry } from "@shared/schema";
 import { feedstockGroupLabels, feedstockGroupOrder, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { outputGroupLabels, outputGroupOrder, type EnrichedOutputSpec } from "@shared/output-criteria-library";
@@ -25,7 +25,7 @@ interface UpifReviewProps {
   scenarioId: string;
   upif: UpifRecord | undefined;
   isLoading: boolean;
-  hasParameters: boolean;
+  hasInputs: boolean;
   scenarioStatus: string;
 }
 
@@ -283,7 +283,7 @@ function OutputSpecsTable({
   );
 }
 
-export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenarioStatus }: UpifReviewProps) {
+export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioStatus }: UpifReviewProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [feedstockEdits, setFeedstockEdits] = useState<Record<number, Partial<FeedstockEntry>>>({});
@@ -447,30 +447,26 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
     );
   }
 
-  if (!hasParameters) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Unified Project Intake Form
-          </CardTitle>
-          <CardDescription>
-            Standardized project specification document
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="font-medium mb-1">Parameters not extracted yet</h3>
-            <p className="text-sm text-muted-foreground max-w-sm">
-              Extract parameters from your inputs first. The UPIF will be generated automatically from the confirmed parameters.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  const extractParametersMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/scenarios/${scenarioId}/extract`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "upif"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId] });
+      toast({
+        title: "UPIF generated",
+        description: "AI has analyzed your inputs and generated the project intake form.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to generate UPIF. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   if (!upif) {
     return (
@@ -486,11 +482,31 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="font-medium mb-1">UPIF not generated yet</h3>
-            <p className="text-sm text-muted-foreground max-w-sm">
-              Confirm your extracted parameters to generate the UPIF.
-            </p>
+            {hasInputs ? (
+              <>
+                <Sparkles className="h-12 w-12 text-primary mb-4" />
+                <h3 className="font-medium mb-1" data-testid="text-ready-to-generate">Ready to Generate</h3>
+                <p className="text-sm text-muted-foreground mb-4 max-w-sm">
+                  Click below to have AI analyze your inputs and generate the Unified Project Intake Form.
+                </p>
+                <Button
+                  onClick={() => extractParametersMutation.mutate()}
+                  disabled={extractParametersMutation.isPending}
+                  data-testid="button-generate-upif"
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  {extractParametersMutation.isPending ? "Generating..." : "Generate UPIF"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="font-medium mb-1">No inputs yet</h3>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  Add text descriptions or upload documents first, then return here to generate the UPIF.
+                </p>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -520,24 +536,35 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
             </CardDescription>
           </div>
           {!isConfirmed && !isEditing && (
-            <Button
-              variant="outline"
-              onClick={() => {
-                form.reset({
-                  outputRequirements: upif?.outputRequirements || "",
-                  location: upif?.location || "",
-                  constraints: upif?.constraints?.join("\n") || "",
-                });
-                setFeedstockEdits({});
-                setFeedstockSpecEdits({});
-                setOutputSpecEdits({});
-                setIsEditing(true);
-              }}
-              data-testid="button-edit-upif"
-            >
-              <Edit2 className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => extractParametersMutation.mutate()}
+                disabled={extractParametersMutation.isPending}
+                data-testid="button-regenerate-upif"
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                {extractParametersMutation.isPending ? "Regenerating..." : "Re-generate"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  form.reset({
+                    outputRequirements: upif?.outputRequirements || "",
+                    location: upif?.location || "",
+                    constraints: upif?.constraints?.join("\n") || "",
+                  });
+                  setFeedstockEdits({});
+                  setFeedstockSpecEdits({});
+                  setOutputSpecEdits({});
+                  setIsEditing(true);
+                }}
+                data-testid="button-edit-upif"
+              >
+                <Edit2 className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+            </div>
           )}
         </div>
       </CardHeader>

@@ -57,7 +57,6 @@ export interface IStorage {
   getParametersByScenario(scenarioId: string): Promise<ExtractedParameter[]>;
   createParameter(param: InsertParameter): Promise<ExtractedParameter>;
   updateParameter(id: string, updates: Partial<InsertParameter>): Promise<ExtractedParameter | undefined>;
-  confirmAllParameters(scenarioId: string): Promise<void>;
   deleteParametersByScenario(scenarioId: string): Promise<void>;
 
   // UPIF
@@ -210,13 +209,6 @@ export class DatabaseStorage implements IStorage {
       .where(eq(extractedParameters.id, id))
       .returning();
     return result[0];
-  }
-
-  async confirmAllParameters(scenarioId: string): Promise<void> {
-    await db
-      .update(extractedParameters)
-      .set({ isConfirmed: true })
-      .where(eq(extractedParameters.scenarioId, scenarioId));
   }
 
   async deleteParametersByScenario(scenarioId: string): Promise<void> {
