@@ -8,6 +8,7 @@ import {
   documents,
   extractedParameters,
   upifRecords,
+  upifChatMessages,
   type Project,
   type InsertProject,
   type Scenario,
@@ -20,6 +21,8 @@ import {
   type InsertParameter,
   type UpifRecord,
   type InsertUpif,
+  type UpifChatMessage,
+  type InsertChatMessage,
 } from "@shared/schema";
 
 const pool = new pg.Pool({
@@ -64,6 +67,10 @@ export interface IStorage {
   createUpif(upif: InsertUpif): Promise<UpifRecord>;
   updateUpif(scenarioId: string, updates: Partial<InsertUpif>): Promise<UpifRecord | undefined>;
   confirmUpif(scenarioId: string): Promise<UpifRecord | undefined>;
+
+  // UPIF Chat
+  getChatMessagesByScenario(scenarioId: string): Promise<UpifChatMessage[]>;
+  createChatMessage(msg: InsertChatMessage): Promise<UpifChatMessage>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -241,6 +248,19 @@ export class DatabaseStorage implements IStorage {
       .set({ isConfirmed: true, confirmedAt: new Date(), updatedAt: new Date() })
       .where(eq(upifRecords.scenarioId, scenarioId))
       .returning();
+    return result[0];
+  }
+
+  async getChatMessagesByScenario(scenarioId: string): Promise<UpifChatMessage[]> {
+    return db
+      .select()
+      .from(upifChatMessages)
+      .where(eq(upifChatMessages.scenarioId, scenarioId))
+      .orderBy(upifChatMessages.createdAt);
+  }
+
+  async createChatMessage(msg: InsertChatMessage): Promise<UpifChatMessage> {
+    const result = await db.insert(upifChatMessages).values(msg).returning();
     return result[0];
   }
 }

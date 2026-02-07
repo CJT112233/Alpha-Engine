@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ConversationalInput } from "@/components/conversational-input";
 import { DocumentUpload } from "@/components/document-upload";
 import { UpifReview } from "@/components/upif-review";
+import { UpifChat } from "@/components/upif-chat";
 
 export default function ScenarioDetail() {
   const { id } = useParams<{ id: string }>();
@@ -209,6 +210,11 @@ export default function ScenarioDetail() {
               isLoading={upifLoading}
               hasInputs={hasInputs}
               scenarioStatus={scenario.status}
+            />
+            <UpifChat
+              scenarioId={id!}
+              hasUpif={!!upif}
+              isConfirmed={scenario.status === "confirmed"}
             />
           </TabsContent>
         </Tabs>

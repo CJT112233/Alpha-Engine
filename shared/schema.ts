@@ -142,6 +142,23 @@ export const insertUpifSchema = createInsertSchema(upifRecords).omit({ id: true,
 export type InsertUpif = z.infer<typeof insertUpifSchema>;
 export type UpifRecord = typeof upifRecords.$inferSelect;
 
+// UPIF Chat Messages - reviewer chat history
+export const upifChatMessages = pgTable("upif_chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  scenarioId: varchar("scenario_id").notNull().references(() => scenarios.id, { onDelete: "cascade" }),
+  role: text("role").notNull(), // user, assistant
+  content: text("content").notNull(),
+  appliedUpdates: jsonb("applied_updates").$type<{
+    changedFields: string[];
+    summary: string;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertChatMessageSchema = createInsertSchema(upifChatMessages).omit({ id: true, createdAt: true });
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+export type UpifChatMessage = typeof upifChatMessages.$inferSelect;
+
 // Users table (keeping existing structure)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

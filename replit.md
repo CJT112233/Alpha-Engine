@@ -57,6 +57,12 @@ Number formatting: Always display numbers with comma separators for thousands (e
     - Re-generation (POST /extract) preserves confirmed values and only updates unconfirmed fields
     - ConfirmToggle component (lock/unlock icon) in read-only view toggles confirmation per item
     - Confirmation state is persisted immediately via PATCH /api/scenarios/:id/upif
+- **UPIF Chat Messages**: Reviewer chat for suggesting UPIF changes via GPT-5
+  - `upif_chat_messages` table stores chat history (role, content, appliedUpdates jsonb)
+  - POST /api/scenarios/:id/upif/chat sends message to GPT-5 with current UPIF state and locked fields list
+  - AI returns structured JSON with field updates; server-side guardrails enforce confirmed field protection
+  - Applied updates are persisted with field-level change tracking
+  - UpifChat component renders chat history with change badges, inline below UPIF review
 
 ### Key Design Patterns
 - **Shared Types**: Schema definitions in `shared/` directory used by both client and server

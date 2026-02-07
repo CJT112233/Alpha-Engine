@@ -1163,6 +1163,271 @@ export async function registerRoutes(
     }
   });
 
+  // UPIF Chat Messages
+  app.get("/api/scenarios/:scenarioId/upif/chat", async (req: Request, res: Response) => {
+    try {
+      const messages = await storage.getChatMessagesByScenario(req.params.scenarioId);
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching chat messages:", error);
+      res.status(500).json({ error: "Failed to fetch chat messages" });
+    }
+  });
+
+  app.post("/api/scenarios/:scenarioId/upif/chat", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId;
+      const { message } = req.body;
+
+      if (!message || typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+
+      const upif = await storage.getUpifByScenario(scenarioId);
+      if (!upif) {
+        return res.status(404).json({ error: "No UPIF found for this scenario" });
+      }
+
+      const cf = (upif.confirmedFields as ConfirmedFields | null) || {};
+      const feedstocks = (upif.feedstocks as FeedstockEntry[] | null) || [];
+
+      await storage.createChatMessage({
+        scenarioId,
+        role: "user",
+        content: message.trim(),
+      });
+
+      if (!process.env.OPENAI_API_KEY) {
+        const assistantMsg = await storage.createChatMessage({
+          scenarioId,
+          role: "assistant",
+          content: "AI is not configured. Please ensure an OpenAI API key is set up.",
+        });
+        return res.json(assistantMsg);
+      }
+
+      const lockedFieldsList: string[] = [];
+      if (cf.location) lockedFieldsList.push("location");
+      if (cf.outputRequirements) lockedFieldsList.push("outputRequirements");
+      if (cf.constraints) {
+        for (const [idx, locked] of Object.entries(cf.constraints)) {
+          if (locked && upif.constraints?.[parseInt(idx)]) {
+            lockedFieldsList.push(`constraints[${idx}]: "${upif.constraints[parseInt(idx)]}"`);
+          }
+        }
+      }
+      if (cf.feedstocks) {
+        for (const [idx, fsConf] of Object.entries(cf.feedstocks)) {
+          const fs = feedstocks[parseInt(idx)];
+          if (!fs) continue;
+          if (fsConf.feedstockType) lockedFieldsList.push(`feedstocks[${idx}].feedstockType: "${fs.feedstockType}"`);
+          if (fsConf.feedstockVolume) lockedFieldsList.push(`feedstocks[${idx}].feedstockVolume: "${fs.feedstockVolume}"`);
+          if (fsConf.feedstockUnit) lockedFieldsList.push(`feedstocks[${idx}].feedstockUnit: "${fs.feedstockUnit}"`);
+          if (fsConf.feedstockSpecs) {
+            for (const [specKey, locked] of Object.entries(fsConf.feedstockSpecs)) {
+              if (locked) lockedFieldsList.push(`feedstocks[${idx}].feedstockSpecs.${specKey}`);
+            }
+          }
+        }
+      }
+      if (cf.outputSpecs) {
+        for (const [profile, specs] of Object.entries(cf.outputSpecs)) {
+          for (const [specKey, locked] of Object.entries(specs)) {
+            if (locked) lockedFieldsList.push(`outputSpecs["${profile}"].${specKey}`);
+          }
+        }
+      }
+
+      const upifSnapshot: Record<string, unknown> = {
+        location: upif.location,
+        outputRequirements: upif.outputRequirements,
+        constraints: upif.constraints,
+        feedstocks: feedstocks.map((fs, i) => ({
+          index: i,
+          feedstockType: fs.feedstockType,
+          feedstockVolume: fs.feedstockVolume,
+          feedstockUnit: fs.feedstockUnit,
+          feedstockSpecs: fs.feedstockSpecs ? Object.fromEntries(
+            Object.entries(fs.feedstockSpecs).map(([k, v]) => [k, { value: v.value, unit: v.unit }])
+          ) : undefined,
+        })),
+        outputSpecs: upif.outputSpecs ? Object.fromEntries(
+          Object.entries(upif.outputSpecs as Record<string, Record<string, { value: string; unit: string }>>).map(([profile, specs]) => [
+            profile,
+            Object.fromEntries(Object.entries(specs).map(([k, v]) => [k, { value: v.value, unit: v.unit }]))
+          ])
+        ) : undefined,
+      };
+
+      const chatHistory = await storage.getChatMessagesByScenario(scenarioId);
+      const recentHistory = chatHistory.slice(-10);
+
+      const systemPrompt = `You are a senior biogas and anaerobic digestion project reviewer assistant. You help reviewers refine the Unified Project Intake Form (UPIF) by applying their feedback.
+
+CURRENT UPIF STATE:
+${JSON.stringify(upifSnapshot, null, 2)}
+
+LOCKED FIELDS (DO NOT MODIFY THESE):
+${lockedFieldsList.length > 0 ? lockedFieldsList.map(f => `- ${f}`).join("\n") : "None - all fields are unlocked"}
+
+RULES:
+1. You MUST NOT modify any locked field. If the reviewer asks to change a locked field, explain that it is confirmed/locked and cannot be changed until unlocked.
+2. For unlocked fields, analyze the reviewer's feedback and determine which UPIF fields should be updated.
+3. Return a JSON response with EXACTLY this structure:
+{
+  "assistantMessage": "A helpful explanation of what you changed or why you couldn't make a change",
+  "updates": {
+    "location": "new value or null if unchanged",
+    "outputRequirements": "new value or null if unchanged",
+    "constraints": ["full array of constraints if changed, or null if unchanged"],
+    "feedstocks": [array of full feedstock objects if changed, or null if unchanged],
+    "outputSpecs": {object of output specs if changed, or null if unchanged}
+  },
+  "changedFields": ["list of field paths that were changed, e.g. 'location', 'feedstocks[0].feedstockVolume', 'constraints[2]'"]
+}
+
+IMPORTANT:
+- Set unchanged fields to null in the updates object
+- For feedstocks: if changing ANY feedstock field, return the COMPLETE feedstocks array with all feedstocks (not just the changed one). Preserve all existing feedstockSpecs that you don't modify.
+- For constraints: if changing ANY constraint, return the COMPLETE constraints array
+- For outputSpecs: if changing ANY output spec, return the COMPLETE outputSpecs structure. Preserve all existing spec metadata (source, confidence, provenance, group, displayName, sortOrder) and only update the value/unit.
+- Be precise with numeric values. Use appropriate units.
+- If the reviewer's request is unclear, ask for clarification in assistantMessage and set all updates to null.`;
+
+      const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+        { role: "system", content: systemPrompt },
+      ];
+
+      for (const msg of recentHistory) {
+        if (msg.role === "user") {
+          messages.push({ role: "user", content: msg.content });
+        } else if (msg.role === "assistant") {
+          messages.push({ role: "assistant", content: msg.content });
+        }
+      }
+      messages.push({ role: "user", content: message.trim() });
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages,
+        response_format: { type: "json_object" },
+        max_completion_tokens: 8192,
+      });
+
+      const rawResponse = response.choices[0].message.content || "{}";
+      let parsed: {
+        assistantMessage?: string;
+        updates?: Record<string, unknown>;
+        changedFields?: string[];
+      };
+
+      try {
+        parsed = JSON.parse(rawResponse);
+      } catch {
+        parsed = { assistantMessage: "I had trouble processing your request. Please try again." };
+      }
+
+      const assistantMessage = parsed.assistantMessage || "I've reviewed your feedback.";
+      const updates = parsed.updates || {};
+      const modelChangedFields = parsed.changedFields || [];
+
+      const patchData: Record<string, unknown> = {};
+      let actualChanges: string[] = [];
+
+      if (updates.location !== null && updates.location !== undefined && typeof updates.location === "string" && !cf.location) {
+        patchData.location = updates.location;
+        actualChanges.push("location");
+      }
+      if (updates.outputRequirements !== null && updates.outputRequirements !== undefined && typeof updates.outputRequirements === "string" && !cf.outputRequirements) {
+        patchData.outputRequirements = updates.outputRequirements;
+        actualChanges.push("outputRequirements");
+      }
+      if (updates.constraints !== null && updates.constraints !== undefined && Array.isArray(updates.constraints)) {
+        const newConstraints = [...(updates.constraints as string[])];
+        if (cf.constraints && upif.constraints) {
+          for (const [idxStr, isLocked] of Object.entries(cf.constraints)) {
+            const idx = parseInt(idxStr);
+            if (isLocked && upif.constraints[idx] !== undefined) {
+              newConstraints[idx] = upif.constraints[idx];
+            }
+          }
+        }
+        patchData.constraints = newConstraints;
+        actualChanges.push("constraints");
+      }
+      if (updates.feedstocks !== null && updates.feedstocks !== undefined && Array.isArray(updates.feedstocks)) {
+        const newFeedstocks = updates.feedstocks as FeedstockEntry[];
+        if (cf.feedstocks) {
+          for (const [idxStr, fsConf] of Object.entries(cf.feedstocks)) {
+            const idx = parseInt(idxStr);
+            const oldFs = feedstocks[idx];
+            const newFs = newFeedstocks[idx];
+            if (!oldFs || !newFs) continue;
+            if (fsConf.feedstockType) newFs.feedstockType = oldFs.feedstockType;
+            if (fsConf.feedstockVolume) newFs.feedstockVolume = oldFs.feedstockVolume;
+            if (fsConf.feedstockUnit) newFs.feedstockUnit = oldFs.feedstockUnit;
+            if (fsConf.feedstockSpecs && oldFs.feedstockSpecs && newFs.feedstockSpecs) {
+              for (const [specKey, locked] of Object.entries(fsConf.feedstockSpecs)) {
+                if (locked && oldFs.feedstockSpecs[specKey]) {
+                  newFs.feedstockSpecs[specKey] = oldFs.feedstockSpecs[specKey];
+                }
+              }
+            }
+          }
+        }
+        patchData.feedstocks = newFeedstocks;
+        const primary = newFeedstocks[0];
+        if (primary) {
+          patchData.feedstockType = primary.feedstockType;
+          patchData.feedstockVolume = primary.feedstockVolume;
+          patchData.feedstockUnit = primary.feedstockUnit;
+          patchData.feedstockSpecs = primary.feedstockSpecs;
+        }
+        actualChanges.push("feedstocks");
+      }
+      if (updates.outputSpecs !== null && updates.outputSpecs !== undefined && typeof updates.outputSpecs === "object") {
+        const newOutputSpecs = updates.outputSpecs as Record<string, Record<string, unknown>>;
+        if (cf.outputSpecs) {
+          const oldOutputSpecs = upif.outputSpecs as Record<string, Record<string, unknown>> | null;
+          if (oldOutputSpecs) {
+            for (const [profile, specConfirms] of Object.entries(cf.outputSpecs)) {
+              for (const [specKey, locked] of Object.entries(specConfirms)) {
+                if (locked && oldOutputSpecs[profile]?.[specKey] && newOutputSpecs[profile]) {
+                  newOutputSpecs[profile][specKey] = oldOutputSpecs[profile][specKey];
+                }
+              }
+            }
+          }
+        }
+        patchData.outputSpecs = newOutputSpecs;
+        actualChanges.push("outputSpecs");
+      }
+
+      if (Object.keys(patchData).length > 0) {
+        await storage.updateUpif(scenarioId, patchData);
+      }
+
+      const detailedChanges = modelChangedFields.length > 0
+        ? modelChangedFields.filter(f => actualChanges.some(ac => f.startsWith(ac) || f === ac))
+        : actualChanges;
+
+      const assistantMsg = await storage.createChatMessage({
+        scenarioId,
+        role: "assistant",
+        content: assistantMessage,
+        appliedUpdates: actualChanges.length > 0 ? {
+          changedFields: detailedChanges.length > 0 ? detailedChanges : actualChanges,
+          summary: `Updated: ${actualChanges.join(", ")}`,
+        } : undefined,
+      });
+
+      res.json(assistantMsg);
+    } catch (error) {
+      console.error("Error in UPIF chat:", error);
+      res.status(500).json({ error: "Failed to process chat message" });
+    }
+  });
+
   // PDF Table Drawing Helper
   function drawTable(
     doc: InstanceType<typeof PDFDocument>,
