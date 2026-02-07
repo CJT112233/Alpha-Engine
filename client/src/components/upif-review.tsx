@@ -94,7 +94,7 @@ function FeedstockSpecsTable({
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Parameter</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[25%]">Value</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[15%]">Source</th>
-                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Provenance</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -222,7 +222,7 @@ function OutputSpecsTable({
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Criterion</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[25%]">Requirement</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[15%]">Source</th>
-                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Provenance</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Notes</th>
                   </tr>
                 </thead>
                 <tbody>
