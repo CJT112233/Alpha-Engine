@@ -372,25 +372,25 @@ Technical parameters like TS%, VS/TS, C:N ratio should also be prefixed with the
 If there is only one feedstock, you may omit the number prefix or use "Feedstock 1".
 
 EXAMPLE INPUT:
-"We have a dairy operation in Yakima County, WA with 5,000 head of cattle producing about 150 tons of manure daily. We also receive 20,000 tons/year of food waste from a nearby processor at a $45/ton tipping fee. Goal is RNG injection into the Williams NW Pipeline, probably around 800 scfm of raw biogas. Budget is $25M with a target 15% IRR. We're expecting D3 RIN credits at about $2.50/RIN. Need to meet Washington State LCFS requirements and have the air permit submitted by Q2 2027. Project needs to be online by Q3 2027. We prefer a thermophilic digester design."
+"We have a food processing facility in Marion County, OR generating 50 tons/day of vegetable processing waste and 10 tons/day of FOG from our grease traps. TS is around 8% for the vegetable waste. We want to produce RNG for pipeline injection and will need to discharge liquid effluent to the local municipal WWTP. The dewatered digestate will be land-applied on nearby farmland. Budget is $18M. Need air permit submitted by Q1 2027 and online by Q4 2027. We prefer a mesophilic CSTR design."
 
 EXAMPLE OUTPUT:
 {"parameters": [
-  {"category": "feedstock", "name": "Feedstock 1 Type", "value": "Dairy manure", "unit": null, "confidence": "high"},
-  {"category": "feedstock", "name": "Feedstock 1 Herd Size", "value": "5,000", "unit": "head of cattle", "confidence": "high"},
-  {"category": "feedstock", "name": "Feedstock 1 Volume", "value": "150", "unit": "tons/day", "confidence": "high"},
-  {"category": "feedstock", "name": "Feedstock 2 Type", "value": "Food processing waste", "unit": null, "confidence": "high"},
-  {"category": "feedstock", "name": "Feedstock 2 Volume", "value": "20,000", "unit": "tons/year", "confidence": "high"},
+  {"category": "feedstock", "name": "Feedstock 1 Type", "value": "Vegetable processing waste", "unit": null, "confidence": "high"},
+  {"category": "feedstock", "name": "Feedstock 1 Volume", "value": "50", "unit": "tons/day", "confidence": "high"},
+  {"category": "feedstock", "name": "Feedstock 1 TS%", "value": "8", "unit": "%", "confidence": "high"},
+  {"category": "feedstock", "name": "Feedstock 2 Type", "value": "FOG (Fats, Oils, Grease)", "unit": null, "confidence": "high"},
+  {"category": "feedstock", "name": "Feedstock 2 Volume", "value": "10", "unit": "tons/day", "confidence": "high"},
   {"category": "feedstock", "name": "Number of Feedstock Sources", "value": "2", "unit": "sources", "confidence": "medium"},
-  {"category": "location", "name": "County", "value": "Yakima County", "unit": null, "confidence": "high"},
-  {"category": "location", "name": "State", "value": "Washington", "unit": null, "confidence": "high"},
+  {"category": "location", "name": "County", "value": "Marion County", "unit": null, "confidence": "high"},
+  {"category": "location", "name": "State", "value": "Oregon", "unit": null, "confidence": "high"},
   {"category": "output_requirements", "name": "Primary Output", "value": "Renewable Natural Gas (RNG)", "unit": null, "confidence": "high"},
-  {"category": "output_requirements", "name": "Pipeline Interconnection", "value": "Williams NW Pipeline", "unit": null, "confidence": "high"},
-  {"category": "output_requirements", "name": "Raw Biogas Production Target", "value": "800", "unit": "scfm", "confidence": "high"},
-  {"category": "constraints", "name": "Regulatory Requirement", "value": "Washington State LCFS compliance", "unit": null, "confidence": "high"},
-  {"category": "constraints", "name": "Air Permit Deadline", "value": "Q2 2027", "unit": null, "confidence": "high"},
-  {"category": "constraints", "name": "Target Online Date", "value": "Q3 2027", "unit": null, "confidence": "high"},
-  {"category": "constraints", "name": "Digester Technology Preference", "value": "Thermophilic", "unit": null, "confidence": "high"}
+  {"category": "output_requirements", "name": "Liquid Handling", "value": "Discharge to Municipal WWTP", "unit": null, "confidence": "high"},
+  {"category": "output_requirements", "name": "Solid Digestate Handling", "value": "Land application on nearby farmland", "unit": null, "confidence": "high"},
+  {"category": "constraints", "name": "Capital Budget", "value": "18", "unit": "million USD", "confidence": "high"},
+  {"category": "constraints", "name": "Air Permit Deadline", "value": "Q1 2027", "unit": null, "confidence": "high"},
+  {"category": "constraints", "name": "Target Online Date", "value": "Q4 2027", "unit": null, "confidence": "high"},
+  {"category": "constraints", "name": "Digester Technology Preference", "value": "Mesophilic CSTR", "unit": null, "confidence": "high"}
 ]}
 
 RULES:
@@ -399,7 +399,8 @@ RULES:
 - Create SEPARATE parameter entries for each distinct fact. Never combine "Feedstock Type" and "Volume" into one parameter.
 - Use specific, descriptive parameter names (e.g., "Primary Feedstock Volume" not "Volume", "Capital Budget" not "Cost").
 - Always include units when they are stated or can be reasonably inferred.
-- Look for IMPLIED information too: if someone mentions "dairy farm in eastern Washington," extract both a feedstock source (dairy manure) AND a location.
+- Look for IMPLIED information too: if someone mentions a farm or facility, extract both the feedstock source AND the location.
+- LIQUID HANDLING IS CRITICAL: Every anaerobic digestion project produces liquid effluent that must go somewhere. If the input mentions discharge to sewer, WWTP, wastewater treatment, or any liquid handling pathway, extract it as an output_requirements parameter (e.g., "Liquid Handling": "Discharge to Municipal WWTP"). If liquid handling is not mentioned but feedstock is described, infer "Liquid Handling" as "To be determined - WWTP discharge or land application likely required" with confidence "low".
 - For confidence levels: "high" = explicitly stated with a specific value, "medium" = clearly implied or partially stated, "low" = requires assumption or is ambiguous.
 
 COMMONLY MISSED DETAILS - check for these:
@@ -410,6 +411,7 @@ COMMONLY MISSED DETAILS - check for these:
 - Regulatory or permit mentions (EPA, DEQ, LCFS, RFS)
 - Number of sources, facilities, or partners
 - Implied infrastructure needs (RNG implies gas cleanup + pipeline interconnect)
+- Liquid effluent handling pathway (WWTP discharge, land application, irrigation, storage lagoon)
 - Technology specifications (digester type, gas cleanup method)
 - Environmental requirements (odor, noise, setbacks, emissions)
 
@@ -830,49 +832,50 @@ export async function registerRoutes(
       
       // Step 4: Enrich output acceptance criteria using the output criteria knowledge base
       const outputSpecs: Record<string, Record<string, EnrichedOutputSpec>> = {};
-      if (outputParams.length > 0) {
-        const userOutputCriteria: Record<string, { value: string; unit?: string }> = {};
-        for (const param of outputParams) {
-          userOutputCriteria[param.name] = { value: param.value || "", unit: param.unit || undefined };
-        }
-        
-        for (const param of outputParams) {
-          const outputDesc = `${param.name} ${param.value}`.toLowerCase();
-          const matched = matchOutputType(outputDesc);
-          if (matched && !outputSpecs[matched.name]) {
-            const enriched = enrichOutputSpecs(matched.name, userOutputCriteria, location || undefined);
-            outputSpecs[matched.name] = enriched;
-            console.log("Output enrichment: Generated", Object.keys(enriched).length, "criteria for", matched.name);
-          }
-        }
-        
-        if (Object.keys(outputSpecs).length === 0) {
-          const allOutputText = outputParams.map(p => `${p.name} ${p.value}`).join(" ").toLowerCase();
-          const rngKeywords = ["rng", "pipeline", "biomethane", "renewable natural gas", "upgraded biogas"];
-          const digestateKeywords = ["digestate", "land application", "biosolids", "compost", "soil amendment"];
-          const effluentKeywords = ["effluent", "wwtp", "discharge", "sewer", "wastewater"];
-          
-          const userCriteria: Record<string, { value: string; unit?: string }> = {};
-          for (const param of outputParams) {
-            userCriteria[param.name] = { value: param.value || "", unit: param.unit || undefined };
-          }
-          
-          if (rngKeywords.some(k => allOutputText.includes(k))) {
-            const enriched = enrichOutputSpecs("Renewable Natural Gas (RNG) - Pipeline Injection", userCriteria, location || undefined);
-            outputSpecs["Renewable Natural Gas (RNG) - Pipeline Injection"] = enriched;
-          }
-          if (digestateKeywords.some(k => allOutputText.includes(k))) {
-            const enriched = enrichOutputSpecs("Solid Digestate - Land Application", userCriteria, location || undefined);
-            outputSpecs["Solid Digestate - Land Application"] = enriched;
-          }
-          if (effluentKeywords.some(k => allOutputText.includes(k))) {
-            const enriched = enrichOutputSpecs("Liquid Effluent - Discharge to WWTP", userCriteria, location || undefined);
-            outputSpecs["Liquid Effluent - Discharge to WWTP"] = enriched;
-          }
-        }
-        
-        console.log("Output enrichment: Total output profiles enriched:", Object.keys(outputSpecs).length);
+      const userOutputCriteria: Record<string, { value: string; unit?: string }> = {};
+      for (const param of outputParams) {
+        userOutputCriteria[param.name] = { value: param.value || "", unit: param.unit || undefined };
       }
+      
+      for (const param of outputParams) {
+        const outputDesc = `${param.name} ${param.value}`.toLowerCase();
+        const matched = matchOutputType(outputDesc);
+        if (matched && !outputSpecs[matched.name]) {
+          const enriched = enrichOutputSpecs(matched.name, userOutputCriteria, location || undefined);
+          outputSpecs[matched.name] = enriched;
+          console.log("Output enrichment: Generated", Object.keys(enriched).length, "criteria for", matched.name);
+        }
+      }
+      
+      const allOutputText = outputParams.map(p => `${p.name} ${p.value}`).join(" ").toLowerCase();
+      const allInputText = allEntries.map(e => e.content).join(" ").toLowerCase();
+      const searchText = `${allOutputText} ${allInputText}`;
+      
+      const rngKeywords = ["rng", "pipeline", "biomethane", "renewable natural gas", "upgraded biogas", "pipeline injection"];
+      const digestateKeywords = ["digestate", "land application", "biosolids", "compost", "soil amendment", "land apply"];
+      const effluentKeywords = ["effluent", "wwtp", "discharge", "sewer", "wastewater", "liquid effluent", "centrate", "filtrate", "liquid digestate", "treatment plant"];
+      
+      const rngProfile = "Renewable Natural Gas (RNG) - Pipeline Injection";
+      const digestateProfile = "Solid Digestate - Land Application";
+      const effluentProfile = "Liquid Effluent - Discharge to WWTP";
+      
+      if (!outputSpecs[rngProfile] && rngKeywords.some(k => searchText.includes(k))) {
+        const enriched = enrichOutputSpecs(rngProfile, userOutputCriteria, location || undefined);
+        outputSpecs[rngProfile] = enriched;
+        console.log("Output enrichment (keyword fallback): Generated", Object.keys(enriched).length, "criteria for", rngProfile);
+      }
+      if (!outputSpecs[digestateProfile] && digestateKeywords.some(k => searchText.includes(k))) {
+        const enriched = enrichOutputSpecs(digestateProfile, userOutputCriteria, location || undefined);
+        outputSpecs[digestateProfile] = enriched;
+        console.log("Output enrichment (keyword fallback): Generated", Object.keys(enriched).length, "criteria for", digestateProfile);
+      }
+      if (!outputSpecs[effluentProfile] && effluentKeywords.some(k => searchText.includes(k))) {
+        const enriched = enrichOutputSpecs(effluentProfile, userOutputCriteria, location || undefined);
+        outputSpecs[effluentProfile] = enriched;
+        console.log("Output enrichment (keyword fallback): Generated", Object.keys(enriched).length, "criteria for", effluentProfile);
+      }
+      
+      console.log("Output enrichment: Total output profiles enriched:", Object.keys(outputSpecs).length);
       
       const upifData = {
         scenarioId,
