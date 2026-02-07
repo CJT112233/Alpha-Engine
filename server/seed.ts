@@ -86,7 +86,6 @@ export async function seedDatabase() {
       { scenarioId: scenario1.id, category: "output_requirements", name: "Primary Output", value: "Renewable Natural Gas (RNG)", source: "user_input", confidence: "high", isConfirmed: true },
       { scenarioId: scenario1.id, category: "output_requirements", name: "Solids Handling", value: "Land Application", source: "user_input", confidence: "high", isConfirmed: true },
       { scenarioId: scenario1.id, category: "output_requirements", name: "Liquid Handling", value: "Discharge to Moses Lake WWTP", source: "user_input", confidence: "high", isConfirmed: true },
-      { scenarioId: scenario1.id, category: "pricing", name: "Project Budget", value: "18,000,000", unit: "USD", source: "user_input", confidence: "medium", isConfirmed: false },
       { scenarioId: scenario1.id, category: "constraints", name: "Technology Requirement", value: "Proven digester technology with 5+ reference facilities", source: "user_input", confidence: "high", isConfirmed: true },
       { scenarioId: scenario1.id, category: "constraints", name: "Timeline", value: "24-month construction", source: "user_input", confidence: "high", isConfirmed: true },
     ]);
@@ -104,8 +103,6 @@ export async function seedDatabase() {
       },
       outputRequirements: "RNG for pipeline injection; Land application of digestate solids; Liquid effluent discharge to Moses Lake WWTP",
       location: "Quincy, Washington",
-      pricingInputs: { "Tipping Fee": "Negotiated with McCain Foods" },
-      pricingOutputs: { "RNG": "Market rate + LCFS credits" },
       constraints: [
         "Must use proven digester technology with 5+ reference facilities",
         "24-month construction timeline",
@@ -140,8 +137,6 @@ export async function seedDatabase() {
       },
       outputRequirements: "RNG for pipeline injection via Williams Northwest Pipeline",
       location: "Moses Lake, Grant County, Washington",
-      pricingInputs: {},
-      pricingOutputs: {},
       constraints: ["Direct pipeline access required"],
       isConfirmed: true,
       confirmedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),

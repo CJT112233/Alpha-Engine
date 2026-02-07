@@ -41,12 +41,6 @@ function categorizeInput(content: string): string | null {
     return "location";
   }
   
-  if (lowerContent.includes("$") || lowerContent.includes("price") ||
-      lowerContent.includes("cost") || lowerContent.includes("budget") ||
-      lowerContent.includes("million") || lowerContent.includes("fee")) {
-    return "pricing";
-  }
-  
   if (lowerContent.includes("must") || lowerContent.includes("require") ||
       lowerContent.includes("constraint") || lowerContent.includes("assumption") ||
       lowerContent.includes("limit") || lowerContent.includes("using")) {
@@ -233,37 +227,6 @@ function extractParametersFromText(entries: Array<{ content: string; category: s
     });
   }
   
-  // Extract budget/pricing
-  const budgetPatterns = [
-    /\$(\d+(?:\.\d+)?)\s*(m|million|k|thousand)?/gi,
-    /budget\s*(?:of\s*)?\$?(\d+(?:\.\d+)?)\s*(m|million|k|thousand)?/gi,
-  ];
-  
-  for (const pattern of budgetPatterns) {
-    const matches = content.matchAll(pattern);
-    for (const match of matches) {
-      if (match[1]) {
-        let value = parseFloat(match[1]);
-        let unit = "USD";
-        if (match[2]?.toLowerCase().startsWith("m")) {
-          value *= 1000000;
-          unit = "USD (millions)";
-        } else if (match[2]?.toLowerCase().startsWith("k")) {
-          value *= 1000;
-          unit = "USD (thousands)";
-        }
-        params.push({
-          category: "pricing",
-          name: "Project Budget",
-          value: value.toLocaleString(),
-          unit,
-          source: "user_input",
-          confidence: "medium",
-        });
-      }
-    }
-  }
-  
   // Extract constraints
   const constraintPatterns = [
     /must\s+use\s+([^,.]+)/gi,
@@ -347,7 +310,6 @@ CATEGORIES:
 - feedstock: Waste/material types, volumes and quantities, composition data (TS%, VS/TS ratio, BOD, COD, C:N ratio, moisture content), seasonal variations, number of sources/suppliers, current disposal methods, feedstock availability, hauling distances
 - location: City, state, county, region, GPS coordinates, site details, proximity to gas pipelines or electrical grid, zoning information, land area/acreage, elevation, climate considerations
 - output_requirements: Desired products (RNG, electricity, compressed biogas, compost, digestate, soil amendments), capacity/production targets, pipeline interconnection details, offtake agreements, power purchase agreements, gas quality specs (BTU, siloxane limits, H2S limits)
-- pricing: Capital costs (CAPEX), operating costs (OPEX), tipping fees, commodity prices (RNG $/MMBtu, electricity $/kWh), revenue projections, tax credits (ITC, PTC), incentives (LCFS credits, RINs, D3 RINs), ROI targets, payback period, financing details, grants
 - constraints: Regulatory requirements (EPA, state DEQ, air permits, NPDES), timeline/deadlines, equipment preferences or specifications, technology preferences (mesophilic vs thermophilic, CSTR vs plug flow), existing infrastructure, partnership structures, labor considerations, odor requirements, noise limits, setback distances, environmental impact requirements
 
 EXAMPLE INPUT:
@@ -366,10 +328,6 @@ EXAMPLE OUTPUT:
   {"category": "output_requirements", "name": "Primary Output", "value": "Renewable Natural Gas (RNG)", "unit": null, "confidence": "high"},
   {"category": "output_requirements", "name": "Pipeline Interconnection", "value": "Williams NW Pipeline", "unit": null, "confidence": "high"},
   {"category": "output_requirements", "name": "Raw Biogas Production Target", "value": "800", "unit": "scfm", "confidence": "high"},
-  {"category": "pricing", "name": "Tipping Fee Revenue", "value": "$45", "unit": "per ton", "confidence": "high"},
-  {"category": "pricing", "name": "Capital Budget", "value": "$25,000,000", "unit": null, "confidence": "high"},
-  {"category": "pricing", "name": "Target IRR", "value": "15%", "unit": null, "confidence": "high"},
-  {"category": "pricing", "name": "D3 RIN Credit Value", "value": "$2.50", "unit": "per RIN", "confidence": "high"},
   {"category": "constraints", "name": "Regulatory Requirement", "value": "Washington State LCFS compliance", "unit": null, "confidence": "high"},
   {"category": "constraints", "name": "Air Permit Deadline", "value": "Q2 2027", "unit": null, "confidence": "high"},
   {"category": "constraints", "name": "Target Online Date", "value": "Q3 2027", "unit": null, "confidence": "high"},
@@ -393,7 +351,6 @@ COMMONLY MISSED DETAILS - check for these:
 - Regulatory or permit mentions (EPA, DEQ, LCFS, RFS)
 - Number of sources, facilities, or partners
 - Implied infrastructure needs (RNG implies gas cleanup + pipeline interconnect)
-- Financial incentives (tax credits, RINs, LCFS credits, grants)
 - Technology specifications (digester type, gas cleanup method)
 - Environmental requirements (odor, noise, setbacks, emissions)
 
@@ -694,22 +651,6 @@ export async function registerRoutes(
       const outputParams = extractedParams.filter(p => p.category === "output_requirements");
       const constraints = extractedParams.filter(p => p.category === "constraints").map(p => p.value);
       
-      // Extract pricing parameters
-      const pricingParams = extractedParams.filter(p => p.category === "pricing");
-      const pricingInputs: Record<string, string> = {};
-      const pricingOutputs: Record<string, string> = {};
-      
-      for (const p of pricingParams) {
-        const value = p.unit ? `${p.value} ${p.unit}` : p.value;
-        // Classify as input (costs/budget) or output (revenue)
-        const nameLower = p.name.toLowerCase();
-        if (nameLower.includes("revenue") || nameLower.includes("price") || nameLower.includes("credit") || nameLower.includes("sale")) {
-          pricingOutputs[p.name] = value;
-        } else {
-          pricingInputs[p.name] = value;
-        }
-      }
-      
       const upifData = {
         scenarioId,
         feedstockType,
@@ -718,8 +659,6 @@ export async function registerRoutes(
         outputRequirements: outputParams.map(p => `${p.name}: ${p.value}`).join("; "),
         location,
         constraints,
-        pricingInputs: Object.keys(pricingInputs).length > 0 ? pricingInputs : null,
-        pricingOutputs: Object.keys(pricingOutputs).length > 0 ? pricingOutputs : null,
         isConfirmed: false,
       };
       

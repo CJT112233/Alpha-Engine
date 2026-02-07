@@ -8,7 +8,7 @@ The core workflow follows a scenario-based approach where:
 1. Users create projects and scenarios within those projects
 2. Each scenario maintains independent inputs, outputs, and constraints
 3. Users provide project details through free-form text and document uploads
-4. The system extracts and categorizes parameters (feedstock, output requirements, location, pricing, constraints)
+4. The system extracts and categorizes parameters (feedstock, output requirements, location, constraints)
 5. Parameters are consolidated into a standardized UPIF for user review and confirmation
 
 ## User Preferences

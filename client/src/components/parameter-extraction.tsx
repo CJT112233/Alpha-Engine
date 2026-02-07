@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Sparkles, Beaker, MapPin, DollarSign, Settings2, FileOutput, AlertCircle, CheckCircle2, Edit2 } from "lucide-react";
+import { Sparkles, Beaker, MapPin, Settings2, FileOutput, AlertCircle, CheckCircle2, Edit2 } from "lucide-react";
 import type { ExtractedParameter } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -26,7 +26,6 @@ const categoryIcons: Record<string, React.ReactNode> = {
   feedstock: <Beaker className="h-4 w-4" />,
   output_requirements: <FileOutput className="h-4 w-4" />,
   location: <MapPin className="h-4 w-4" />,
-  pricing: <DollarSign className="h-4 w-4" />,
   constraints: <Settings2 className="h-4 w-4" />,
 };
 
@@ -34,7 +33,6 @@ const categoryLabels: Record<string, string> = {
   feedstock: "Feedstock Specifications",
   output_requirements: "Output Requirements",
   location: "Project Location",
-  pricing: "Pricing Information",
   constraints: "Constraints & Assumptions",
 };
 

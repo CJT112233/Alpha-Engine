@@ -11,7 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, DollarSign, Settings2 } from "lucide-react";
+import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2 } from "lucide-react";
 import type { UpifRecord } from "@shared/schema";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -33,8 +33,6 @@ const upifFormSchema = z.object({
   outputRequirements: z.string().optional(),
   location: z.string().optional(),
   constraints: z.string().optional(),
-  pricingInputs: z.string().optional(),
-  pricingOutputs: z.string().optional(),
 });
 
 type UpifFormValues = z.infer<typeof upifFormSchema>;
@@ -43,26 +41,6 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const isConfirmed = scenarioStatus === "confirmed";
-
-  const formatPricing = (pricing: Record<string, string> | null | undefined): string => {
-    if (!pricing) return "";
-    return Object.entries(pricing).map(([key, value]) => `${key}: ${value}`).join("\n");
-  };
-
-  const parsePricing = (text: string): Record<string, string> => {
-    const result: Record<string, string> = {};
-    text.split("\n").filter(Boolean).forEach(line => {
-      const colonIndex = line.indexOf(":");
-      if (colonIndex > 0) {
-        const key = line.substring(0, colonIndex).trim();
-        const value = line.substring(colonIndex + 1).trim();
-        if (key) result[key] = value;
-      } else if (line.trim()) {
-        result[line.trim()] = "";
-      }
-    });
-    return result;
-  };
 
   const form = useForm<UpifFormValues>({
     resolver: zodResolver(upifFormSchema),
@@ -73,8 +51,6 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
       outputRequirements: upif?.outputRequirements || "",
       location: upif?.location || "",
       constraints: upif?.constraints?.join("\n") || "",
-      pricingInputs: formatPricing(upif?.pricingInputs),
-      pricingOutputs: formatPricing(upif?.pricingOutputs),
     },
   });
 
@@ -83,8 +59,6 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
       return apiRequest("PATCH", `/api/scenarios/${scenarioId}/upif`, {
         ...data,
         constraints: data.constraints?.split("\n").filter(Boolean),
-        pricingInputs: data.pricingInputs ? parsePricing(data.pricingInputs) : null,
-        pricingOutputs: data.pricingOutputs ? parsePricing(data.pricingOutputs) : null,
       });
     },
     onSuccess: () => {
@@ -229,8 +203,6 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                   outputRequirements: upif?.outputRequirements || "",
                   location: upif?.location || "",
                   constraints: upif?.constraints?.join("\n") || "",
-                  pricingInputs: formatPricing(upif?.pricingInputs),
-                  pricingOutputs: formatPricing(upif?.pricingOutputs),
                 });
                 setIsEditing(true);
               }}
@@ -364,51 +336,6 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                 />
               </div>
 
-              <div className="space-y-4">
-                <h4 className="flex items-center gap-2 font-medium">
-                  <DollarSign className="h-4 w-4" />
-                  Pricing & Economics
-                </h4>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="pricingInputs"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Input Costs</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            placeholder="Budget: $15,000,000&#10;Feedstock Cost: $20/ton&#10;..."
-                            className="resize-none"
-                            rows={4}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="pricingOutputs"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Revenue / Output Value</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            placeholder="RNG Price: $8/MMBtu&#10;Carbon Credits: $50/ton&#10;..."
-                            className="resize-none"
-                            rows={4}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
-
               <div className="flex gap-2">
                 <Button
                   type="submit"
@@ -496,63 +423,24 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
 
             <Separator />
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-4">
-                <h4 className="flex items-center gap-2 font-medium text-sm">
-                  <DollarSign className="h-4 w-4 text-primary" />
-                  Pricing & Economics
-                </h4>
-                <div className="pl-6 space-y-3">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Input Costs</Label>
-                    {upif.pricingInputs && Object.keys(upif.pricingInputs).length > 0 ? (
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        {Object.entries(upif.pricingInputs).map(([key, val]) => (
-                          <Badge key={key} variant="secondary" className="text-xs">
-                            {key}: {val}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Not specified</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Revenue / Output Value</Label>
-                    {upif.pricingOutputs && Object.keys(upif.pricingOutputs).length > 0 ? (
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        {Object.entries(upif.pricingOutputs).map(([key, val]) => (
-                          <Badge key={key} variant="secondary" className="text-xs">
-                            {key}: {val}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Not specified</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h4 className="flex items-center gap-2 font-medium text-sm">
-                  <Settings2 className="h-4 w-4 text-primary" />
-                  Constraints & Assumptions
-                </h4>
-                <div className="pl-6">
-                  {upif.constraints && upif.constraints.length > 0 ? (
-                    <ul className="space-y-1">
-                      {upif.constraints.map((constraint, idx) => (
-                        <li key={idx} className="text-sm flex items-start gap-2">
-                          <span className="text-primary mt-1">-</span>
-                          {constraint}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No constraints specified</p>
-                  )}
-                </div>
+            <div className="space-y-4">
+              <h4 className="flex items-center gap-2 font-medium text-sm">
+                <Settings2 className="h-4 w-4 text-primary" />
+                Constraints & Assumptions
+              </h4>
+              <div className="pl-6">
+                {upif.constraints && upif.constraints.length > 0 ? (
+                  <ul className="space-y-1">
+                    {upif.constraints.map((constraint, idx) => (
+                      <li key={idx} className="text-sm flex items-start gap-2">
+                        <span className="text-primary mt-1">-</span>
+                        {constraint}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No constraints specified</p>
+                )}
               </div>
             </div>
           </div>

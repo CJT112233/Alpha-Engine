@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, BookOpen, Beaker, FileUp, Sparkles, FileText, MessageSquare, MapPin, DollarSign, Settings2, FileOutput } from "lucide-react";
+import { ArrowLeft, BookOpen, Beaker, FileUp, Sparkles, FileText, MessageSquare, MapPin, Settings2, FileOutput } from "lucide-react";
 
 export default function Documentation() {
   return (
@@ -173,31 +173,6 @@ export default function Documentation() {
                     <p className="text-muted-foreground">
                       "Project site in Quincy, Washington, near existing food processing facility"
                     </p>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="pricing">
-                <AccordionTrigger className="hover:no-underline">
-                  <span className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4" />
-                    Pricing Information
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Provide estimates of value for project inputs and outputs to help evaluate 
-                    project economics.
-                  </p>
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Pricing Categories:</p>
-                    <ul className="text-sm text-muted-foreground space-y-1">
-                      <li>- Feedstock tipping fees or costs</li>
-                      <li>- RNG sale price or RIN values</li>
-                      <li>- Electricity sale rates</li>
-                      <li>- Digestate/compost pricing</li>
-                      <li>- LCFS credit values</li>
-                    </ul>
                   </div>
                 </AccordionContent>
               </AccordionItem>

@@ -34,7 +34,7 @@ export const textEntries = pgTable("text_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   scenarioId: varchar("scenario_id").notNull().references(() => scenarios.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
-  category: text("category"), // feedstock, output_requirements, location, pricing, constraints
+  category: text("category"), // feedstock, output_requirements, location, constraints
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -62,7 +62,7 @@ export type Document = typeof documents.$inferSelect;
 export const extractedParameters = pgTable("extracted_parameters", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   scenarioId: varchar("scenario_id").notNull().references(() => scenarios.id, { onDelete: "cascade" }),
-  category: text("category").notNull(), // feedstock, output_requirements, location, pricing, constraints
+  category: text("category").notNull(), // feedstock, output_requirements, location, constraints
   name: text("name").notNull(),
   value: text("value"),
   unit: text("unit"),
@@ -86,8 +86,6 @@ export const upifRecords = pgTable("upif_records", {
   feedstockParameters: jsonb("feedstock_parameters").$type<Record<string, { value: string; unit: string }>>(),
   outputRequirements: text("output_requirements"),
   location: text("location"),
-  pricingInputs: jsonb("pricing_inputs").$type<Record<string, string>>(),
-  pricingOutputs: jsonb("pricing_outputs").$type<Record<string, string>>(),
   constraints: text("constraints").array(),
   isConfirmed: boolean("is_confirmed").default(false),
   confirmedAt: timestamp("confirmed_at"),

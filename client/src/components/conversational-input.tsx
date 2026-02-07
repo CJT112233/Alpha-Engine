@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, MessageSquare, MapPin, DollarSign, Beaker, Settings2, FileOutput, Trash2 } from "lucide-react";
+import { Send, MessageSquare, MapPin, Beaker, Settings2, FileOutput, Trash2 } from "lucide-react";
 import type { TextEntry } from "@shared/schema";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -23,7 +23,6 @@ const categoryIcons: Record<string, React.ReactNode> = {
   feedstock: <Beaker className="h-3.5 w-3.5" />,
   output_requirements: <FileOutput className="h-3.5 w-3.5" />,
   location: <MapPin className="h-3.5 w-3.5" />,
-  pricing: <DollarSign className="h-3.5 w-3.5" />,
   constraints: <Settings2 className="h-3.5 w-3.5" />,
 };
 
@@ -31,7 +30,6 @@ const categoryLabels: Record<string, string> = {
   feedstock: "Feedstock",
   output_requirements: "Output",
   location: "Location",
-  pricing: "Pricing",
   constraints: "Constraints",
 };
 
@@ -103,7 +101,7 @@ export function ConversationalInput({ scenarioId, entries, isLoading, isLocked }
             Conversational Input
           </CardTitle>
           <CardDescription>
-            Describe your project in natural language. Include feedstock details, output requirements, location, pricing, and any constraints.
+            Describe your project in natural language. Include feedstock details, output requirements, location, and any constraints.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -122,10 +120,6 @@ export function ConversationalInput({ scenarioId, entries, isLoading, isLocked }
                 <li className="flex items-center gap-2">
                   <MapPin className="h-3.5 w-3.5 text-primary" />
                   <span>Project location</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <DollarSign className="h-3.5 w-3.5 text-primary" />
-                  <span>Pricing for inputs and outputs</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Settings2 className="h-3.5 w-3.5 text-primary" />
