@@ -76,6 +76,25 @@ export const insertParameterSchema = createInsertSchema(extractedParameters).omi
 export type InsertParameter = z.infer<typeof insertParameterSchema>;
 export type ExtractedParameter = typeof extractedParameters.$inferSelect;
 
+export type EnrichedFeedstockSpecRecord = Record<string, {
+  value: string;
+  unit: string;
+  source: "user_provided" | "estimated_default";
+  confidence: "high" | "medium" | "low";
+  provenance: string;
+  group: "identity" | "physical" | "biochemical" | "contaminants" | "extended";
+  displayName: string;
+  sortOrder: number;
+}>;
+
+export type FeedstockEntry = {
+  feedstockType: string;
+  feedstockVolume?: string;
+  feedstockUnit?: string;
+  feedstockParameters?: Record<string, { value: string; unit: string }>;
+  feedstockSpecs?: EnrichedFeedstockSpecRecord;
+};
+
 // UPIF - Unified Project Intake Form
 export const upifRecords = pgTable("upif_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -84,16 +103,8 @@ export const upifRecords = pgTable("upif_records", {
   feedstockVolume: text("feedstock_volume"),
   feedstockUnit: text("feedstock_unit"),
   feedstockParameters: jsonb("feedstock_parameters").$type<Record<string, { value: string; unit: string }>>(),
-  feedstockSpecs: jsonb("feedstock_specs").$type<Record<string, {
-    value: string;
-    unit: string;
-    source: "user_provided" | "estimated_default";
-    confidence: "high" | "medium" | "low";
-    provenance: string;
-    group: "identity" | "physical" | "biochemical" | "contaminants" | "extended";
-    displayName: string;
-    sortOrder: number;
-  }>>(),
+  feedstockSpecs: jsonb("feedstock_specs").$type<EnrichedFeedstockSpecRecord>(),
+  feedstocks: jsonb("feedstocks").$type<FeedstockEntry[]>(),
   outputRequirements: text("output_requirements"),
   outputSpecs: jsonb("output_specs").$type<Record<string, Record<string, {
     value: string;

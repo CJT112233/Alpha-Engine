@@ -13,7 +13,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf } from "lucide-react";
-import type { UpifRecord } from "@shared/schema";
+import type { UpifRecord, FeedstockEntry } from "@shared/schema";
 import { feedstockGroupLabels, feedstockGroupOrder, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { outputGroupLabels, outputGroupOrder, type EnrichedOutputSpec } from "@shared/output-criteria-library";
 import { format } from "date-fns";
@@ -30,9 +30,6 @@ interface UpifReviewProps {
 }
 
 const upifFormSchema = z.object({
-  feedstockType: z.string().optional(),
-  feedstockVolume: z.string().optional(),
-  feedstockUnit: z.string().optional(),
   outputRequirements: z.string().optional(),
   location: z.string().optional(),
   constraints: z.string().optional(),
@@ -289,44 +286,66 @@ function OutputSpecsTable({
 export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenarioStatus }: UpifReviewProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
-  const [specEdits, setSpecEdits] = useState<Record<string, string>>({});
+  const [feedstockEdits, setFeedstockEdits] = useState<Record<number, Partial<FeedstockEntry>>>({});
+  const [feedstockSpecEdits, setFeedstockSpecEdits] = useState<Record<number, Record<string, string>>>({});
   const isConfirmed = scenarioStatus === "confirmed";
 
   const form = useForm<UpifFormValues>({
     resolver: zodResolver(upifFormSchema),
     defaultValues: {
-      feedstockType: upif?.feedstockType || "",
-      feedstockVolume: upif?.feedstockVolume || "",
-      feedstockUnit: upif?.feedstockUnit || "",
       outputRequirements: upif?.outputRequirements || "",
       location: upif?.location || "",
       constraints: upif?.constraints?.join("\n") || "",
     },
   });
 
-  const feedstockSpecs = upif?.feedstockSpecs as Record<string, EnrichedFeedstockSpec> | null | undefined;
-  const hasSpecs = feedstockSpecs && Object.keys(feedstockSpecs).length > 0;
+  const rawFeedstocks = (upif?.feedstocks as FeedstockEntry[] | null | undefined) || [];
+  const feedstocks: FeedstockEntry[] = rawFeedstocks.length > 0
+    ? rawFeedstocks
+    : upif?.feedstockType
+      ? [{
+          feedstockType: upif.feedstockType,
+          feedstockVolume: upif.feedstockVolume || undefined,
+          feedstockUnit: upif.feedstockUnit || undefined,
+          feedstockParameters: upif.feedstockParameters as FeedstockEntry["feedstockParameters"],
+          feedstockSpecs: upif.feedstockSpecs as FeedstockEntry["feedstockSpecs"],
+        }]
+      : [];
+  const hasFeedstocks = feedstocks.length > 0;
   const outputSpecs = upif?.outputSpecs as Record<string, Record<string, EnrichedOutputSpec>> | null | undefined;
   const hasOutputSpecs = outputSpecs && Object.keys(outputSpecs).length > 0;
-  const [outputSpecEdits, setOutputSpecEdits] = useState<Record<string, Record<string, string>>>({}); 
+  const [outputSpecEdits, setOutputSpecEdits] = useState<Record<string, Record<string, string>>>({});
 
   const updateUpifMutation = useMutation({
     mutationFn: async (data: UpifFormValues) => {
-      let updatedSpecs = feedstockSpecs;
-      if (Object.keys(specEdits).length > 0 && updatedSpecs) {
-        updatedSpecs = { ...updatedSpecs };
-        for (const [key, value] of Object.entries(specEdits)) {
-          if (updatedSpecs[key]) {
-            updatedSpecs[key] = {
-              ...updatedSpecs[key],
-              value,
-              source: "user_provided",
-              confidence: "high",
-              provenance: "User-provided override",
-            };
-          }
+      let updatedFeedstocks = feedstocks.map((f, i) => {
+        const edits = feedstockEdits[i];
+        const specEdits = feedstockSpecEdits[i];
+        let entry = { ...f };
+        if (edits) {
+          if (edits.feedstockType !== undefined) entry.feedstockType = edits.feedstockType;
+          if (edits.feedstockVolume !== undefined) entry.feedstockVolume = edits.feedstockVolume;
+          if (edits.feedstockUnit !== undefined) entry.feedstockUnit = edits.feedstockUnit;
         }
-      }
+        if (specEdits && entry.feedstockSpecs) {
+          const updated = { ...entry.feedstockSpecs };
+          for (const [key, value] of Object.entries(specEdits)) {
+            if (updated[key]) {
+              updated[key] = {
+                ...updated[key],
+                value,
+                source: "user_provided",
+                confidence: "high",
+                provenance: "User-provided override",
+              };
+            }
+          }
+          entry.feedstockSpecs = updated;
+        }
+        return entry;
+      });
+
+      const primary = updatedFeedstocks[0];
 
       let updatedOutputSpecs = outputSpecs;
       if (Object.keys(outputSpecEdits).length > 0 && updatedOutputSpecs) {
@@ -349,17 +368,27 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
         }
       }
 
-      return apiRequest("PATCH", `/api/scenarios/${scenarioId}/upif`, {
+      const patchData: Record<string, unknown> = {
         ...data,
         constraints: data.constraints?.split("\n").filter(Boolean),
-        feedstockSpecs: updatedSpecs,
         outputSpecs: updatedOutputSpecs,
-      });
+      };
+
+      if (updatedFeedstocks.length > 0) {
+        patchData.feedstocks = updatedFeedstocks;
+        patchData.feedstockType = primary?.feedstockType;
+        patchData.feedstockVolume = primary?.feedstockVolume;
+        patchData.feedstockUnit = primary?.feedstockUnit;
+        patchData.feedstockSpecs = primary?.feedstockSpecs;
+      }
+
+      return apiRequest("PATCH", `/api/scenarios/${scenarioId}/upif`, patchData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "upif"] });
       setIsEditing(false);
-      setSpecEdits({});
+      setFeedstockEdits({});
+      setFeedstockSpecEdits({});
       setOutputSpecEdits({});
       toast({
         title: "UPIF updated",
@@ -468,11 +497,6 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
     );
   }
 
-  const specStats = hasSpecs ? {
-    total: Object.keys(feedstockSpecs!).length,
-    userProvided: Object.values(feedstockSpecs!).filter(s => s.source === "user_provided").length,
-    estimated: Object.values(feedstockSpecs!).filter(s => s.source === "estimated_default").length,
-  } : null;
 
   return (
     <Card>
@@ -500,14 +524,13 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
               variant="outline"
               onClick={() => {
                 form.reset({
-                  feedstockType: upif?.feedstockType || "",
-                  feedstockVolume: upif?.feedstockVolume || "",
-                  feedstockUnit: upif?.feedstockUnit || "",
                   outputRequirements: upif?.outputRequirements || "",
                   location: upif?.location || "",
                   constraints: upif?.constraints?.join("\n") || "",
                 });
-                setSpecEdits({});
+                setFeedstockEdits({});
+                setFeedstockSpecEdits({});
+                setOutputSpecEdits({});
                 setIsEditing(true);
               }}
               data-testid="button-edit-upif"
@@ -522,97 +545,103 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
         {isEditing ? (
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-4">
+              {hasFeedstocks && (
+                <div className="space-y-6">
                   <h4 className="flex items-center gap-2 font-medium">
                     <Beaker className="h-4 w-4" />
                     Feedstock Specifications
+                    <Badge variant="secondary" className="text-xs">{feedstocks.length} feedstock{feedstocks.length > 1 ? "s" : ""}</Badge>
                   </h4>
-                  <FormField
-                    control={form.control}
-                    name="feedstockType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Feedstock Type</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., Potato Waste" {...field} data-testid="input-feedstock-type" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField
-                      control={form.control}
-                      name="feedstockVolume"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Volume</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., 100,000" {...field} data-testid="input-feedstock-volume" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="feedstockUnit"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Unit</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., tons/year" {...field} data-testid="input-feedstock-unit" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                  {feedstocks.map((fs, idx) => {
+                    const specs = fs.feedstockSpecs as Record<string, EnrichedFeedstockSpec> | undefined;
+                    const hasSpecs = specs && Object.keys(specs).length > 0;
+                    return (
+                      <div key={idx} className="border rounded-md p-4 space-y-4">
+                        <h5 className="text-sm font-semibold">Feedstock {idx + 1}</h5>
+                        <div className="space-y-3">
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Type</Label>
+                            <Input
+                              defaultValue={fs.feedstockType || ""}
+                              placeholder="e.g., Dairy Manure"
+                              onChange={(e) => setFeedstockEdits(prev => ({
+                                ...prev,
+                                [idx]: { ...(prev[idx] || {}), feedstockType: e.target.value },
+                              }))}
+                              data-testid={`input-feedstock-type-${idx}`}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Volume</Label>
+                              <Input
+                                defaultValue={fs.feedstockVolume || ""}
+                                placeholder="e.g., 100,000"
+                                onChange={(e) => setFeedstockEdits(prev => ({
+                                  ...prev,
+                                  [idx]: { ...(prev[idx] || {}), feedstockVolume: e.target.value },
+                                }))}
+                                data-testid={`input-feedstock-volume-${idx}`}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Unit</Label>
+                              <Input
+                                defaultValue={fs.feedstockUnit || ""}
+                                placeholder="e.g., tons/year"
+                                onChange={(e) => setFeedstockEdits(prev => ({
+                                  ...prev,
+                                  [idx]: { ...(prev[idx] || {}), feedstockUnit: e.target.value },
+                                }))}
+                                data-testid={`input-feedstock-unit-${idx}`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        {hasSpecs && (
+                          <div className="space-y-3 pt-2">
+                            <div className="flex items-center gap-2">
+                              <FlaskConical className="h-3.5 w-3.5" />
+                              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Design Parameters</span>
+                              <Badge variant="secondary" className="text-xs">Edit values to override</Badge>
+                            </div>
+                            <FeedstockSpecsTable
+                              specs={specs!}
+                              isEditing={true}
+                              onSpecUpdate={(key, value) => {
+                                setFeedstockSpecEdits(prev => ({
+                                  ...prev,
+                                  [idx]: { ...(prev[idx] || {}), [key]: value },
+                                }));
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-
-                <div className="space-y-4">
-                  <h4 className="flex items-center gap-2 font-medium">
-                    <MapPin className="h-4 w-4" />
-                    Location
-                  </h4>
-                  <FormField
-                    control={form.control}
-                    name="location"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Project Location</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., Quincy, Washington" {...field} data-testid="input-location" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
-
-              {hasSpecs && (
-                <>
-                  <Separator />
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <FlaskConical className="h-4 w-4" />
-                      <h4 className="font-medium">Feedstock Design Parameters</h4>
-                      <Badge variant="secondary" className="text-xs">
-                        Edit values below to override defaults
-                      </Badge>
-                    </div>
-                    <FeedstockSpecsTable
-                      specs={feedstockSpecs!}
-                      isEditing={true}
-                      onSpecUpdate={(key, value) => {
-                        setSpecEdits(prev => ({ ...prev, [key]: value }));
-                      }}
-                    />
-                  </div>
-                </>
               )}
+
+              <div className="space-y-4">
+                <h4 className="flex items-center gap-2 font-medium">
+                  <MapPin className="h-4 w-4" />
+                  Location
+                </h4>
+                <FormField
+                  control={form.control}
+                  name="location"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Project Location</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., Quincy, Washington" {...field} data-testid="input-location" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <Separator />
 
@@ -713,7 +742,8 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                   variant="outline"
                   onClick={() => {
                     setIsEditing(false);
-                    setSpecEdits({});
+                    setFeedstockEdits({});
+                    setFeedstockSpecEdits({});
                     setOutputSpecEdits({});
                   }}
                 >
@@ -725,81 +755,93 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
           </Form>
         ) : (
           <div className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-4">
-                <h4 className="flex items-center gap-2 font-medium text-sm">
-                  <Beaker className="h-4 w-4 text-primary" />
-                  Feedstock Specifications
-                </h4>
-                <div className="space-y-3 pl-6">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Type</Label>
-                    <p className="text-sm font-medium" data-testid="text-feedstock-type">
-                      {upif.feedstockType || "Not specified"}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Volume / Capacity</Label>
-                    <p className="text-sm font-medium" data-testid="text-feedstock-volume">
-                      {upif.feedstockVolume
-                        ? `${upif.feedstockVolume} ${upif.feedstockUnit || ""}`
-                        : "Not specified"}
-                    </p>
-                  </div>
-                </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Beaker className="h-4 w-4 text-primary" />
+                <h4 className="font-medium text-sm">Feedstock Specifications</h4>
+                {feedstocks.length > 1 && (
+                  <Badge variant="secondary" className="text-xs">{feedstocks.length} feedstocks</Badge>
+                )}
               </div>
+              {hasFeedstocks ? feedstocks.map((fs, idx) => {
+                const specs = fs.feedstockSpecs as Record<string, EnrichedFeedstockSpec> | undefined;
+                const hasSpecs = specs && Object.keys(specs).length > 0;
+                const specStats = hasSpecs ? {
+                  total: Object.keys(specs!).length,
+                  userProvided: Object.values(specs!).filter(s => s.source === "user_provided").length,
+                  estimated: Object.values(specs!).filter(s => s.source === "estimated_default").length,
+                } : null;
 
-              <div className="space-y-4">
-                <h4 className="flex items-center gap-2 font-medium text-sm">
-                  <MapPin className="h-4 w-4 text-primary" />
-                  Location
-                </h4>
-                <div className="pl-6">
-                  <p className="text-sm font-medium" data-testid="text-location">
-                    {upif.location || "Not specified"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {hasSpecs && (
-              <>
-                <Separator />
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <h4 className="flex items-center gap-2 font-medium text-sm">
-                      <FlaskConical className="h-4 w-4 text-primary" />
-                      Feedstock Design Parameters
-                    </h4>
-                    {specStats && (
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-400">
-                          {specStats.userProvided} user-provided
-                        </Badge>
-                        <Badge variant="secondary" className="text-xs bg-orange-500/10 text-orange-700 dark:text-orange-400">
-                          {specStats.estimated} estimated defaults
-                        </Badge>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <p className="text-xs">
-                              Estimated defaults are sourced from published literature for {upif.feedstockType}. 
-                              Click "Edit" to override any value with your own data.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
+                return (
+                  <div key={idx} className="border rounded-md p-4 space-y-4" data-testid={`feedstock-card-${idx}`}>
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                      <h5 className="text-sm font-semibold" data-testid={`text-feedstock-type-${idx}`}>
+                        {feedstocks.length > 1 ? `Feedstock ${idx + 1}: ` : ""}{fs.feedstockType || "Not specified"}
+                      </h5>
+                      {specStats && (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-400">
+                            {specStats.userProvided} user-provided
+                          </Badge>
+                          <Badge variant="secondary" className="text-xs bg-orange-500/10 text-orange-700 dark:text-orange-400">
+                            {specStats.estimated} estimated
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                    <div className="pl-2">
+                      <Label className="text-xs text-muted-foreground">Volume / Capacity</Label>
+                      <p className="text-sm font-medium" data-testid={`text-feedstock-volume-${idx}`}>
+                        {fs.feedstockVolume
+                          ? `${fs.feedstockVolume} ${fs.feedstockUnit || ""}`
+                          : "Not specified"}
+                      </p>
+                    </div>
+                    {hasSpecs && (
+                      <div className="space-y-3 pt-1">
+                        <div className="flex items-center gap-2">
+                          <FlaskConical className="h-3.5 w-3.5 text-primary" />
+                          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Design Parameters</span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p className="text-xs">
+                                Estimated defaults are sourced from published literature for {fs.feedstockType}.
+                                Click "Edit" to override any value with your own data.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                        <FeedstockSpecsTable
+                          specs={specs!}
+                          isEditing={false}
+                        />
                       </div>
                     )}
                   </div>
-                  <FeedstockSpecsTable
-                    specs={feedstockSpecs!}
-                    isEditing={false}
-                  />
+                );
+              }) : (
+                <div className="pl-6">
+                  <p className="text-sm text-muted-foreground">No feedstocks identified</p>
                 </div>
-              </>
-            )}
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <h4 className="flex items-center gap-2 font-medium text-sm">
+                <MapPin className="h-4 w-4 text-primary" />
+                Location
+              </h4>
+              <div className="pl-6">
+                <p className="text-sm font-medium" data-testid="text-location">
+                  {upif.location || "Not specified"}
+                </p>
+              </div>
+            </div>
 
             <Separator />
 

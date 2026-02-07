@@ -46,7 +46,10 @@ Preferred communication style: Simple, everyday language.
 - **Text Entries**: Conversational inputs categorized by type
 - **Documents**: Uploaded files with metadata
 - **Extracted Parameters**: AI-extracted parameters with confidence levels
-- **UPIF Records**: Consolidated project intake forms
+- **UPIF Records**: Consolidated project intake forms with multi-feedstock support
+  - `feedstocks` JSONB array stores multiple FeedstockEntry objects, each with independent type, volume, unit, parameters, and enriched specs
+  - Legacy single-feedstock fields (feedstockType, feedstockVolume, feedstockUnit, feedstockSpecs) still populated from primary feedstock for backward compatibility
+  - UI synthesizes a single-entry feedstocks array from legacy fields when feedstocks column is empty
 
 ### Key Design Patterns
 - **Shared Types**: Schema definitions in `shared/` directory used by both client and server

@@ -4,7 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
-import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema } from "@shared/schema";
+import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema, type FeedstockEntry } from "@shared/schema";
 import { z } from "zod";
 import OpenAI from "openai";
 import { enrichFeedstockSpecs, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
@@ -364,16 +364,23 @@ CATEGORIES:
 - output_requirements: Desired products (RNG, electricity, compressed biogas, compost, digestate, soil amendments), capacity/production targets, pipeline interconnection details, offtake agreements, power purchase agreements, gas quality specs (BTU, siloxane limits, H2S limits)
 - constraints: Regulatory requirements (EPA, state DEQ, air permits, NPDES), timeline/deadlines, equipment preferences or specifications, technology preferences (mesophilic vs thermophilic, CSTR vs plug flow), existing infrastructure, partnership structures, labor considerations, odor requirements, noise limits, setback distances, environmental impact requirements
 
+MULTIPLE FEEDSTOCKS:
+When a project mentions more than one feedstock material, use a NUMBERED prefix to group parameters by feedstock identity:
+- "Feedstock 1 Type", "Feedstock 1 Volume", "Feedstock 1 TS%", etc.
+- "Feedstock 2 Type", "Feedstock 2 Volume", "Feedstock 2 TS%", etc.
+Technical parameters like TS%, VS/TS, C:N ratio should also be prefixed with the feedstock number if they pertain to a specific feedstock.
+If there is only one feedstock, you may omit the number prefix or use "Feedstock 1".
+
 EXAMPLE INPUT:
 "We have a dairy operation in Yakima County, WA with 5,000 head of cattle producing about 150 tons of manure daily. We also receive 20,000 tons/year of food waste from a nearby processor at a $45/ton tipping fee. Goal is RNG injection into the Williams NW Pipeline, probably around 800 scfm of raw biogas. Budget is $25M with a target 15% IRR. We're expecting D3 RIN credits at about $2.50/RIN. Need to meet Washington State LCFS requirements and have the air permit submitted by Q2 2027. Project needs to be online by Q3 2027. We prefer a thermophilic digester design."
 
 EXAMPLE OUTPUT:
 {"parameters": [
-  {"category": "feedstock", "name": "Primary Feedstock", "value": "Dairy manure", "unit": null, "confidence": "high"},
-  {"category": "feedstock", "name": "Herd Size", "value": "5,000", "unit": "head of cattle", "confidence": "high"},
-  {"category": "feedstock", "name": "Primary Feedstock Volume", "value": "150", "unit": "tons/day", "confidence": "high"},
-  {"category": "feedstock", "name": "Secondary Feedstock", "value": "Food processing waste", "unit": null, "confidence": "high"},
-  {"category": "feedstock", "name": "Secondary Feedstock Volume", "value": "20,000", "unit": "tons/year", "confidence": "high"},
+  {"category": "feedstock", "name": "Feedstock 1 Type", "value": "Dairy manure", "unit": null, "confidence": "high"},
+  {"category": "feedstock", "name": "Feedstock 1 Herd Size", "value": "5,000", "unit": "head of cattle", "confidence": "high"},
+  {"category": "feedstock", "name": "Feedstock 1 Volume", "value": "150", "unit": "tons/day", "confidence": "high"},
+  {"category": "feedstock", "name": "Feedstock 2 Type", "value": "Food processing waste", "unit": null, "confidence": "high"},
+  {"category": "feedstock", "name": "Feedstock 2 Volume", "value": "20,000", "unit": "tons/year", "confidence": "high"},
   {"category": "feedstock", "name": "Number of Feedstock Sources", "value": "2", "unit": "sources", "confidence": "medium"},
   {"category": "location", "name": "County", "value": "Yakima County", "unit": null, "confidence": "high"},
   {"category": "location", "name": "State", "value": "Washington", "unit": null, "confidence": "high"},
@@ -726,19 +733,86 @@ export async function registerRoutes(
       // Create or update UPIF with deterministic parameter mapping
       const existingUpif = await storage.getUpifByScenario(scenarioId);
       
-      // Step 1: Deterministic mapping - find feedstock type from multiple possible parameter names
-      const feedstockType = extractedParams.find(p => 
-        p.category === "feedstock" && 
-        (p.name === "Feedstock Type" || p.name === "Primary Feedstock" || p.name.toLowerCase().includes("feedstock type"))
-      )?.value;
+      // Step 1: Group feedstock parameters by feedstock identity (numbered prefix or legacy names)
+      const feedstockParams = extractedParams.filter(p => p.category === "feedstock");
       
-      // Map volume from multiple possible names
-      const volumeParam = extractedParams.find(p => 
-        p.category === "feedstock" && 
-        (p.name === "Volume/Capacity" || p.name === "Primary Feedstock Volume" || 
-         p.name.toLowerCase().includes("volume") || p.name.toLowerCase().includes("quantity") ||
-         p.name.toLowerCase().includes("annual"))
-      );
+      function classifyFeedstockParam(name: string): { index: number; cleanName: string } {
+        const numbered = name.match(/^Feedstock\s+(\d+)\s+(.+)$/i);
+        if (numbered) return { index: parseInt(numbered[1]), cleanName: numbered[2].trim() };
+        const lower = name.toLowerCase();
+        if (lower.includes("primary") || lower.includes("feedstock type")) return { index: 1, cleanName: name.replace(/primary\s*/i, "").replace(/feedstock\s*/i, "").trim() || "Type" };
+        if (lower.includes("secondary")) return { index: 2, cleanName: name.replace(/secondary\s*/i, "").replace(/feedstock\s*/i, "").trim() || "Type" };
+        if (lower.includes("tertiary")) return { index: 3, cleanName: name.replace(/tertiary\s*/i, "").replace(/feedstock\s*/i, "").trim() || "Type" };
+        if (lower.includes("number of") || lower.includes("feedstock source")) return { index: 0, cleanName: name };
+        return { index: 1, cleanName: name };
+      }
+      
+      const feedstockGroups: Map<number, Array<{ cleanName: string; value: string; unit?: string }>> = new Map();
+      for (const param of feedstockParams) {
+        const { index, cleanName } = classifyFeedstockParam(param.name);
+        if (index === 0) continue;
+        if (!feedstockGroups.has(index)) feedstockGroups.set(index, []);
+        feedstockGroups.get(index)!.push({ cleanName, value: param.value || "", unit: param.unit || undefined });
+      }
+      
+      function mapTechnicalParamName(rawName: string): string | null {
+        const n = rawName.toLowerCase().trim();
+        const isVolumeMetric = n.includes("annual") || n.includes("quantity") || n.includes("daily") || n.includes("average") || n.includes("generation") || n.includes("onsite") || n.includes("number of") || n.includes("facility type") || n.includes("source") || n.includes("herd");
+        if (isVolumeMetric) return null;
+        if (n.includes("vs/ts") || n.includes("vs:ts") || n.includes("volatile solids to total solids")) return "VS/TS";
+        if (n.includes("total solids") || n === "ts%" || n === "ts (%)" || n === "ts") return "Total Solids";
+        if (n.includes("volatile solids") || n === "vs" || n === "vs (% of ts)") return "Volatile Solids";
+        if ((n.includes("c:n") || n.includes("c/n")) || (n.includes("carbon") && n.includes("nitrogen"))) return "C:N Ratio";
+        if (n.includes("moisture")) return "Moisture Content";
+        if (n.includes("bulk density") || n === "density") return "Bulk Density";
+        if (n.includes("bmp") || n.includes("biochemical methane") || n.includes("methane potential")) return "BMP";
+        if (n.includes("biodegradable fraction") || n.includes("biodegradability")) return "Biodegradable Fraction";
+        return null;
+      }
+      
+      const feedstockEntries: FeedstockEntry[] = [];
+      const sortedKeys = Array.from(feedstockGroups.keys()).sort((a, b) => a - b);
+      
+      for (const idx of sortedKeys) {
+        const group = feedstockGroups.get(idx)!;
+        const typeParam = group.find(p => {
+          const l = p.cleanName.toLowerCase();
+          return l === "type" || l.includes("type") || l === "feedstock" || l === "";
+        });
+        const volumeParam = group.find(p => {
+          const l = p.cleanName.toLowerCase();
+          return l.includes("volume") || l.includes("quantity") || l.includes("capacity");
+        });
+        
+        const feedstockType = typeParam?.value || `Unknown Feedstock ${idx}`;
+        const userParams: Record<string, { value: string; unit?: string }> = {};
+        const rawParams: Record<string, { value: string; unit: string }> = {};
+        
+        for (const p of group) {
+          if (p === typeParam || p === volumeParam) continue;
+          const mapped = mapTechnicalParamName(p.cleanName);
+          if (mapped) {
+            userParams[mapped] = { value: p.value, unit: p.unit };
+          }
+          rawParams[p.cleanName] = { value: p.value, unit: p.unit || "" };
+        }
+        
+        const specs = enrichFeedstockSpecs(feedstockType, userParams);
+        console.log(`Enrichment: Feedstock ${idx} "${feedstockType}" - ${Object.keys(specs).length} specs`);
+        
+        feedstockEntries.push({
+          feedstockType,
+          feedstockVolume: volumeParam?.value,
+          feedstockUnit: volumeParam?.unit,
+          feedstockParameters: Object.keys(rawParams).length > 0 ? rawParams : undefined,
+          feedstockSpecs: Object.keys(specs).length > 0 ? specs : undefined,
+        });
+      }
+      
+      console.log("Enrichment: Total feedstock entries:", feedstockEntries.length);
+      
+      // Legacy single-feedstock fields (backward compat - use first entry)
+      const primaryFeedstock = feedstockEntries[0];
       
       // Collect all location info
       const locationParams = extractedParams.filter(p => p.category === "location");
@@ -753,64 +827,6 @@ export async function registerRoutes(
       const constraints = extractedParams.filter(p => p.category === "constraints").map(p => 
         p.name !== "Constraint" ? `${p.name}: ${p.value}` : p.value
       );
-      
-      // Step 2: Enrichment - collect user-provided feedstock params for enrichment
-      const userFeedstockParams: Record<string, { value: string; unit?: string }> = {};
-      const feedstockTechnicalParams = extractedParams.filter(p => 
-        p.category === "feedstock" && 
-        p.name !== "Feedstock Type" && p.name !== "Primary Feedstock" &&
-        p.name !== "Volume/Capacity" && p.name !== "Primary Feedstock Volume" &&
-        !p.name.toLowerCase().includes("feedstock type") &&
-        !p.name.toLowerCase().includes("secondary feedstock")
-      );
-      
-      for (const param of feedstockTechnicalParams) {
-        const normalizedName = param.name.toLowerCase().trim();
-        let mappedName = param.name;
-        
-        const isVolumeMetric = normalizedName.includes("annual") || normalizedName.includes("quantity") || 
-          normalizedName.includes("daily") || normalizedName.includes("average") ||
-          normalizedName.includes("generation") || normalizedName.includes("onsite") ||
-          normalizedName.includes("number of") || normalizedName.includes("facility type") ||
-          normalizedName.includes("source");
-        
-        if (isVolumeMetric) {
-          continue;
-        }
-        
-        if (normalizedName.includes("vs/ts") || normalizedName.includes("vs:ts") || normalizedName.includes("volatile solids to total solids")) {
-          mappedName = "VS/TS";
-        } else if (normalizedName.includes("total solids") || normalizedName === "ts%" || normalizedName === "ts (%)") {
-          mappedName = "Total Solids";
-        } else if (normalizedName.includes("volatile solids") || normalizedName === "vs" || normalizedName === "vs (% of ts)") {
-          mappedName = "Volatile Solids";
-        } else if (normalizedName.includes("c:n") || normalizedName.includes("c/n") || normalizedName.includes("carbon") && normalizedName.includes("nitrogen")) {
-          mappedName = "C:N Ratio";
-        } else if (normalizedName.includes("moisture")) {
-          mappedName = "Moisture Content";
-        } else if (normalizedName.includes("bulk density") || normalizedName.includes("density")) {
-          mappedName = "Bulk Density";
-        } else if (normalizedName.includes("bmp") || normalizedName.includes("biochemical methane") || normalizedName.includes("methane potential")) {
-          mappedName = "BMP";
-        } else if (normalizedName.includes("biodegradable fraction") || normalizedName.includes("biodegradability")) {
-          mappedName = "Biodegradable Fraction";
-        }
-        
-        userFeedstockParams[mappedName] = { 
-          value: param.value || "", 
-          unit: param.unit || undefined 
-        };
-      }
-      
-      // Step 3: Enrich feedstock specs using the knowledge base
-      let feedstockSpecs: Record<string, EnrichedFeedstockSpec> | undefined;
-      if (feedstockType) {
-        feedstockSpecs = enrichFeedstockSpecs(feedstockType, userFeedstockParams);
-        console.log("Enrichment: Generated", Object.keys(feedstockSpecs).length, "feedstock specs for", feedstockType);
-        const userProvided = Object.values(feedstockSpecs).filter(s => s.source === "user_provided").length;
-        const estimated = Object.values(feedstockSpecs).filter(s => s.source === "estimated_default").length;
-        console.log("Enrichment:", userProvided, "user-provided,", estimated, "estimated defaults");
-      }
       
       // Step 4: Enrich output acceptance criteria using the output criteria knowledge base
       const outputSpecs: Record<string, Record<string, EnrichedOutputSpec>> = {};
@@ -858,22 +874,14 @@ export async function registerRoutes(
         console.log("Output enrichment: Total output profiles enriched:", Object.keys(outputSpecs).length);
       }
       
-      // Build feedstock parameters (legacy format for backward compat)
-      const feedstockParameters: Record<string, { value: string; unit: string }> = {};
-      for (const param of feedstockTechnicalParams) {
-        feedstockParameters[param.name] = { 
-          value: param.value || "", 
-          unit: param.unit || "" 
-        };
-      }
-      
       const upifData = {
         scenarioId,
-        feedstockType,
-        feedstockVolume: volumeParam?.value,
-        feedstockUnit: volumeParam?.unit,
-        feedstockParameters: Object.keys(feedstockParameters).length > 0 ? feedstockParameters : undefined,
-        feedstockSpecs: feedstockSpecs && Object.keys(feedstockSpecs).length > 0 ? feedstockSpecs : undefined,
+        feedstockType: primaryFeedstock?.feedstockType,
+        feedstockVolume: primaryFeedstock?.feedstockVolume,
+        feedstockUnit: primaryFeedstock?.feedstockUnit,
+        feedstockParameters: primaryFeedstock?.feedstockParameters,
+        feedstockSpecs: primaryFeedstock?.feedstockSpecs,
+        feedstocks: feedstockEntries.length > 0 ? feedstockEntries : undefined,
         outputRequirements: outputParams.map(p => `${p.name}: ${p.value}${p.unit ? ` ${p.unit}` : ""}`).join("; "),
         outputSpecs: Object.keys(outputSpecs).length > 0 ? outputSpecs : undefined,
         location,
