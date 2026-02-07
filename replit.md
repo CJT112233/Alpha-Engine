@@ -74,10 +74,22 @@ Preferred communication style: Simple, everyday language.
 - Each enriched parameter includes: value, unit, source (user_provided vs estimated_default), confidence level, provenance (literature citation/reasoning), and display grouping (identity, physical, biochemical, contaminants, extended)
 - User-provided values override estimated defaults when available
 - Pricing functionality has been removed and will be re-added in a future update
+- **Output Criteria Enrichment**: After AI extraction, declared outputs (RNG, digestate, effluent) are matched against a built-in knowledge base (`shared/output-criteria-library.ts`) containing acceptance criteria for three output profiles:
+  - RNG Pipeline Injection: 13 gas quality & delivery criteria (FERC/NAESB pipeline standards)
+  - Solid Digestate Land Application: 18 physical/nutrients/metals criteria (EPA 40 CFR Part 503)
+  - Liquid Effluent to WWTP: 13 discharge limits (municipal pretreatment ordinances)
+- Each enriched output criterion includes: value, unit, source (typical_industry_standard/estimated_requirement/user_provided), confidence level, provenance, and display grouping
+- Output specs are stored in UPIF `outputSpecs` jsonb column as `Record<profileName, Record<criterionKey, EnrichedOutputSpec>>`
+- UPIF Review UI displays output acceptance criteria in grouped tables with source badges, confidence levels, and provenance tooltips
+- Users can override any default criterion value via the Edit interface
 
 ### Document Processing
 - Multer for file upload handling
 - XLSX for spreadsheet processing
+- PDF text extraction via pdf-parse (dynamic import for ESM compatibility)
+- DOCX text extraction via mammoth
+- TXT files read directly
+- Extracted text stored in `extractedText` column and included in AI parameter extraction
 
 ### Authentication & Security
 - Passport.js with passport-local strategy

@@ -95,6 +95,16 @@ export const upifRecords = pgTable("upif_records", {
     sortOrder: number;
   }>>(),
   outputRequirements: text("output_requirements"),
+  outputSpecs: jsonb("output_specs").$type<Record<string, Record<string, {
+    value: string;
+    unit: string;
+    source: "typical_industry_standard" | "estimated_requirement" | "assumed_placeholder" | "user_provided";
+    confidence: "high" | "medium" | "low";
+    provenance: string;
+    group: string;
+    displayName: string;
+    sortOrder: number;
+  }>>>(),
   location: text("location"),
   constraints: text("constraints").array(),
   isConfirmed: boolean("is_confirmed").default(false),

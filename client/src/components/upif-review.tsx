@@ -12,9 +12,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers } from "lucide-react";
+import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf } from "lucide-react";
 import type { UpifRecord } from "@shared/schema";
 import { feedstockGroupLabels, feedstockGroupOrder, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
+import { outputGroupLabels, outputGroupOrder, type EnrichedOutputSpec } from "@shared/output-criteria-library";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -160,6 +161,131 @@ function FeedstockSpecsTable({
   );
 }
 
+const outputGroupIcons: Record<string, React.ReactNode> = {
+  gas_quality: <Flame className="h-3.5 w-3.5" />,
+  delivery: <Settings2 className="h-3.5 w-3.5" />,
+  physical: <Beaker className="h-3.5 w-3.5" />,
+  nutrients: <Leaf className="h-3.5 w-3.5" />,
+  metals: <Bug className="h-3.5 w-3.5" />,
+  pathogens: <AlertCircle className="h-3.5 w-3.5" />,
+  regulatory: <FileText className="h-3.5 w-3.5" />,
+  discharge: <Droplets className="h-3.5 w-3.5" />,
+  prohibited: <AlertCircle className="h-3.5 w-3.5" />,
+};
+
+const sourceLabels: Record<string, { label: string; className: string }> = {
+  typical_industry_standard: { label: "Standard", className: "bg-green-500/10 text-green-700 dark:text-green-400" },
+  estimated_requirement: { label: "Estimated", className: "bg-orange-500/10 text-orange-700 dark:text-orange-400" },
+  assumed_placeholder: { label: "Assumed", className: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400" },
+  user_provided: { label: "User", className: "bg-blue-500/10 text-blue-700 dark:text-blue-400" },
+};
+
+function OutputSpecsTable({
+  profileName,
+  specs,
+  isEditing,
+  onSpecUpdate,
+}: {
+  profileName: string;
+  specs: Record<string, EnrichedOutputSpec>;
+  isEditing: boolean;
+  onSpecUpdate?: (profileName: string, key: string, value: string) => void;
+}) {
+  const grouped: Record<string, Array<[string, EnrichedOutputSpec]>> = {};
+
+  for (const [key, spec] of Object.entries(specs)) {
+    if (!grouped[spec.group]) {
+      grouped[spec.group] = [];
+    }
+    grouped[spec.group].push([key, spec]);
+  }
+
+  for (const group of Object.keys(grouped)) {
+    grouped[group].sort((a, b) => a[1].sortOrder - b[1].sortOrder);
+  }
+
+  return (
+    <div className="space-y-5">
+      {outputGroupOrder.map((groupKey) => {
+        const items = grouped[groupKey];
+        if (!items || items.length === 0) return null;
+
+        return (
+          <div key={groupKey}>
+            <div className="flex items-center gap-2 mb-2">
+              {outputGroupIcons[groupKey]}
+              <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {outputGroupLabels[groupKey] || groupKey}
+              </h5>
+            </div>
+            <div className="border rounded-md overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Criterion</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[25%]">Requirement</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[15%]">Source</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Provenance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map(([key, spec]) => (
+                    <tr key={key} className="border-b last:border-b-0">
+                      <td className="p-2">
+                        <span className="font-medium text-sm">{spec.displayName}</span>
+                      </td>
+                      <td className="p-2">
+                        {isEditing ? (
+                          <Input
+                            defaultValue={spec.value}
+                            className="h-7 text-sm"
+                            onChange={(e) => onSpecUpdate?.(profileName, key, e.target.value)}
+                            data-testid={`input-output-spec-${key}`}
+                          />
+                        ) : (
+                          <span className="text-sm" data-testid={`text-output-spec-${key}`}>
+                            {spec.value}{spec.unit ? ` ${spec.unit}` : ""}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        <Badge
+                          variant="secondary"
+                          className={`text-xs ${sourceLabels[spec.source]?.className || ""}`}
+                        >
+                          {sourceLabels[spec.source]?.label || spec.source}
+                        </Badge>
+                        <Badge
+                          variant="secondary"
+                          className={`text-xs ml-1 ${confidenceBadgeClass[spec.confidence]}`}
+                        >
+                          {spec.confidence}
+                        </Badge>
+                      </td>
+                      <td className="p-2">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-xs text-muted-foreground cursor-help line-clamp-2">
+                              {spec.provenance}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-sm">
+                            <p className="text-xs">{spec.provenance}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenarioStatus }: UpifReviewProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
@@ -180,6 +306,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
 
   const feedstockSpecs = upif?.feedstockSpecs as Record<string, EnrichedFeedstockSpec> | null | undefined;
   const hasSpecs = feedstockSpecs && Object.keys(feedstockSpecs).length > 0;
+  const outputSpecs = upif?.outputSpecs as Record<string, Record<string, EnrichedOutputSpec>> | null | undefined;
+  const hasOutputSpecs = outputSpecs && Object.keys(outputSpecs).length > 0;
+  const [outputSpecEdits, setOutputSpecEdits] = useState<Record<string, Record<string, string>>>({}); 
 
   const updateUpifMutation = useMutation({
     mutationFn: async (data: UpifFormValues) => {
@@ -199,16 +328,39 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
         }
       }
 
+      let updatedOutputSpecs = outputSpecs;
+      if (Object.keys(outputSpecEdits).length > 0 && updatedOutputSpecs) {
+        updatedOutputSpecs = { ...updatedOutputSpecs };
+        for (const [profileName, edits] of Object.entries(outputSpecEdits)) {
+          if (updatedOutputSpecs[profileName]) {
+            updatedOutputSpecs[profileName] = { ...updatedOutputSpecs[profileName] };
+            for (const [key, value] of Object.entries(edits)) {
+              if (updatedOutputSpecs[profileName][key]) {
+                updatedOutputSpecs[profileName][key] = {
+                  ...updatedOutputSpecs[profileName][key],
+                  value,
+                  source: "user_provided",
+                  confidence: "high",
+                  provenance: "User-provided override",
+                };
+              }
+            }
+          }
+        }
+      }
+
       return apiRequest("PATCH", `/api/scenarios/${scenarioId}/upif`, {
         ...data,
         constraints: data.constraints?.split("\n").filter(Boolean),
         feedstockSpecs: updatedSpecs,
+        outputSpecs: updatedOutputSpecs,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "upif"] });
       setIsEditing(false);
       setSpecEdits({});
+      setOutputSpecEdits({});
       toast({
         title: "UPIF updated",
         description: "Your changes have been saved.",
@@ -489,6 +641,39 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                 />
               </div>
 
+              {hasOutputSpecs && (
+                <>
+                  <Separator />
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <FileOutput className="h-4 w-4" />
+                      <h4 className="font-medium">Output Acceptance Criteria</h4>
+                      <Badge variant="secondary" className="text-xs">
+                        Edit values below to override defaults
+                      </Badge>
+                    </div>
+                    {Object.entries(outputSpecs!).map(([profileName, specs]) => (
+                      <div key={profileName} className="space-y-3">
+                        <h5 className="text-sm font-medium text-muted-foreground pl-2" data-testid={`text-output-profile-${profileName}`}>{profileName}</h5>
+                        <OutputSpecsTable
+                          profileName={profileName}
+                          specs={specs}
+                          isEditing={true}
+                          onSpecUpdate={(profile, key, value) => {
+                            setOutputSpecEdits(prev => ({
+                              ...prev,
+                              [profile]: { ...(prev[profile] || {}), [key]: value },
+                            }));
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <Separator />
+
               <div className="space-y-4">
                 <h4 className="flex items-center gap-2 font-medium">
                   <Settings2 className="h-4 w-4" />
@@ -529,6 +714,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                   onClick={() => {
                     setIsEditing(false);
                     setSpecEdits({});
+                    setOutputSpecEdits({});
                   }}
                 >
                   <X className="h-4 w-4 mr-2" />
@@ -628,6 +814,68 @@ export function UpifReview({ scenarioId, upif, isLoading, hasParameters, scenari
                 </p>
               </div>
             </div>
+
+            {hasOutputSpecs && (
+              <>
+                <Separator />
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <h4 className="flex items-center gap-2 font-medium text-sm">
+                      <FileOutput className="h-4 w-4 text-primary" />
+                      Output Acceptance Criteria
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const allSpecs = Object.values(outputSpecs!).flatMap(s => Object.values(s));
+                        const standard = allSpecs.filter(s => s.source === "typical_industry_standard").length;
+                        const estimated = allSpecs.filter(s => s.source === "estimated_requirement").length;
+                        const user = allSpecs.filter(s => s.source === "user_provided").length;
+                        return (
+                          <>
+                            {user > 0 && (
+                              <Badge variant="secondary" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-400">
+                                {user} user-provided
+                              </Badge>
+                            )}
+                            {standard > 0 && (
+                              <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-700 dark:text-green-400">
+                                {standard} industry standards
+                              </Badge>
+                            )}
+                            {estimated > 0 && (
+                              <Badge variant="secondary" className="text-xs bg-orange-500/10 text-orange-700 dark:text-orange-400">
+                                {estimated} estimated
+                              </Badge>
+                            )}
+                          </>
+                        );
+                      })()}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="text-xs">
+                            Acceptance criteria are populated from industry standards (FERC/NAESB, EPA Part 503, municipal pretreatment). 
+                            Click "Edit" to override any value with project-specific requirements.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </div>
+                  {Object.entries(outputSpecs!).map(([profileName, specs]) => (
+                    <div key={profileName} className="space-y-3">
+                      <h5 className="text-sm font-semibold" data-testid={`text-output-profile-readonly-${profileName}`}>{profileName}</h5>
+                      <OutputSpecsTable
+                        profileName={profileName}
+                        specs={specs}
+                        isEditing={false}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
 
             <Separator />
 

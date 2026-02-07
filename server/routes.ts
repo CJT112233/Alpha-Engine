@@ -8,8 +8,8 @@ import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema } from
 import { z } from "zod";
 import OpenAI from "openai";
 import { enrichFeedstockSpecs, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
+import { enrichOutputSpecs, matchOutputType, type EnrichedOutputSpec } from "@shared/output-criteria-library";
 import * as XLSX from "xlsx";
-import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
 
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
@@ -25,6 +25,7 @@ async function extractTextFromFile(filePath: string, mimeType: string, originalN
     const ext = path.extname(originalName).toLowerCase();
 
     if (mimeType === "application/pdf" || ext === ".pdf") {
+      const pdfParse = (await import("pdf-parse")).default;
       const dataBuffer = fs.readFileSync(filePath);
       const data = await pdfParse(dataBuffer);
       return data.text?.trim() || null;
@@ -633,13 +634,27 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No file uploaded" });
       }
       
+      const filePath = req.file.path;
+      let extractedText: string | null = null;
+      
+      try {
+        extractedText = await extractTextFromFile(filePath, req.file.mimetype, req.file.originalname);
+        if (extractedText) {
+          console.log(`Document text extraction: extracted ${extractedText.length} chars from ${req.file.originalname}`);
+        } else {
+          console.log(`Document text extraction: no text extracted from ${req.file.originalname} (unsupported format or empty)`);
+        }
+      } catch (extractErr) {
+        console.error("Document text extraction failed (non-fatal):", extractErr);
+      }
+      
       const doc = await storage.createDocument({
         scenarioId: req.params.scenarioId,
         filename: req.file.filename,
         originalName: req.file.originalname,
         mimeType: req.file.mimetype,
         size: req.file.size.toString(),
-        extractedText: null, // Would be populated by OCR service in production
+        extractedText,
       });
       
       res.status(201).json(doc);
@@ -677,8 +692,24 @@ export async function registerRoutes(
       // Get all text entries for this scenario
       const entries = await storage.getTextEntriesByScenario(scenarioId);
       
+      // Get all documents with extracted text for this scenario
+      const documents = await storage.getDocumentsByScenario(scenarioId);
+      const docEntries = documents
+        .filter(doc => doc.extractedText && doc.extractedText.trim())
+        .map(doc => ({
+          content: `[From document: ${doc.originalName}]\n${doc.extractedText}`,
+          category: null as string | null,
+        }));
+      
+      if (docEntries.length > 0) {
+        console.log(`Including ${docEntries.length} document(s) with extracted text in parameter extraction`);
+      }
+      
+      // Combine text entries and document text for extraction
+      const allEntries = [...entries, ...docEntries];
+      
       // Extract parameters using AI (falls back to pattern matching if AI fails)
-      const extractedParams = await extractParametersWithAI(entries);
+      const extractedParams = await extractParametersWithAI(allEntries);
       
       // Clear existing parameters
       await storage.deleteParametersByScenario(scenarioId);
@@ -781,6 +812,52 @@ export async function registerRoutes(
         console.log("Enrichment:", userProvided, "user-provided,", estimated, "estimated defaults");
       }
       
+      // Step 4: Enrich output acceptance criteria using the output criteria knowledge base
+      const outputSpecs: Record<string, Record<string, EnrichedOutputSpec>> = {};
+      if (outputParams.length > 0) {
+        const userOutputCriteria: Record<string, { value: string; unit?: string }> = {};
+        for (const param of outputParams) {
+          userOutputCriteria[param.name] = { value: param.value || "", unit: param.unit || undefined };
+        }
+        
+        for (const param of outputParams) {
+          const outputDesc = `${param.name} ${param.value}`.toLowerCase();
+          const matched = matchOutputType(outputDesc);
+          if (matched && !outputSpecs[matched.name]) {
+            const enriched = enrichOutputSpecs(matched.name, userOutputCriteria, location || undefined);
+            outputSpecs[matched.name] = enriched;
+            console.log("Output enrichment: Generated", Object.keys(enriched).length, "criteria for", matched.name);
+          }
+        }
+        
+        if (Object.keys(outputSpecs).length === 0) {
+          const allOutputText = outputParams.map(p => `${p.name} ${p.value}`).join(" ").toLowerCase();
+          const rngKeywords = ["rng", "pipeline", "biomethane", "renewable natural gas", "upgraded biogas"];
+          const digestateKeywords = ["digestate", "land application", "biosolids", "compost", "soil amendment"];
+          const effluentKeywords = ["effluent", "wwtp", "discharge", "sewer", "wastewater"];
+          
+          const userCriteria: Record<string, { value: string; unit?: string }> = {};
+          for (const param of outputParams) {
+            userCriteria[param.name] = { value: param.value || "", unit: param.unit || undefined };
+          }
+          
+          if (rngKeywords.some(k => allOutputText.includes(k))) {
+            const enriched = enrichOutputSpecs("Renewable Natural Gas (RNG) - Pipeline Injection", userCriteria, location || undefined);
+            outputSpecs["Renewable Natural Gas (RNG) - Pipeline Injection"] = enriched;
+          }
+          if (digestateKeywords.some(k => allOutputText.includes(k))) {
+            const enriched = enrichOutputSpecs("Solid Digestate - Land Application", userCriteria, location || undefined);
+            outputSpecs["Solid Digestate - Land Application"] = enriched;
+          }
+          if (effluentKeywords.some(k => allOutputText.includes(k))) {
+            const enriched = enrichOutputSpecs("Liquid Effluent - Discharge to WWTP", userCriteria, location || undefined);
+            outputSpecs["Liquid Effluent - Discharge to WWTP"] = enriched;
+          }
+        }
+        
+        console.log("Output enrichment: Total output profiles enriched:", Object.keys(outputSpecs).length);
+      }
+      
       // Build feedstock parameters (legacy format for backward compat)
       const feedstockParameters: Record<string, { value: string; unit: string }> = {};
       for (const param of feedstockTechnicalParams) {
@@ -798,6 +875,7 @@ export async function registerRoutes(
         feedstockParameters: Object.keys(feedstockParameters).length > 0 ? feedstockParameters : undefined,
         feedstockSpecs: feedstockSpecs && Object.keys(feedstockSpecs).length > 0 ? feedstockSpecs : undefined,
         outputRequirements: outputParams.map(p => `${p.name}: ${p.value}${p.unit ? ` ${p.unit}` : ""}`).join("; "),
+        outputSpecs: Object.keys(outputSpecs).length > 0 ? outputSpecs : undefined,
         location,
         constraints,
         isConfirmed: false,
