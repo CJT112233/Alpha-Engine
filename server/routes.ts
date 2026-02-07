@@ -146,10 +146,13 @@ async function extractTextFromFile(filePath: string, mimeType: string, originalN
     const ext = path.extname(originalName).toLowerCase();
 
     if (mimeType === "application/pdf" || ext === ".pdf") {
-      const pdfParse = (await import("pdf-parse")).default;
+      const { PDFParse } = await import("pdf-parse");
       const dataBuffer = fs.readFileSync(filePath);
-      const data = await pdfParse(dataBuffer);
-      const rawText = data.text?.trim() || null;
+      const uint8Data = new Uint8Array(dataBuffer);
+      const parser = new PDFParse(uint8Data);
+      await parser.load();
+      const result = await parser.getText();
+      const rawText = result?.text?.trim() || null;
       if (!rawText) return null;
       return postProcessPdfText(rawText);
     }
@@ -186,7 +189,11 @@ async function extractTextFromFile(filePath: string, mimeType: string, originalN
 
     return null;
   } catch (error) {
-    console.error("Error extracting text from file:", error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error(`Error extracting text from file "${originalName}" (${mimeType}):`, errMsg);
+    if (error instanceof Error && error.stack) {
+      console.error("Stack trace:", error.stack);
+    }
     return null;
   }
 }
