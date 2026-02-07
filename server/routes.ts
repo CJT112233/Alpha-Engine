@@ -1200,7 +1200,7 @@ export async function registerRoutes(
       let aiSummary = "";
       try {
         const feedstockDesc = feedstocks.map(f =>
-          `${f.feedstockType}${f.feedstockVolume ? ` (${f.feedstockVolume} ${f.feedstockUnit || ""})` : ""}`
+          `${f.feedstockType}${f.feedstockVolume ? ` (${formatNumericValue(f.feedstockVolume)} ${f.feedstockUnit || ""})` : ""}`
         ).join(", ");
 
         const prompt = `Write a concise one-paragraph project summary for a biogas/anaerobic digestion project intake form. The project "${project.name}" (scenario: "${scenario.name}") involves the following:
@@ -1225,7 +1225,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
         const parts: string[] = [];
         parts.push(`This project intake form documents the "${project.name}" project (scenario: "${scenario.name}").`);
         if (feedstocks.length > 0) {
-          const desc = feedstocks.map(f => `${f.feedstockType}${f.feedstockVolume ? ` at ${f.feedstockVolume} ${f.feedstockUnit || ""}` : ""}`).join(", ");
+          const desc = feedstocks.map(f => `${f.feedstockType}${f.feedstockVolume ? ` at ${formatNumericValue(f.feedstockVolume)} ${f.feedstockUnit || ""}` : ""}`).join(", ");
           parts.push(`The proposed feedstock(s) include ${desc}.`);
         }
         if (upif.location) parts.push(`The project is located in ${upif.location}.`);
@@ -1281,7 +1281,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
         .text(project.name, leftMargin, doc.y + 6, { align: "center", width: contentWidth });
 
       doc.font("Helvetica").fontSize(11).fillColor("#666666")
-        .text(scenario.name, leftMargin, doc.y + 4, { align: "center", width: contentWidth });
+        .text(`Scenario: ${scenario.name}`, leftMargin, doc.y + 4, { align: "center", width: contentWidth });
 
       const dateStr = upif.createdAt ? new Date(upif.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "";
       doc.font("Helvetica").fontSize(9).fillColor("#888888")
@@ -1304,7 +1304,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
       currentY = doc.y + 6;
 
       doc.font("Helvetica").fontSize(10).fillColor("#333333")
-        .text(sanitizePdfText(aiSummary), leftMargin, currentY, { width: contentWidth, lineGap: 2 });
+        .text(sanitizePdfText(formatNumericValue(aiSummary)), leftMargin, currentY, { width: contentWidth, lineGap: 2 });
       currentY = doc.y + 12;
 
       doc.strokeColor("#cccccc").lineWidth(0.5)
