@@ -32,6 +32,48 @@ function formatNumericValue(val: string): string {
   });
 }
 
+function sanitizePdfText(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/≤/g, "<=")
+    .replace(/≥/g, ">=")
+    .replace(/≪/g, "<<")
+    .replace(/≫/g, ">>")
+    .replace(/₀/g, "0")
+    .replace(/₁/g, "1")
+    .replace(/₂/g, "2")
+    .replace(/₃/g, "3")
+    .replace(/₄/g, "4")
+    .replace(/₅/g, "5")
+    .replace(/₆/g, "6")
+    .replace(/₇/g, "7")
+    .replace(/₈/g, "8")
+    .replace(/₉/g, "9")
+    .replace(/⁰/g, "0")
+    .replace(/¹/g, "1")
+    .replace(/²/g, "2")
+    .replace(/³/g, "3")
+    .replace(/⁴/g, "4")
+    .replace(/⁵/g, "5")
+    .replace(/⁶/g, "6")
+    .replace(/⁷/g, "7")
+    .replace(/⁸/g, "8")
+    .replace(/⁹/g, "9")
+    .replace(/−/g, "-")
+    .replace(/–/g, "-")
+    .replace(/—/g, "-")
+    .replace(/′/g, "'")
+    .replace(/″/g, "\"")
+    .replace(/…/g, "...")
+    .replace(/•/g, "*")
+    .replace(/·/g, ".")
+    .replace(/×/g, "x")
+    .replace(/÷/g, "/")
+    .replace(/±/g, "+/-")
+    .replace(/µ/g, "u")
+    .replace(/³/g, "3");
+}
+
 function postProcessPdfText(rawText: string): string {
   const lines = rawText.split("\n");
   const processed: string[] = [];
@@ -1062,34 +1104,54 @@ export async function registerRoutes(
   ): number {
     const fontSize = options?.fontSize || 8;
     const margin = options?.margin || 50;
-    const rowHeight = 18;
+    const minRowHeight = 18;
+    const cellPadding = 3;
     const pageHeight = 792;
+    const tableWidth = colWidths.reduce((a, b) => a + b, 0);
     let y = startY;
 
+    const lastColIdx = colWidths.length - 1;
+
+    const measureRowHeight = (cells: string[], bold: boolean): number => {
+      let maxH = minRowHeight;
+      for (let i = 0; i < cells.length; i++) {
+        const cellText = sanitizePdfText(cells[i] || "");
+        const cellWidth = colWidths[i] - cellPadding * 2;
+        doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(fontSize);
+        const textH = doc.heightOfString(cellText, { width: cellWidth });
+        const cellH = textH + cellPadding * 2;
+        if (cellH > maxH) maxH = cellH;
+      }
+      return maxH;
+    };
+
     const drawRow = (cells: string[], bold: boolean, bgColor?: string) => {
+      const rowHeight = measureRowHeight(cells, bold);
+
       if (y + rowHeight > pageHeight - margin - 30) {
         doc.addPage();
         y = margin;
       }
       if (bgColor) {
         doc.save();
-        doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), rowHeight).fill(bgColor);
+        doc.rect(startX, y, tableWidth, rowHeight).fill(bgColor);
         doc.restore();
       }
       let x = startX;
       for (let i = 0; i < cells.length; i++) {
+        const cellText = sanitizePdfText(cells[i] || "");
+        const isLastCol = i === lastColIdx;
         doc.font(bold ? "Helvetica-Bold" : "Helvetica")
           .fontSize(fontSize)
           .fillColor("#333333")
-          .text(cells[i] || "", x + 3, y + 4, {
-            width: colWidths[i] - 6,
-            height: rowHeight - 4,
-            ellipsis: true,
-            lineBreak: false,
+          .text(cellText, x + cellPadding, y + cellPadding, {
+            width: colWidths[i] - cellPadding * 2,
+            height: isLastCol ? rowHeight - cellPadding : minRowHeight - cellPadding,
+            ellipsis: !isLastCol,
+            lineBreak: isLastCol,
           });
         x += colWidths[i];
       }
-      const tableWidth = colWidths.reduce((a, b) => a + b, 0);
       doc.strokeColor("#cccccc").lineWidth(0.5)
         .moveTo(startX, y + rowHeight).lineTo(startX + tableWidth, y + rowHeight).stroke();
       y += rowHeight;
@@ -1195,8 +1257,8 @@ Provide a professional, technical summary in 3-5 sentences.`;
         doc.save();
         doc.fontSize(120)
           .font("Helvetica-Bold")
-          .fillColor("#cccccc")
-          .opacity(0.15)
+          .fillColor("#e53e3e")
+          .opacity(0.12)
           .translate(pageWidth / 2, 792 / 2)
           .rotate(-45, { origin: [0, 0] })
           .text("DRAFT", -200, -50, { align: "center" });
@@ -1242,7 +1304,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
       currentY = doc.y + 6;
 
       doc.font("Helvetica").fontSize(10).fillColor("#333333")
-        .text(aiSummary, leftMargin, currentY, { width: contentWidth, lineGap: 2 });
+        .text(sanitizePdfText(aiSummary), leftMargin, currentY, { width: contentWidth, lineGap: 2 });
       currentY = doc.y + 12;
 
       doc.strokeColor("#cccccc").lineWidth(0.5)
@@ -1266,12 +1328,12 @@ Provide a professional, technical summary in 3-5 sentences.`;
           }
 
           doc.font("Helvetica-Bold").fontSize(11).fillColor("#333333")
-            .text(feedstock.feedstockType, leftMargin, currentY);
+            .text(sanitizePdfText(feedstock.feedstockType), leftMargin, currentY);
           currentY = doc.y + 4;
 
           if (feedstock.feedstockVolume) {
             doc.font("Helvetica").fontSize(10).fillColor("#555555")
-              .text(`Volume: ${formatNumericValue(feedstock.feedstockVolume)} ${feedstock.feedstockUnit || ""}`, leftMargin, currentY);
+              .text(sanitizePdfText(`Volume: ${formatNumericValue(feedstock.feedstockVolume)} ${feedstock.feedstockUnit || ""}`), leftMargin, currentY);
             currentY = doc.y + 6;
           }
 
@@ -1310,7 +1372,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
                 formatNumericValue(spec.value || ""),
                 spec.unit || "",
                 spec.source === "user_provided" ? "User" : "Estimated",
-                (spec.provenance || "").substring(0, 60),
+                spec.provenance || "",
               ]);
 
               currentY = drawTable(doc, headers, rows, leftMargin, currentY, colWidths);
@@ -1349,7 +1411,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
           }
 
           doc.font("Helvetica-Bold").fontSize(11).fillColor("#333333")
-            .text(profileName, leftMargin, currentY);
+            .text(sanitizePdfText(profileName), leftMargin, currentY);
           currentY = doc.y + 4;
 
           const grouped: Record<string, Array<[string, any]>> = {};
@@ -1385,7 +1447,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
               spec.unit || "",
               (spec.source || "").replace(/_/g, " "),
               spec.confidence || "",
-              (spec.provenance || "").substring(0, 50),
+              spec.provenance || "",
             ]);
 
             currentY = drawTable(doc, headers, rows, leftMargin, currentY, colWidths);
@@ -1410,7 +1472,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
       currentY = doc.y + 4;
 
       doc.font("Helvetica").fontSize(10).fillColor("#333333")
-        .text(upif.location || "Not specified", leftMargin, currentY, { width: contentWidth });
+        .text(sanitizePdfText(upif.location || "Not specified"), leftMargin, currentY, { width: contentWidth });
       currentY = doc.y + 12;
 
       doc.font("Helvetica-Bold").fontSize(13).fillColor("#222222")
@@ -1424,7 +1486,7 @@ Provide a professional, technical summary in 3-5 sentences.`;
             currentY = 50;
           }
           doc.font("Helvetica").fontSize(10).fillColor("#333333")
-            .text(`  \u2022  ${constraint}`, leftMargin, currentY, { width: contentWidth });
+            .text(sanitizePdfText(`  *  ${constraint}`), leftMargin, currentY, { width: contentWidth });
           currentY = doc.y + 2;
         }
       } else {
