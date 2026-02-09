@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles, Download, Lock, Unlock, Plus, Minus } from "lucide-react";
+import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles, Download, Lock, Unlock, Plus, Minus, Trash2 } from "lucide-react";
 import type { UpifRecord, FeedstockEntry, ConfirmedFields } from "@shared/schema";
 import { feedstockGroupLabels, feedstockGroupOrder, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { outputGroupLabels, outputGroupOrder, type EnrichedOutputSpec } from "@shared/output-criteria-library";
@@ -133,6 +133,9 @@ function FeedstockSpecsTable({
   specs,
   isEditing,
   onSpecUpdate,
+  onNoteUpdate,
+  onSpecDelete,
+  deletedKeys,
   confirmedSpecs,
   onToggleConfirm,
   showConfirmToggles,
@@ -140,6 +143,9 @@ function FeedstockSpecsTable({
   specs: Record<string, EnrichedFeedstockSpec>;
   isEditing: boolean;
   onSpecUpdate?: (key: string, value: string) => void;
+  onNoteUpdate?: (key: string, note: string) => void;
+  onSpecDelete?: (key: string) => void;
+  deletedKeys?: Set<string>;
   confirmedSpecs?: Record<string, boolean>;
   onToggleConfirm?: (key: string) => void;
   showConfirmToggles?: boolean;
@@ -147,6 +153,7 @@ function FeedstockSpecsTable({
   const grouped: Record<string, Array<[string, EnrichedFeedstockSpec]>> = {};
 
   for (const [key, spec] of Object.entries(specs)) {
+    if (deletedKeys?.has(key)) continue;
     if (!grouped[spec.group]) {
       grouped[spec.group] = [];
     }
@@ -180,6 +187,7 @@ function FeedstockSpecsTable({
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[23%]">Value</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[15%]">Source</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Notes</th>
+                    {isEditing && <th className="p-2 w-[40px]"></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -231,17 +239,42 @@ function FeedstockSpecsTable({
                           </Badge>
                         </td>
                         <td className="p-2">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="text-xs text-muted-foreground cursor-help line-clamp-2">
-                                {spec.provenance}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="max-w-sm">
-                              <p className="text-xs">{spec.provenance}</p>
-                            </TooltipContent>
-                          </Tooltip>
+                          {isEditing && !isLocked ? (
+                            <Input
+                              defaultValue={spec.provenance}
+                              className="h-7 text-xs"
+                              onChange={(e) => onNoteUpdate?.(key, e.target.value)}
+                              data-testid={`input-note-${key}`}
+                            />
+                          ) : (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-xs text-muted-foreground cursor-help line-clamp-2">
+                                  {spec.provenance}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-sm">
+                                <p className="text-xs">{spec.provenance}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                         </td>
+                        {isEditing && (
+                          <td className="p-1 text-center">
+                            {!isLocked && (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="text-destructive"
+                                onClick={() => onSpecDelete?.(key)}
+                                data-testid={`button-delete-spec-${key}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -279,6 +312,9 @@ function OutputSpecsTable({
   specs,
   isEditing,
   onSpecUpdate,
+  onNoteUpdate,
+  onSpecDelete,
+  deletedKeys,
   confirmedSpecs,
   onToggleConfirm,
   showConfirmToggles,
@@ -287,6 +323,9 @@ function OutputSpecsTable({
   specs: Record<string, EnrichedOutputSpec>;
   isEditing: boolean;
   onSpecUpdate?: (profileName: string, key: string, value: string) => void;
+  onNoteUpdate?: (profileName: string, key: string, note: string) => void;
+  onSpecDelete?: (profileName: string, key: string) => void;
+  deletedKeys?: Set<string>;
   confirmedSpecs?: Record<string, boolean>;
   onToggleConfirm?: (key: string) => void;
   showConfirmToggles?: boolean;
@@ -294,6 +333,7 @@ function OutputSpecsTable({
   const grouped: Record<string, Array<[string, EnrichedOutputSpec]>> = {};
 
   for (const [key, spec] of Object.entries(specs)) {
+    if (deletedKeys?.has(key)) continue;
     if (!grouped[spec.group]) {
       grouped[spec.group] = [];
     }
@@ -327,6 +367,7 @@ function OutputSpecsTable({
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[23%]">Requirement</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[15%]">Source</th>
                     <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Notes</th>
+                    {isEditing && <th className="p-2 w-[40px]"></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -375,17 +416,42 @@ function OutputSpecsTable({
                           </Badge>
                         </td>
                         <td className="p-2">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="text-xs text-muted-foreground cursor-help line-clamp-2">
-                                {spec.provenance}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="max-w-sm">
-                              <p className="text-xs">{spec.provenance}</p>
-                            </TooltipContent>
-                          </Tooltip>
+                          {isEditing && !isLocked ? (
+                            <Input
+                              defaultValue={spec.provenance}
+                              className="h-7 text-xs"
+                              onChange={(e) => onNoteUpdate?.(profileName, key, e.target.value)}
+                              data-testid={`input-output-note-${key}`}
+                            />
+                          ) : (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-xs text-muted-foreground cursor-help line-clamp-2">
+                                  {spec.provenance}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="left" className="max-w-sm">
+                                <p className="text-xs">{spec.provenance}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                         </td>
+                        {isEditing && (
+                          <td className="p-1 text-center">
+                            {!isLocked && (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="text-destructive"
+                                onClick={() => onSpecDelete?.(profileName, key)}
+                                data-testid={`button-delete-output-spec-${key}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -405,6 +471,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [feedstockEdits, setFeedstockEdits] = useState<Record<number, Partial<FeedstockEntry>>>({});
   const [feedstockSpecEdits, setFeedstockSpecEdits] = useState<Record<number, Record<string, string>>>({});
+  const [feedstockNoteEdits, setFeedstockNoteEdits] = useState<Record<number, Record<string, string>>>({});
+  const [deletedFeedstockIndices, setDeletedFeedstockIndices] = useState<Set<number>>(new Set());
+  const [deletedFeedstockSpecs, setDeletedFeedstockSpecs] = useState<Record<number, Set<string>>>({});
   const isConfirmed = scenarioStatus === "confirmed";
 
   const [localConfirmedFields, setLocalConfirmedFields] = useState<ConfirmedFields>(
@@ -488,6 +557,8 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
   const outputSpecs = upif?.outputSpecs as Record<string, Record<string, EnrichedOutputSpec>> | null | undefined;
   const hasOutputSpecs = outputSpecs && Object.keys(outputSpecs).length > 0;
   const [outputSpecEdits, setOutputSpecEdits] = useState<Record<string, Record<string, string>>>({});
+  const [outputNoteEdits, setOutputNoteEdits] = useState<Record<string, Record<string, string>>>({});
+  const [deletedOutputSpecs, setDeletedOutputSpecs] = useState<Record<string, Set<string>>>({});
 
   const confirmedCount = (() => {
     let count = 0;
@@ -516,41 +587,66 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
 
   const updateUpifMutation = useMutation({
     mutationFn: async (data: UpifFormValues) => {
-      let updatedFeedstocks = feedstocks.map((f, i) => {
-        const edits = feedstockEdits[i];
-        const specEdits = feedstockSpecEdits[i];
-        let entry = { ...f };
-        if (edits) {
-          if (edits.feedstockType !== undefined) entry.feedstockType = edits.feedstockType;
-          if (edits.feedstockVolume !== undefined) entry.feedstockVolume = edits.feedstockVolume;
-          if (edits.feedstockUnit !== undefined) entry.feedstockUnit = edits.feedstockUnit;
-        }
-        if (specEdits && entry.feedstockSpecs) {
-          const updated = { ...entry.feedstockSpecs };
-          for (const [key, value] of Object.entries(specEdits)) {
-            if (updated[key]) {
-              updated[key] = {
-                ...updated[key],
-                value,
-                source: "user_provided",
-                confidence: "high",
-                provenance: "User-provided override",
-              };
-            }
+      let updatedFeedstocks = feedstocks
+        .filter((_, i) => !deletedFeedstockIndices.has(i))
+        .map((f, _originalIdx) => {
+          const i = feedstocks.indexOf(f);
+          const edits = feedstockEdits[i];
+          const specEdits = feedstockSpecEdits[i];
+          const noteEdits = feedstockNoteEdits[i];
+          const deletedSpecKeys = deletedFeedstockSpecs[i];
+          let entry = { ...f };
+          if (edits) {
+            if (edits.feedstockType !== undefined) entry.feedstockType = edits.feedstockType;
+            if (edits.feedstockVolume !== undefined) entry.feedstockVolume = edits.feedstockVolume;
+            if (edits.feedstockUnit !== undefined) entry.feedstockUnit = edits.feedstockUnit;
           }
-          entry.feedstockSpecs = updated;
-        }
-        return entry;
-      });
+          if (entry.feedstockSpecs) {
+            const updated = { ...entry.feedstockSpecs };
+            if (specEdits) {
+              for (const [key, value] of Object.entries(specEdits)) {
+                if (updated[key]) {
+                  updated[key] = {
+                    ...updated[key],
+                    value,
+                    source: "user_provided",
+                    confidence: "high",
+                    provenance: noteEdits?.[key] ?? "User-provided override",
+                  };
+                }
+              }
+            }
+            if (noteEdits) {
+              for (const [key, note] of Object.entries(noteEdits)) {
+                if (updated[key] && !specEdits?.[key]) {
+                  updated[key] = {
+                    ...updated[key],
+                    provenance: note,
+                  };
+                }
+              }
+            }
+            if (deletedSpecKeys) {
+              for (const key of deletedSpecKeys) {
+                delete updated[key];
+              }
+            }
+            entry.feedstockSpecs = updated;
+          }
+          return entry;
+        });
 
       const primary = updatedFeedstocks[0];
 
       let updatedOutputSpecs = outputSpecs;
-      if (Object.keys(outputSpecEdits).length > 0 && updatedOutputSpecs) {
+      if (updatedOutputSpecs) {
         updatedOutputSpecs = { ...updatedOutputSpecs };
-        for (const [profileName, edits] of Object.entries(outputSpecEdits)) {
-          if (updatedOutputSpecs[profileName]) {
-            updatedOutputSpecs[profileName] = { ...updatedOutputSpecs[profileName] };
+        for (const [profileName, profileSpecs] of Object.entries(updatedOutputSpecs)) {
+          updatedOutputSpecs[profileName] = { ...profileSpecs };
+          const edits = outputSpecEdits[profileName];
+          const noteEdits = outputNoteEdits[profileName];
+          const deletedKeys = deletedOutputSpecs[profileName];
+          if (edits) {
             for (const [key, value] of Object.entries(edits)) {
               if (updatedOutputSpecs[profileName][key]) {
                 updatedOutputSpecs[profileName][key] = {
@@ -558,9 +654,24 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   value,
                   source: "user_provided",
                   confidence: "high",
-                  provenance: "User-provided override",
+                  provenance: noteEdits?.[key] ?? "User-provided override",
                 };
               }
+            }
+          }
+          if (noteEdits) {
+            for (const [key, note] of Object.entries(noteEdits)) {
+              if (updatedOutputSpecs[profileName][key] && !edits?.[key]) {
+                updatedOutputSpecs[profileName][key] = {
+                  ...updatedOutputSpecs[profileName][key],
+                  provenance: note,
+                };
+              }
+            }
+          }
+          if (deletedKeys) {
+            for (const key of deletedKeys) {
+              delete updatedOutputSpecs[profileName][key];
             }
           }
         }
@@ -587,7 +698,12 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
       setIsEditing(false);
       setFeedstockEdits({});
       setFeedstockSpecEdits({});
+      setFeedstockNoteEdits({});
+      setDeletedFeedstockIndices(new Set());
+      setDeletedFeedstockSpecs({});
       setOutputSpecEdits({});
+      setOutputNoteEdits({});
+      setDeletedOutputSpecs({});
       toast({
         title: "UPIF updated",
         description: "Your changes have been saved.",
@@ -786,7 +902,12 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   });
                   setFeedstockEdits({});
                   setFeedstockSpecEdits({});
+                  setFeedstockNoteEdits({});
+                  setDeletedFeedstockIndices(new Set());
+                  setDeletedFeedstockSpecs({});
                   setOutputSpecEdits({});
+                  setOutputNoteEdits({});
+                  setDeletedOutputSpecs({});
                   setIsEditing(true);
                 }}
                 data-testid="button-edit-upif"
@@ -810,12 +931,28 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                     <Badge variant="secondary" className="text-xs">{feedstocks.length} feedstock{feedstocks.length > 1 ? "s" : ""}</Badge>
                   </h4>
                   {feedstocks.map((fs, idx) => {
+                    if (deletedFeedstockIndices.has(idx)) return null;
                     const specs = fs.feedstockSpecs as Record<string, EnrichedFeedstockSpec> | undefined;
                     const hasSpecs = specs && Object.keys(specs).length > 0;
                     const fsConfirm = localConfirmedFields.feedstocks?.[idx];
+                    const nonDeletedCount = feedstocks.filter((_, i) => !deletedFeedstockIndices.has(i)).length;
                     return (
                       <div key={idx} className="border rounded-md p-4 space-y-4">
-                        <h5 className="text-sm font-semibold">Feedstock {idx + 1}</h5>
+                        <div className="flex items-center justify-between gap-2">
+                          <h5 className="text-sm font-semibold">Feedstock {idx + 1}</h5>
+                          {nonDeletedCount > 1 && (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="text-destructive"
+                              onClick={() => setDeletedFeedstockIndices(prev => new Set([...prev, idx]))}
+                              data-testid={`button-delete-feedstock-${idx}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                         <div className="space-y-3">
                           <div>
                             <Label className="text-xs text-muted-foreground">Type</Label>
@@ -894,6 +1031,19 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                                   [idx]: { ...(prev[idx] || {}), [key]: value },
                                 }));
                               }}
+                              onNoteUpdate={(key, note) => {
+                                setFeedstockNoteEdits(prev => ({
+                                  ...prev,
+                                  [idx]: { ...(prev[idx] || {}), [key]: note },
+                                }));
+                              }}
+                              onSpecDelete={(key) => {
+                                setDeletedFeedstockSpecs(prev => ({
+                                  ...prev,
+                                  [idx]: new Set([...(prev[idx] || []), key]),
+                                }));
+                              }}
+                              deletedKeys={deletedFeedstockSpecs[idx]}
                               confirmedSpecs={localConfirmedFields.feedstocks?.[idx]?.feedstockSpecs}
                               showConfirmToggles={false}
                             />
@@ -992,6 +1142,19 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                               [profile]: { ...(prev[profile] || {}), [key]: value },
                             }));
                           }}
+                          onNoteUpdate={(profile, key, note) => {
+                            setOutputNoteEdits(prev => ({
+                              ...prev,
+                              [profile]: { ...(prev[profile] || {}), [key]: note },
+                            }));
+                          }}
+                          onSpecDelete={(profile, key) => {
+                            setDeletedOutputSpecs(prev => ({
+                              ...prev,
+                              [profile]: new Set([...(prev[profile] || []), key]),
+                            }));
+                          }}
+                          deletedKeys={deletedOutputSpecs[profileName]}
                           confirmedSpecs={localConfirmedFields.outputSpecs?.[profileName]}
                           showConfirmToggles={false}
                         />
@@ -1080,7 +1243,12 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                     setIsEditing(false);
                     setFeedstockEdits({});
                     setFeedstockSpecEdits({});
+                    setFeedstockNoteEdits({});
+                    setDeletedFeedstockIndices(new Set());
+                    setDeletedFeedstockSpecs({});
                     setOutputSpecEdits({});
+                    setOutputNoteEdits({});
+                    setDeletedOutputSpecs({});
                   }}
                 >
                   <X className="h-4 w-4 mr-2" />
