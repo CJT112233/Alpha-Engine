@@ -481,7 +481,7 @@ async function extractParametersWithAI(entries: Array<{ content: string; categor
 
   console.log("AI extraction: Starting extraction with OpenAI for content length:", content.length);
 
-  const systemPrompt = `You are a senior biogas and anaerobic digestion project engineer conducting a detailed project intake review. Your job is to extract EVERY relevant technical, commercial, and logistical parameter from unstructured project descriptions.
+  const systemPrompt = `You are a senior wastewater engineer with a specialization in treating high-strength food processing wastewater, food processing residuals, treating wastewater to acceptable effluent standards and creating RNG as a byproduct, conducting a detailed project intake review. Your job is to extract EVERY relevant technical, commercial, and logistical parameter from unstructured project descriptions.
 
 APPROACH:
 1. Read the entire text carefully and identify every piece of factual information: numbers, locations, materials, requirements, dates, costs, technical specifications, and implied details.
@@ -1262,7 +1262,7 @@ export async function registerRoutes(
       const chatHistory = await storage.getChatMessagesByScenario(scenarioId);
       const recentHistory = chatHistory.slice(-10);
 
-      const systemPrompt = `You are a senior biogas and anaerobic digestion project reviewer assistant. You help reviewers refine the Unified Project Intake Form (UPIF) by applying their feedback.
+      const systemPrompt = `You are a senior wastewater engineer with a specialization in treating high-strength food processing wastewater, food processing residuals, treating wastewater to acceptable effluent standards and creating RNG as a byproduct, acting as a project reviewer assistant. You help reviewers refine the Unified Project Intake Form (UPIF) by applying their feedback.
 
 CURRENT UPIF STATE:
 ${JSON.stringify(upifSnapshot, null, 2)}
