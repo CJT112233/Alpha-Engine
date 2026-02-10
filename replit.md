@@ -43,7 +43,7 @@ Number formatting: Always display numbers with comma separators for thousands (e
 
 ### Core Data Models
 - **Projects**: Top-level containers for related scenarios
-- **Scenarios**: Individual project evaluations with their own inputs/outputs (status: draft, in_review, confirmed)
+- **Scenarios**: Individual project evaluations with their own inputs/outputs (status: draft, in_review, confirmed), with per-scenario `preferredModel` field (gpt5 or claude)
 - **Text Entries**: Conversational inputs categorized by type
 - **Documents**: Uploaded files with metadata
 - **Extracted Parameters**: AI-extracted parameters with confidence levels
@@ -82,9 +82,15 @@ Number formatting: Always display numbers with comma separators for thousands (e
 - Lucide React for icons
 
 ### AI/ML Integration
-- OpenAI SDK for intelligent parameter extraction using GPT-5
-- The system uses AI to extract project parameters from natural language input
-- Falls back to pattern matching if OpenAI API key is not configured
+- **Multi-LLM Support**: Users can switch between GPT-5 (OpenAI) and Claude Sonnet 4.5 (Anthropic) per scenario
+  - Unified LLM service in `server/llm.ts` abstracts both providers behind a common interface
+  - `preferredModel` column on scenarios table stores the user's choice (default: gpt5)
+  - Model selector dropdown in UPIF tab (only shown when both providers are available)
+  - All LLM call points (extraction, reviewer chat, PDF summary) use the scenario's preferred model
+  - GET `/api/llm-providers` returns available providers
+  - PATCH `/api/scenarios/:id/preferred-model` updates model preference
+  - Anthropic access via Replit AI Integrations (no separate API key needed, billed to credits)
+- Falls back to available provider if preferred one is not configured, then to pattern matching
 - Extracted parameters show "AI extracted" badge in the UI when AI is used
 - **Feedstock Enrichment**: After AI extraction, feedstock types are matched against a built-in knowledge base (`shared/feedstock-library.ts`) containing design parameters for common AD feedstocks (Potato Waste, Dairy Manure, Food Waste, FOG, Crop Residue, Poultry Litter, Swine Manure, Municipal Wastewater Sludge)
 - Each enriched parameter includes: value, unit, source (user_provided vs estimated_default), confidence level, provenance (literature citation/reasoning), and display grouping (identity, physical, biochemical, contaminants, extended)

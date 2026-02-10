@@ -44,6 +44,7 @@ export interface IStorage {
   getRecentScenarios(): Promise<(Scenario & { projectName: string })[]>;
   createScenario(scenario: InsertScenario): Promise<Scenario>;
   updateScenarioStatus(id: string, status: string, confirmedAt?: Date): Promise<Scenario | undefined>;
+  updateScenarioModel(id: string, model: string): Promise<Scenario | undefined>;
   deleteScenario(id: string): Promise<void>;
 
   // Text Entries
@@ -150,6 +151,15 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .update(scenarios)
       .set(updates)
+      .where(eq(scenarios.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async updateScenarioModel(id: string, model: string): Promise<Scenario | undefined> {
+    const result = await db
+      .update(scenarios)
+      .set({ preferredModel: model })
       .where(eq(scenarios.id, id))
       .returning();
     return result[0];

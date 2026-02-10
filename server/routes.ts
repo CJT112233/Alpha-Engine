@@ -6,7 +6,6 @@ import fs from "fs";
 import { storage } from "./storage";
 import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema, type FeedstockEntry, type ConfirmedFields } from "@shared/schema";
 import { z } from "zod";
-import OpenAI from "openai";
 import { enrichFeedstockSpecs, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { enrichOutputSpecs, matchOutputType, type EnrichedOutputSpec } from "@shared/output-criteria-library";
 import * as XLSX from "xlsx";
@@ -14,9 +13,7 @@ import mammoth from "mammoth";
 import PDFDocument from "pdfkit";
 import { feedstockGroupLabels, feedstockGroupOrder } from "@shared/feedstock-library";
 import { outputGroupLabels, outputGroupOrder } from "@shared/output-criteria-library";
-
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { llmComplete, getAvailableProviders, providerLabels, isProviderAvailable, type LLMProvider } from "./llm";
 
 const upload = multer({
   dest: "uploads/",
@@ -464,8 +461,7 @@ function extractParametersFromText(entries: Array<{ content: string; category: s
   return uniqueParams;
 }
 
-// AI-powered parameter extraction using OpenAI
-async function extractParametersWithAI(entries: Array<{ content: string; category: string | null }>): Promise<ExtractedParam[]> {
+async function extractParametersWithAI(entries: Array<{ content: string; category: string | null }>, model: LLMProvider = "gpt5"): Promise<ExtractedParam[]> {
   const content = entries.map(e => e.content).join("\n\n");
   
   if (!content.trim()) {
@@ -473,13 +469,17 @@ async function extractParametersWithAI(entries: Array<{ content: string; categor
     return [];
   }
 
-  // Check for API key
-  if (!process.env.OPENAI_API_KEY) {
-    console.log("AI extraction: No OPENAI_API_KEY configured, using pattern matching");
-    return extractParametersFromText(entries);
+  if (!isProviderAvailable(model)) {
+    const fallback = getAvailableProviders()[0];
+    if (!fallback) {
+      console.log("AI extraction: No LLM provider available, using pattern matching");
+      return extractParametersFromText(entries);
+    }
+    console.log(`AI extraction: ${model} not available, falling back to ${fallback}`);
+    model = fallback;
   }
 
-  console.log("AI extraction: Starting extraction with OpenAI for content length:", content.length);
+  console.log(`AI extraction: Starting extraction with ${providerLabels[model]} for content length:`, content.length);
 
   const systemPrompt = `You are a senior wastewater engineer with a specialization in treating high-strength food processing wastewater, food processing residuals, treating wastewater to acceptable effluent standards and creating RNG as a byproduct, conducting a detailed project intake review. Your job is to extract EVERY relevant technical, commercial, and logistical parameter from unstructured project descriptions.
 
@@ -548,25 +548,19 @@ COMMONLY MISSED DETAILS - check for these:
 Return ONLY the JSON object with the "parameters" array.`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-5",
+    const response = await llmComplete({
+      model,
       messages: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: `Carefully analyze the following project description and extract ALL parameters. Be thorough - capture every detail mentioned or clearly implied:\n\n${content}`
-        }
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Carefully analyze the following project description and extract ALL parameters. Be thorough - capture every detail mentioned or clearly implied:\n\n${content}` },
       ],
-      response_format: { type: "json_object" },
-      max_completion_tokens: 16384,
+      maxTokens: 16384,
+      jsonMode: true,
     });
 
-    const rawResponse = response.choices[0].message.content || "{}";
-    console.log("AI extraction: Received response from OpenAI, length:", rawResponse.length);
-    console.log("AI extraction: Token usage - prompt:", response.usage?.prompt_tokens, "completion:", response.usage?.completion_tokens);
+    const rawResponse = response.content || "{}";
+    console.log(`AI extraction: Received response from ${providerLabels[model]}, length:`, rawResponse.length);
+    console.log("AI extraction: Token usage - prompt:", response.promptTokens, "completion:", response.completionTokens);
     
     const result = JSON.parse(rawResponse);
     
@@ -606,6 +600,32 @@ export async function registerRoutes(
   if (!fs.existsSync("uploads")) {
     fs.mkdirSync("uploads", { recursive: true });
   }
+
+  app.get("/api/llm-providers", (_req: Request, res: Response) => {
+    const available = getAvailableProviders();
+    res.json({
+      providers: available.map(p => ({ id: p, label: providerLabels[p] })),
+      default: available[0] || "gpt5",
+    });
+  });
+
+  app.patch("/api/scenarios/:id/preferred-model", async (req: Request, res: Response) => {
+    try {
+      const { model } = req.body;
+      if (!model || !["gpt5", "claude"].includes(model)) {
+        return res.status(400).json({ error: "Invalid model. Must be 'gpt5' or 'claude'." });
+      }
+      const scenario = await storage.getScenario(req.params.id);
+      if (!scenario) {
+        return res.status(404).json({ error: "Scenario not found" });
+      }
+      const updated = await storage.updateScenarioModel(req.params.id, model);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating preferred model:", error);
+      res.status(500).json({ error: "Failed to update preferred model" });
+    }
+  });
 
   // Projects
   app.get("/api/projects", async (_req: Request, res: Response) => {
@@ -847,8 +867,9 @@ export async function registerRoutes(
       // Combine text entries and document text for extraction
       const allEntries = [...entries, ...docEntries];
       
-      // Extract parameters using AI (falls back to pattern matching if AI fails)
-      const extractedParams = await extractParametersWithAI(allEntries);
+      const extractScenario = await storage.getScenario(scenarioId);
+      const extractModel = (extractScenario?.preferredModel as LLMProvider) || "gpt5";
+      const extractedParams = await extractParametersWithAI(allEntries, extractModel);
       
       // Clear existing parameters
       await storage.deleteParametersByScenario(scenarioId);
@@ -1197,11 +1218,14 @@ export async function registerRoutes(
         content: message.trim(),
       });
 
-      if (!process.env.OPENAI_API_KEY) {
+      const scenario = await storage.getScenario(scenarioId);
+      const chatModel = (scenario?.preferredModel as LLMProvider) || "gpt5";
+
+      if (getAvailableProviders().length === 0) {
         const assistantMsg = await storage.createChatMessage({
           scenarioId,
           role: "assistant",
-          content: "AI is not configured. Please ensure an OpenAI API key is set up.",
+          content: "No AI provider is configured. Please ensure an API key is set up.",
         });
         return res.json(assistantMsg);
       }
@@ -1308,14 +1332,14 @@ IMPORTANT:
       }
       messages.push({ role: "user", content: message.trim() });
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-5",
+      const response = await llmComplete({
+        model: chatModel,
         messages,
-        response_format: { type: "json_object" },
-        max_completion_tokens: 8192,
+        maxTokens: 8192,
+        jsonMode: true,
       });
 
-      const rawResponse = response.choices[0].message.content || "{}";
+      const rawResponse = response.content || "{}";
       let parsed: {
         assistantMessage?: string;
         updates?: Record<string, unknown>;
@@ -1548,14 +1572,16 @@ IMPORTANT:
 
 Provide a professional, technical summary in 3-5 sentences.`;
 
-        const completion = await openai.chat.completions.create({
-          model: "gpt-5",
+        const pdfScenario = await storage.getScenario(scenarioId);
+        const pdfModel = (pdfScenario?.preferredModel as LLMProvider) || "gpt5";
+        const completion = await llmComplete({
+          model: pdfModel,
           messages: [{ role: "user", content: prompt }],
-          max_completion_tokens: 300,
+          maxTokens: 300,
         });
-        aiSummary = completion.choices[0]?.message?.content?.trim() || "";
+        aiSummary = completion.content?.trim() || "";
       } catch (err) {
-        console.error("OpenAI summary generation failed, using fallback:", err);
+        console.error("LLM summary generation failed, using fallback:", err);
       }
 
       if (!aiSummary) {

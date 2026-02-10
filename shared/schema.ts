@@ -21,6 +21,7 @@ export const scenarios = pgTable("scenarios", {
   projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   status: text("status").notNull().default("draft"), // draft, in_review, confirmed
+  preferredModel: text("preferred_model").default("gpt5"), // gpt5, claude
   createdAt: timestamp("created_at").defaultNow().notNull(),
   confirmedAt: timestamp("confirmed_at"),
 });

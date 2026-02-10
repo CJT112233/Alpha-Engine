@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, MessageSquare, FileUp, FileText, Check, Trash2, AlertCircle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, MessageSquare, FileUp, FileText, Check, Trash2, AlertCircle, Bot } from "lucide-react";
 import type { Scenario, Project, TextEntry, Document, UpifRecord } from "@shared/schema";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -34,6 +35,19 @@ export default function ScenarioDetail() {
 
   const { data: upif, isLoading: upifLoading } = useQuery<UpifRecord>({
     queryKey: ["/api/scenarios", id, "upif"],
+  });
+
+  const { data: llmProviders } = useQuery<{ providers: Array<{ id: string; label: string }>; default: string }>({
+    queryKey: ["/api/llm-providers"],
+  });
+
+  const modelMutation = useMutation({
+    mutationFn: async (model: string) => {
+      return apiRequest("PATCH", `/api/scenarios/${id}/preferred-model`, { model });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", id] });
+    },
   });
 
   const deleteScenarioMutation = useMutation({
@@ -204,6 +218,30 @@ export default function ScenarioDetail() {
           </TabsContent>
 
           <TabsContent value="upif" className="space-y-4">
+            {llmProviders && llmProviders.providers.length > 1 && (
+              <div className="flex items-center gap-3 justify-end" data-testid="model-selector-container">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Bot className="h-4 w-4" />
+                  <span>AI Model</span>
+                </div>
+                <Select
+                  value={(scenario as any).preferredModel || "gpt5"}
+                  onValueChange={(value) => modelMutation.mutate(value)}
+                  disabled={modelMutation.isPending}
+                >
+                  <SelectTrigger className="w-[200px]" data-testid="select-llm-model">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {llmProviders.providers.map((p) => (
+                      <SelectItem key={p.id} value={p.id} data-testid={`option-model-${p.id}`}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <UpifReview
               scenarioId={id!}
               upif={upif}
