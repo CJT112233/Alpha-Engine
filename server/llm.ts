@@ -24,17 +24,21 @@ export interface LLMCompletionResult {
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const anthropic = new Anthropic({
-  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
-});
+const anthropicApiKey = process.env.ANTHROPIC_API_KEY || process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
+const anthropicOptions: ConstructorParameters<typeof Anthropic>[0] = {
+  apiKey: anthropicApiKey,
+};
+if (!process.env.ANTHROPIC_API_KEY && process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL) {
+  anthropicOptions.baseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
+}
+const anthropic = new Anthropic(anthropicOptions);
 
 export function isProviderAvailable(provider: LLMProvider): boolean {
   if (provider === "gpt5") {
     return !!process.env.OPENAI_API_KEY;
   }
   if (provider === "claude") {
-    return !!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY && !!process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
+    return !!process.env.ANTHROPIC_API_KEY || (!!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY && !!process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL);
   }
   return false;
 }
