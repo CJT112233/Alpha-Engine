@@ -947,18 +947,19 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
       return res.json();
     },
     onSuccess: (data: { questions: ClarifyingQuestion[] }) => {
-      setClarifyingQuestions(data.questions || []);
-      setClarifyingAnswers(new Array(data.questions?.length || 0).fill(""));
-      setShowClarifyPhase(true);
+      const questions = data.questions || [];
       setClarifyFailed(false);
+      if (questions.length === 0) {
+        extractParametersMutation.mutate();
+        return;
+      }
+      setClarifyingQuestions(questions);
+      setClarifyingAnswers(new Array(questions.length).fill(""));
+      setShowClarifyPhase(true);
     },
     onError: () => {
       setClarifyFailed(true);
-      toast({
-        title: "Couldn't generate questions",
-        description: "You can still generate the UPIF directly using the button below.",
-        variant: "destructive",
-      });
+      extractParametersMutation.mutate();
     },
   });
 
