@@ -60,12 +60,12 @@ export function getAvailableProviders(): LLMProvider[] {
 export const providerLabels: Record<LLMProvider, string> = {
   gpt5: "GPT-5",
   claude: "Claude Sonnet 4.5",
-  "claude-opus": "Claude Opus 4",
+  "claude-opus": "Claude Opus 4.6",
 };
 
 const anthropicModelIds: Record<string, string> = {
   claude: "claude-sonnet-4-5",
-  "claude-opus": "claude-opus-4",
+  "claude-opus": "claude-opus-4-6",
 };
 
 export async function llmComplete(options: LLMCompletionOptions): Promise<LLMCompletionResult> {

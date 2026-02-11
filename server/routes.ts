@@ -1447,9 +1447,10 @@ IMPORTANT:
       });
 
       res.json(assistantMsg);
-    } catch (error) {
-      console.error("Error in UPIF chat:", error);
-      res.status(500).json({ error: "Failed to process chat message" });
+    } catch (error: any) {
+      console.error("Error in UPIF chat:", error?.message || error);
+      const errMsg = error?.message || "Unknown error";
+      res.status(500).json({ error: `Failed to process chat message: ${errMsg}` });
     }
   });
 
