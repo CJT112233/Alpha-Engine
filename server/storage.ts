@@ -1,3 +1,10 @@
+/**
+ * Data Access Layer (DAL) for the application.
+ * Handles all database operations using Drizzle ORM with PostgreSQL.
+ * Implements the IStorage interface to provide a contract for CRUD operations
+ * across all domain entities (Projects, Scenarios, TextEntries, Documents, etc.).
+ */
+
 import { eq, desc, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -28,12 +35,19 @@ import {
   type InsertPromptTemplate,
 } from "@shared/schema";
 
+// Initialize PostgreSQL connection pool from environment DATABASE_URL
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
+// Create Drizzle ORM instance for database operations
 export const db = drizzle(pool);
 
+/**
+ * Storage interface that defines the contract for all database CRUD operations.
+ * Methods are grouped by domain entity: Projects, Scenarios, TextEntries, Documents,
+ * Parameters, UPIF records, UPIF Chat messages, and Prompt Templates.
+ */
 export interface IStorage {
   // Projects
   getAllProjects(): Promise<Project[]>;
@@ -84,8 +98,16 @@ export interface IStorage {
   deletePromptTemplate(key: string): Promise<void>;
 }
 
+/**
+ * Implementation of IStorage interface using Drizzle ORM queries.
+ * Provides all CRUD operations for database entities with proper type safety.
+ */
 export class DatabaseStorage implements IStorage {
-  // Projects
+  // ============================================================================
+  // PROJECTS
+  // ============================================================================
+  // Project CRUD operations: retrieve all, get single, create, delete
+
   async getAllProjects(): Promise<Project[]> {
     return db.select().from(projects).orderBy(desc(projects.createdAt));
   }
@@ -104,7 +126,13 @@ export class DatabaseStorage implements IStorage {
     await db.delete(projects).where(eq(projects.id, id));
   }
 
-  // Scenarios
+  // ============================================================================
+  // SCENARIOS
+  // ============================================================================
+  // Scenario CRUD operations with project joins.
+  // getScenario and getRecentScenarios use innerJoin with projects table to include
+  // project context in the response.
+
   async getScenariosByProject(projectId: string): Promise<Scenario[]> {
     return db
       .select()
@@ -188,7 +216,11 @@ export class DatabaseStorage implements IStorage {
     await db.delete(scenarios).where(eq(scenarios.id, id));
   }
 
-  // Text Entries
+  // ============================================================================
+  // TEXT ENTRIES
+  // ============================================================================
+  // Text entry CRUD operations: retrieve by scenario, create, delete
+
   async getTextEntriesByScenario(scenarioId: string): Promise<TextEntry[]> {
     return db
       .select()
@@ -206,7 +238,11 @@ export class DatabaseStorage implements IStorage {
     await db.delete(textEntries).where(eq(textEntries.id, id));
   }
 
-  // Documents
+  // ============================================================================
+  // DOCUMENTS
+  // ============================================================================
+  // Document CRUD operations: retrieve by scenario, create, delete
+
   async getDocumentsByScenario(scenarioId: string): Promise<Document[]> {
     return db
       .select()
@@ -224,7 +260,11 @@ export class DatabaseStorage implements IStorage {
     await db.delete(documents).where(eq(documents.id, id));
   }
 
-  // Parameters
+  // ============================================================================
+  // PARAMETERS
+  // ============================================================================
+  // Extracted parameter CRUD operations: retrieve by scenario, create, update, delete
+
   async getParametersByScenario(scenarioId: string): Promise<ExtractedParameter[]> {
     return db
       .select()
@@ -251,7 +291,13 @@ export class DatabaseStorage implements IStorage {
     await db.delete(extractedParameters).where(eq(extractedParameters.scenarioId, scenarioId));
   }
 
-  // UPIF
+  // ============================================================================
+  // UPIF RECORDS
+  // ============================================================================
+  // UPIF (Unit Process Information Form) record operations.
+  // updateUpif automatically updates the updatedAt timestamp.
+  // confirmUpif sets isConfirmed to true and sets confirmedAt to current timestamp.
+
   async getUpifByScenario(scenarioId: string): Promise<UpifRecord | undefined> {
     const result = await db.select().from(upifRecords).where(eq(upifRecords.scenarioId, scenarioId));
     return result[0];
@@ -280,6 +326,11 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  // ============================================================================
+  // UPIF CHAT MESSAGES
+  // ============================================================================
+  // UPIF chat message CRUD operations: retrieve by scenario, create
+
   async getChatMessagesByScenario(scenarioId: string): Promise<UpifChatMessage[]> {
     return db
       .select()
@@ -292,6 +343,13 @@ export class DatabaseStorage implements IStorage {
     const result = await db.insert(upifChatMessages).values(msg).returning();
     return result[0];
   }
+
+  // ============================================================================
+  // PROMPT TEMPLATES
+  // ============================================================================
+  // Prompt template CRUD operations.
+  // upsertPromptTemplate performs an insert-or-update operation: if a template with
+  // the same key exists, it updates the record; otherwise, it inserts a new one.
 
   async getAllPromptTemplates(): Promise<PromptTemplate[]> {
     return db.select().from(promptTemplates).orderBy(promptTemplates.key);
@@ -321,4 +379,5 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
+// Singleton instance of DatabaseStorage used by routes for all database operations
 export const storage = new DatabaseStorage();

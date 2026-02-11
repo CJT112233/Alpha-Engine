@@ -1,3 +1,8 @@
+/**
+ * Main application entry point — sets up routing, sidebar layout, and
+ * the global provider hierarchy (data fetching, theming, tooltips, sidebar).
+ */
+
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -15,6 +20,7 @@ import ScenarioDetail from "@/pages/scenario-detail";
 import Documentation from "@/pages/documentation";
 import SettingsPage from "@/pages/settings";
 
+// Client-side route definitions using wouter's Switch/Route pattern
 function Router() {
   return (
     <Switch>
@@ -29,16 +35,22 @@ function Router() {
   );
 }
 
+// Application shell: sidebar navigation, header (sidebar trigger + theme toggle), and main content area
 function App() {
+  // Custom sidebar width configuration (CSS custom properties consumed by SidebarProvider)
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
   };
 
   return (
+    // QueryClientProvider — TanStack Query context for data fetching/caching
     <QueryClientProvider client={queryClient}>
+      {/* ThemeProvider — dark/light mode toggle and persistence */}
       <ThemeProvider defaultTheme="light">
+        {/* TooltipProvider — shared context for Radix tooltip positioning */}
         <TooltipProvider>
+          {/* SidebarProvider — collapsible sidebar state management */}
           <SidebarProvider style={style as React.CSSProperties}>
             <div className="flex h-screen w-full">
               <AppSidebar />

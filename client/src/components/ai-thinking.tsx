@@ -1,12 +1,31 @@
+/**
+ * AI Thinking/Loading Indicator Component
+ * 
+ * Displays a visual loading state shown during AI operations including UPIF generation,
+ * chat conversations, and PDF summarization. Features a brain icon with an animated
+ * spinner overlay and a live elapsed timer showing how long the operation has been running.
+ */
+
 import { useState, useEffect, useRef } from "react";
 import { Brain, Loader2 } from "lucide-react";
 
+/**
+ * Props for the AiThinking component
+ * @property isActive - Toggles visibility of the thinking indicator
+ * @property label - Customizable message text (default: "AI is thinking")
+ * @property compact - Renders smaller inline version vs. full centered layout
+ */
 interface AiThinkingProps {
   isActive: boolean;
   label?: string;
   compact?: boolean;
 }
 
+/**
+ * Custom hook that tracks elapsed time while AI operation is active.
+ * Records seconds elapsed since activation, updating every second.
+ * Automatically resets to 0 when the operation is deactivated.
+ */
 function useElapsedTime(isActive: boolean) {
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef<number | null>(null);
@@ -44,6 +63,8 @@ export function AiThinking({ isActive, label = "AI is thinking", compact = false
     return `${m}m ${s}s`;
   };
 
+  // Compact render path: inline version used during operations like re-generation
+  // Displays spinner, label, and timer in a single row with minimal space
   if (compact) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="ai-thinking-compact">
@@ -54,6 +75,8 @@ export function AiThinking({ isActive, label = "AI is thinking", compact = false
     );
   }
 
+  // Full render path: centered layout used for initial generation
+  // Displays brain icon with animated spinner overlay, label, and elapsed timer
   return (
     <div className="flex flex-col items-center justify-center py-8 gap-4" data-testid="ai-thinking-indicator">
       <div className="relative">

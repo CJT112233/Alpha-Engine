@@ -1,3 +1,9 @@
+/**
+ * Main UPIF review component — handles display, inline editing, per-field
+ * confirmation/locking, AI-driven generation, and PDF export of the
+ * Unified Project Intake Form.
+ */
+
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useCallback, useEffect } from "react";
 import { AiThinking } from "@/components/ai-thinking";
 
+// Number formatting helper — adds locale-aware thousand separators for display
 function formatDisplayValue(val: string): string {
   if (!val) return val;
   return val.replace(/(?<![.\d])\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?/g, (match) => {
@@ -55,12 +62,14 @@ const groupIcons: Record<string, React.ReactNode> = {
   extended: <Settings2 className="h-3.5 w-3.5" />,
 };
 
+// Badge styling map for confidence level indicators (high/medium/low)
 const confidenceBadgeClass: Record<string, string> = {
   high: "bg-green-500/10 text-green-700 dark:text-green-400",
   medium: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
   low: "bg-red-500/10 text-red-700 dark:text-red-400",
 };
 
+// Lock/unlock toggle button for confirming individual UPIF fields
 function ConfirmToggle({
   isConfirmed,
   onToggle,
@@ -91,6 +100,7 @@ function ConfirmToggle({
   );
 }
 
+// Expandable/collapsible section wrapper used throughout the UPIF display
 function CollapsibleSection({
   icon,
   title,
@@ -130,6 +140,11 @@ function CollapsibleSection({
   );
 }
 
+/**
+ * Table component for enriched feedstock design parameters.
+ * Supports inline editing, deletion, confirmation toggles, and provenance tooltips.
+ * Groups specs by category: identity, physical, biochemical, contaminants, extended.
+ */
 function FeedstockSpecsTable({
   specs,
   isEditing,
@@ -356,6 +371,7 @@ const outputGroupIcons: Record<string, React.ReactNode> = {
   prohibited: <AlertCircle className="h-3.5 w-3.5" />,
 };
 
+// Badge styling map for data source indicators (standard, estimated, assumed, user-provided)
 const sourceLabels: Record<string, { label: string; className: string }> = {
   typical_industry_standard: { label: "Standard", className: "bg-green-500/10 text-green-700 dark:text-green-400" },
   estimated_requirement: { label: "Estimated", className: "bg-orange-500/10 text-orange-700 dark:text-orange-400" },
@@ -363,6 +379,11 @@ const sourceLabels: Record<string, { label: string; className: string }> = {
   user_provided: { label: "User", className: "bg-blue-500/10 text-blue-700 dark:text-blue-400" },
 };
 
+/**
+ * Table component for output acceptance criteria (RNG pipeline specs,
+ * digestate limits, effluent discharge limits). Same editing/confirmation
+ * pattern as FeedstockSpecsTable, keyed by output profile name.
+ */
 function OutputSpecsTable({
   profileName,
   specs,
@@ -577,6 +598,15 @@ function OutputSpecsTable({
 type ClarifyingQuestion = { question: string };
 type ClarifyingAnswer = { question: string; answer: string };
 
+/**
+ * Primary UPIF review component. Manages:
+ * - UPIF generation flow (clarifying questions -> extraction -> UPIF)
+ * - Edit mode with tracked changes (feedstock edits, spec edits, deletions, new entries)
+ * - Per-field confirmation/locking state
+ * - Re-generation that preserves confirmed (locked) values
+ * - PDF export
+ * - Reviewer chat integration
+ */
 export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioStatus }: UpifReviewProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
@@ -1038,6 +1068,8 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
   if (!upif) {
     const isGenerating = extractParametersMutation.isPending || saveAnswersMutation.isPending;
 
+    // Two-phase generation flow: first show AI-generated clarifying questions,
+    // then extract parameters using the user's answers (or skip straight to extraction)
     if (showClarifyPhase && clarifyingQuestions && clarifyingQuestions.length > 0) {
       return (
         <Card>
@@ -1170,6 +1202,8 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
   }
 
 
+  // UPIF display section: read-only view with per-field confirm toggles,
+  // or full edit mode when the user clicks "Edit"
   return (
     <Card>
       {extractParametersMutation.isPending && (

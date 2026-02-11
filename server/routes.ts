@@ -1,3 +1,13 @@
+/**
+ * REST API Routes for the Project Alpha application.
+ *
+ * This file defines all backend endpoints including:
+ * - CRUD operations for projects, scenarios, text entries, and documents
+ * - AI-powered parameter extraction (GPT-5 / Claude) with pattern-matching fallback
+ * - UPIF (Unified Project Intake Form) generation, enrichment, and field-level locking
+ * - Reviewer chat: conversational AI that can update UPIF fields while respecting locks
+ * - PDF export of the finalized UPIF with tables, watermarks, and AI-generated summaries
+ */
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
@@ -16,11 +26,17 @@ import { outputGroupLabels, outputGroupOrder } from "@shared/output-criteria-lib
 import { llmComplete, getAvailableProviders, providerLabels, isProviderAvailable, type LLMProvider } from "./llm";
 import { DEFAULT_PROMPTS, PROMPT_KEYS, type PromptKey } from "@shared/default-prompts";
 
+// ---------------------------------------------------------------------------
+// Utility Functions
+// ---------------------------------------------------------------------------
+
+/** Multer middleware for file uploads. Stores files in uploads/ with a 50 MB size limit. */
 const upload = multer({
   dest: "uploads/",
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
 });
 
+/** Formats large numbers with comma separators (e.g. 1000000 → "1,000,000") for display. */
 function formatNumericValue(val: string): string {
   if (!val) return val;
   return val.replace(/(?<![.\d])\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{4,}(?:\.\d+)?/g, (match) => {
@@ -30,6 +46,10 @@ function formatNumericValue(val: string): string {
   });
 }
 
+/**
+ * Replaces Unicode characters (math symbols, subscripts, superscripts, special
+ * punctuation) with their ASCII equivalents so PDFKit can render them safely.
+ */
 function sanitizePdfText(text: string): string {
   if (!text) return text;
   return text
@@ -72,6 +92,12 @@ function sanitizePdfText(text: string): string {
     .replace(/³/g, "3");
 }
 
+/**
+ * Converts table-like structures in raw PDF text into structured markdown-style
+ * tables. Detects header rows by keyword patterns (e.g. "Parameter", "Units",
+ * "Limit") and multi-column spacing, then reformats subsequent data rows into
+ * pipe-delimited markdown table format for better downstream AI parsing.
+ */
 function postProcessPdfText(rawText: string): string {
   const lines = rawText.split("\n");
   const processed: string[] = [];
@@ -139,6 +165,11 @@ function postProcessPdfText(rawText: string): string {
   return processed.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/**
+ * Extracts readable text from an uploaded document for AI analysis.
+ * Supports PDF (with table post-processing), DOCX (via mammoth), XLSX/XLS/CSV
+ * (via SheetJS), and plain text files. Returns null for unsupported formats.
+ */
 async function extractTextFromFile(filePath: string, mimeType: string, originalName: string): Promise<string | null> {
   try {
     const ext = path.extname(originalName).toLowerCase();
@@ -196,7 +227,11 @@ async function extractTextFromFile(filePath: string, mimeType: string, originalN
   }
 }
 
-// Helper to categorize text input based on content
+/**
+ * Simple keyword-based categorization of free-text input. Maps user text to one
+ * of: "feedstock", "output_requirements", "location", or "constraints" based on
+ * keyword matches. Returns null if no category is confidently identified.
+ */
 function categorizeInput(content: string): string | null {
   const lowerContent = content.toLowerCase();
   
@@ -230,7 +265,13 @@ function categorizeInput(content: string): string | null {
   return null;
 }
 
-// Helper to extract parameters from text (simple pattern matching for MVP)
+/**
+ * Pattern-matching fallback for parameter extraction when AI is unavailable.
+ * Uses regex patterns to find feedstock types, volumes, technical parameters
+ * (TS, VS/TS, BOD, COD, C:N), locations, output requirements, and constraints.
+ * Also predicts common technical parameters for known feedstock types (e.g.
+ * potato waste, dairy manure) when user-provided values are missing.
+ */
 interface ExtractedParam {
   category: string;
   name: string;
@@ -462,6 +503,17 @@ function extractParametersFromText(entries: Array<{ content: string; category: s
   return uniqueParams;
 }
 
+/**
+ * Main AI-powered parameter extraction function. Sends combined text entries
+ * to the selected LLM (GPT-5 or Claude) with the extraction system prompt.
+ *
+ * Handles:
+ * - Appending clarifying Q&A answers to enrich the input context
+ * - Falling back to another available provider if the preferred model is unavailable
+ * - Parsing the JSON response with field name normalization (handles Opus-style
+ *   "parameter" / "label" fields vs standard "name" field)
+ * - Falling back to regex pattern matching (extractParametersFromText) on failure
+ */
 async function extractParametersWithAI(entries: Array<{ content: string; category: string | null }>, model: LLMProvider = "gpt5", clarifyingQA?: Array<{ question: string; answer: string }>): Promise<ExtractedParam[]> {
   let content = entries.map(e => e.content).join("\n\n");
 
@@ -544,6 +596,7 @@ async function extractParametersWithAI(entries: Array<{ content: string; categor
   }
 }
 
+/** Retrieves a prompt template from the DB (user customization) or falls back to built-in defaults. */
 async function getPromptTemplate(key: PromptKey): Promise<string> {
   const dbTemplate = await storage.getPromptTemplateByKey(key);
   if (dbTemplate) return dbTemplate.template;
@@ -559,6 +612,10 @@ export async function registerRoutes(
   if (!fs.existsSync("uploads")) {
     fs.mkdirSync("uploads", { recursive: true });
   }
+
+  // =========================================================================
+  // LLM Providers & Prompt Management Routes
+  // =========================================================================
 
   app.get("/api/llm-providers", (_req: Request, res: Response) => {
     const available = getAvailableProviders();
@@ -686,7 +743,10 @@ export async function registerRoutes(
     }
   });
 
-  // Projects
+  // =========================================================================
+  // Projects CRUD
+  // =========================================================================
+
   app.get("/api/projects", async (_req: Request, res: Response) => {
     try {
       const projects = await storage.getAllProjects();
@@ -734,7 +794,10 @@ export async function registerRoutes(
     }
   });
 
-  // Scenarios
+  // =========================================================================
+  // Scenarios CRUD
+  // =========================================================================
+
   app.get("/api/projects/:projectId/scenarios", async (req: Request, res: Response) => {
     try {
       const scenarios = await storage.getScenariosByProject(req.params.projectId);
@@ -795,7 +858,10 @@ export async function registerRoutes(
     }
   });
 
-  // Text Entries
+  // =========================================================================
+  // Text Entries CRUD
+  // =========================================================================
+
   app.get("/api/scenarios/:scenarioId/text-entries", async (req: Request, res: Response) => {
     try {
       const entries = await storage.getTextEntriesByScenario(req.params.scenarioId);
@@ -835,7 +901,10 @@ export async function registerRoutes(
     }
   });
 
-  // Documents
+  // =========================================================================
+  // Documents Upload & CRUD
+  // =========================================================================
+
   app.get("/api/scenarios/:scenarioId/documents", async (req: Request, res: Response) => {
     try {
       const docs = await storage.getDocumentsByScenario(req.params.scenarioId);
@@ -892,7 +961,10 @@ export async function registerRoutes(
     }
   });
 
-  // Parameters
+  // =========================================================================
+  // Parameters & Clarifying Questions
+  // =========================================================================
+
   app.get("/api/scenarios/:scenarioId/parameters", async (req: Request, res: Response) => {
     try {
       const params = await storage.getParametersByScenario(req.params.scenarioId);
@@ -990,6 +1062,24 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to save answers" });
     }
   });
+
+  // =========================================================================
+  // Extract & UPIF Generation — THE CORE ENDPOINT
+  //
+  // This is the most important route. It orchestrates the full extraction and
+  // UPIF assembly pipeline:
+  //  1. Gathers all text entries + extracted document text for the scenario
+  //  2. Calls AI extraction (extractParametersWithAI) using the scenario's
+  //     preferred model, including any clarifying Q&A answers
+  //  3. Groups feedstock parameters by numbered prefix (Feedstock 1, 2, …)
+  //  4. Maps technical parameter names to standardized keys (TS, VS/TS, etc.)
+  //  5. Enriches feedstock specs from the knowledge base library
+  //  6. Collects location, output requirements, and constraints
+  //  7. Enriches output acceptance criteria (RNG pipeline, digestate, effluent)
+  //     using keyword detection against input text
+  //  8. Merges with existing UPIF, preserving confirmed/locked fields
+  //  9. Creates or updates the UPIF record and advances scenario to "in_review"
+  // =========================================================================
 
   app.post("/api/scenarios/:scenarioId/extract", async (req: Request, res: Response) => {
     try {
@@ -1294,7 +1384,10 @@ export async function registerRoutes(
     }
   });
 
-  // UPIF
+  // =========================================================================
+  // UPIF CRUD & Confirm
+  // =========================================================================
+
   app.get("/api/scenarios/:scenarioId/upif", async (req: Request, res: Response) => {
     try {
       const upif = await storage.getUpifByScenario(req.params.scenarioId);
@@ -1336,7 +1429,19 @@ export async function registerRoutes(
     }
   });
 
-  // UPIF Chat Messages
+  // =========================================================================
+  // UPIF Reviewer Chat
+  //
+  // Conversational AI endpoint that lets reviewers discuss and refine the UPIF.
+  // The flow:
+  //  1. Builds a list of locked (confirmed) fields that must not be changed
+  //  2. Creates a UPIF snapshot providing the AI with current field values
+  //  3. Sends the last 10 chat messages + user message to the LLM
+  //  4. Parses the AI response for an assistant message and field updates
+  //  5. Server-side enforcement: any updates to locked fields are reverted
+  //  6. Applies valid updates to the UPIF and stores the chat message
+  // =========================================================================
+
   app.get("/api/scenarios/:scenarioId/upif/chat", async (req: Request, res: Response) => {
     try {
       const messages = await storage.getChatMessagesByScenario(req.params.scenarioId);
@@ -1578,7 +1683,20 @@ export async function registerRoutes(
     }
   });
 
-  // PDF Table Drawing Helper
+  // =========================================================================
+  // PDF Export
+  //
+  // Generates a downloadable PDF of the UPIF using PDFKit. The document
+  // includes: title header, DRAFT watermark (if unconfirmed), AI-generated
+  // project summary, feedstock tables grouped by spec category, output
+  // acceptance criteria tables, location, constraints list, and page numbers.
+  // =========================================================================
+
+  /**
+   * Helper to render a data table in the PDF. Handles column widths, header
+   * row styling, alternating row backgrounds, cell text wrapping, and
+   * automatic page breaks when content overflows.
+   */
   function drawTable(
     doc: InstanceType<typeof PDFDocument>,
     headers: string[],

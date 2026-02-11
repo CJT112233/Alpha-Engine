@@ -1,5 +1,31 @@
+/**
+ * Default AI prompt templates used across the system for UPIF generation and refinement.
+ * This file defines the baseline prompts that guide AI interactions in parameter extraction,
+ * clarifying questions, UPIF review chat, and PDF summary generation.
+ * 
+ * Users can override these default prompts via the Settings page, with custom prompts
+ * persisted in the prompt_templates database table. This allows teams to tailor AI behavior
+ * to their specific needs while maintaining system defaults for new users.
+ */
+
+/**
+ * Defines the four prompt types used in the system for AI interactions.
+ * - extraction: Extracts technical parameters from unstructured project descriptions
+ * - clarify: Generates 3 targeted clarifying questions before UPIF generation
+ * - reviewer_chat: Enables UPIF chat refinement with locked field protection
+ * - pdf_summary: Generates one-paragraph project summary for PDF exports
+ */
 export type PromptKey = "extraction" | "clarify" | "reviewer_chat" | "pdf_summary";
 
+/**
+ * Interface defining the structure of a default prompt template.
+ * - key: Unique identifier for the prompt (extraction, clarify, reviewer_chat, or pdf_summary)
+ * - name: Human-readable name of the prompt (e.g., "Parameter Extraction")
+ * - description: Brief explanation of the prompt's purpose and usage
+ * - template: The actual prompt text with optional template variables (e.g., {{UPIF_STATE}})
+ * - isSystemPrompt: Whether this is a system role prompt (true) or user prompt (false)
+ * - availableVariables: List of template variables that can be injected into the template at runtime
+ */
 export interface PromptTemplateDefault {
   key: PromptKey;
   name: string;
@@ -9,7 +35,21 @@ export interface PromptTemplateDefault {
   availableVariables: string[];
 }
 
+/**
+ * Master record of all default AI prompt templates used throughout the system.
+ * These prompts can be overridden by users via the Settings page and are persisted in the prompt_templates database table.
+ * Each prompt serves a specific role in the UPIF generation and refinement workflow.
+ */
 export const DEFAULT_PROMPTS: Record<PromptKey, PromptTemplateDefault> = {
+  /**
+   * Extraction prompt: The primary prompt for extracting technical parameters from unstructured project descriptions.
+   * Instructs the AI to act as a senior wastewater engineer analyzing project intake submissions.
+   * Key features:
+   * - Multi-feedstock support with numbered prefixes (Feedstock 1, Feedstock 2, etc.)
+   * - Exhaustive parameter extraction across 4 categories (feedstock, location, output_requirements, constraints)
+   * - Confidence levels ("high", "medium", "low") for extracted parameters
+   * - Returns structured JSON with all extracted parameters
+   */
   extraction: {
     key: "extraction",
     name: "Parameter Extraction",
@@ -82,6 +122,11 @@ COMMONLY MISSED DETAILS - check for these:
 
 Return ONLY the JSON object with the "parameters" array.`,
   },
+  /**
+   * Clarify prompt: Generates 3 targeted clarifying questions before UPIF generation.
+   * Identifies the most important missing or ambiguous information from project inputs to improve specification quality.
+   * Always returns exactly 3 questions targeting different project aspects (feedstock, outputs, location, constraints, liquid handling).
+   */
   clarify: {
     key: "clarify",
     name: "Clarifying Questions",
@@ -115,6 +160,12 @@ RULES:
   ]
 }`,
   },
+  /**
+   * Reviewer chat prompt: Used in the UPIF chat feature where users can ask the AI to modify the UPIF.
+   * Template variables {{UPIF_STATE}} and {{LOCKED_FIELDS}} are injected at runtime with current UPIF data.
+   * Enforces protection of confirmed/locked fields - changes to locked fields are blocked with explanations.
+   * Returns structured JSON with assistant message, field updates, and list of changed fields.
+   */
   reviewer_chat: {
     key: "reviewer_chat",
     name: "Reviewer Chat",
@@ -154,6 +205,11 @@ IMPORTANT:
 - Be precise with numeric values. Use appropriate units.
 - If the request is unclear, ask for clarification in assistantMessage and set all updates to null.`,
   },
+  /**
+   * PDF summary prompt: Generates a one-paragraph project summary for the PDF export.
+   * Template variables ({{PROJECT_NAME}}, {{SCENARIO_NAME}}, {{FEEDSTOCKS}}, {{LOCATION}}, {{OUTPUT_REQUIREMENTS}}, {{CONSTRAINTS}})
+   * are replaced at runtime with current project data from the UPIF.
+   */
   pdf_summary: {
     key: "pdf_summary",
     name: "PDF Summary",
@@ -170,4 +226,5 @@ Provide a professional, technical summary in 3-5 sentences.`,
   },
 };
 
+// Ordered list of all prompt keys for iteration and reference throughout the system.
 export const PROMPT_KEYS: PromptKey[] = ["extraction", "clarify", "reviewer_chat", "pdf_summary"];
