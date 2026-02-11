@@ -14,6 +14,7 @@ import PDFDocument from "pdfkit";
 import { feedstockGroupLabels, feedstockGroupOrder } from "@shared/feedstock-library";
 import { outputGroupLabels, outputGroupOrder } from "@shared/output-criteria-library";
 import { llmComplete, getAvailableProviders, providerLabels, isProviderAvailable, type LLMProvider } from "./llm";
+import { DEFAULT_PROMPTS, PROMPT_KEYS, type PromptKey } from "@shared/default-prompts";
 
 const upload = multer({
   dest: "uploads/",
@@ -491,71 +492,7 @@ async function extractParametersWithAI(entries: Array<{ content: string; categor
 
   console.log(`AI extraction: Starting extraction with ${providerLabels[model]} for content length:`, content.length);
 
-  const systemPrompt = `You are a senior wastewater engineer with a specialization in treating high-strength food processing wastewater, food processing residuals, treating wastewater to acceptable effluent standards and creating RNG as a byproduct, conducting a detailed project intake review. Your job is to extract EVERY relevant technical, commercial, and logistical parameter from unstructured project descriptions.
-
-APPROACH:
-1. Read the entire text carefully and identify every piece of factual information: numbers, locations, materials, requirements, dates, costs, technical specifications, and implied details.
-2. For each fact, classify it into the appropriate category.
-3. Create a separate parameter entry for each distinct piece of information. Do NOT combine multiple facts into one parameter.
-
-CATEGORIES:
-- feedstock: Waste/material types, volumes and quantities, composition data (TS%, VS/TS ratio, BOD, COD, C:N ratio, moisture content), seasonal variations, number of sources/suppliers, current disposal methods, feedstock availability, hauling distances
-- location: City, state, county, region, GPS coordinates, site details, proximity to gas pipelines or electrical grid, zoning information, land area/acreage, elevation, climate considerations
-- output_requirements: Desired products (RNG, electricity, compressed biogas, compost, digestate, soil amendments), capacity/production targets, pipeline interconnection details, offtake agreements, power purchase agreements, gas quality specs (BTU, siloxane limits, H2S limits)
-- constraints: Regulatory requirements (EPA, state DEQ, air permits, NPDES), timeline/deadlines, equipment preferences or specifications, technology preferences (mesophilic vs thermophilic, CSTR vs plug flow), existing infrastructure, partnership structures, labor considerations, odor requirements, noise limits, setback distances, environmental impact requirements
-
-MULTIPLE FEEDSTOCKS:
-When a project mentions more than one feedstock material, use a NUMBERED prefix to group parameters by feedstock identity:
-- "Feedstock 1 Type", "Feedstock 1 Volume", "Feedstock 1 TS%", etc.
-- "Feedstock 2 Type", "Feedstock 2 Volume", "Feedstock 2 TS%", etc.
-Technical parameters like TS%, VS/TS, C:N ratio should also be prefixed with the feedstock number if they pertain to a specific feedstock.
-If there is only one feedstock, you may omit the number prefix or use "Feedstock 1".
-
-EXAMPLE INPUT:
-"We have a food processing facility in Marion County, OR generating 50 tons/day of vegetable processing waste and 10 tons/day of FOG from our grease traps. TS is around 8% for the vegetable waste. We want to produce RNG for pipeline injection and will need to discharge liquid effluent to the local municipal WWTP. The dewatered digestate will be land-applied on nearby farmland. Budget is $18M. Need air permit submitted by Q1 2027 and online by Q4 2027. We prefer a mesophilic CSTR design."
-
-EXAMPLE OUTPUT:
-{"parameters": [
-  {"category": "feedstock", "name": "Feedstock 1 Type", "value": "Vegetable processing waste", "unit": null, "confidence": "high"},
-  {"category": "feedstock", "name": "Feedstock 1 Volume", "value": "50", "unit": "tons/day", "confidence": "high"},
-  {"category": "feedstock", "name": "Feedstock 1 TS%", "value": "8", "unit": "%", "confidence": "high"},
-  {"category": "feedstock", "name": "Feedstock 2 Type", "value": "FOG (Fats, Oils, Grease)", "unit": null, "confidence": "high"},
-  {"category": "feedstock", "name": "Feedstock 2 Volume", "value": "10", "unit": "tons/day", "confidence": "high"},
-  {"category": "feedstock", "name": "Number of Feedstock Sources", "value": "2", "unit": "sources", "confidence": "medium"},
-  {"category": "location", "name": "County", "value": "Marion County", "unit": null, "confidence": "high"},
-  {"category": "location", "name": "State", "value": "Oregon", "unit": null, "confidence": "high"},
-  {"category": "output_requirements", "name": "Primary Output", "value": "Renewable Natural Gas (RNG)", "unit": null, "confidence": "high"},
-  {"category": "output_requirements", "name": "Liquid Handling", "value": "Discharge to Municipal WWTP", "unit": null, "confidence": "high"},
-  {"category": "output_requirements", "name": "Solid Digestate Handling", "value": "Land application on nearby farmland", "unit": null, "confidence": "high"},
-  {"category": "constraints", "name": "Capital Budget", "value": "18", "unit": "million USD", "confidence": "high"},
-  {"category": "constraints", "name": "Air Permit Deadline", "value": "Q1 2027", "unit": null, "confidence": "high"},
-  {"category": "constraints", "name": "Target Online Date", "value": "Q4 2027", "unit": null, "confidence": "high"},
-  {"category": "constraints", "name": "Digester Technology Preference", "value": "Mesophilic CSTR", "unit": null, "confidence": "high"}
-]}
-
-RULES:
-- Be EXHAUSTIVE. Extract every quantitative value, date, location, material, cost, and requirement mentioned.
-- A typical paragraph should yield 8-15+ parameters. If you find fewer than 5, re-read the text - you are missing details.
-- Create SEPARATE parameter entries for each distinct fact. Never combine "Feedstock Type" and "Volume" into one parameter.
-- Use specific, descriptive parameter names (e.g., "Primary Feedstock Volume" not "Volume", "Capital Budget" not "Cost").
-- Always include units when they are stated or can be reasonably inferred.
-- Look for IMPLIED information too: if someone mentions a farm or facility, extract both the feedstock source AND the location.
-- LIQUID HANDLING IS CRITICAL: Every anaerobic digestion project produces liquid effluent that must go somewhere. If the input mentions discharge to sewer, WWTP, wastewater treatment, or any liquid handling pathway, extract it as an output_requirements parameter (e.g., "Liquid Handling": "Discharge to Municipal WWTP"). If liquid handling is not mentioned but feedstock is described, infer "Liquid Handling" as "To be determined - WWTP discharge or land application likely required" with confidence "low".
-- For confidence levels: "high" = explicitly stated with a specific value, "medium" = clearly implied or partially stated, "low" = requires assumption or is ambiguous.
-
-COMMONLY MISSED DETAILS - check for these:
-- Seasonal variations in feedstock availability
-- Current disposal methods (what happens to waste now?)
-- Distance/proximity mentions (miles to pipeline, nearest town)
-- Timeline or deadline references (permits, construction, operations)
-- Regulatory or permit mentions (EPA, DEQ, LCFS, RFS)
-- Number of sources, facilities, or partners
-- Implied infrastructure needs (RNG implies gas cleanup + pipeline interconnect)
-- Liquid effluent handling pathway (WWTP discharge, land application, irrigation, storage lagoon)
-- Technology specifications (digester type, gas cleanup method)
-- Environmental requirements (odor, noise, setbacks, emissions)
-
-Return ONLY the JSON object with the "parameters" array.`;
+  const systemPrompt = await getPromptTemplate("extraction");
 
   try {
     const response = await llmComplete({
@@ -601,6 +538,12 @@ Return ONLY the JSON object with the "parameters" array.`;
   }
 }
 
+async function getPromptTemplate(key: PromptKey): Promise<string> {
+  const dbTemplate = await storage.getPromptTemplateByKey(key);
+  if (dbTemplate) return dbTemplate.template;
+  return DEFAULT_PROMPTS[key].template;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -617,6 +560,106 @@ export async function registerRoutes(
       providers: available.map(p => ({ id: p, label: providerLabels[p] })),
       default: available[0] || "gpt5",
     });
+  });
+
+  app.get("/api/prompts", async (_req: Request, res: Response) => {
+    try {
+      const dbTemplates = await storage.getAllPromptTemplates();
+      const dbMap = new Map(dbTemplates.map(t => [t.key, t]));
+
+      const result = PROMPT_KEYS.map(key => {
+        const defaults = DEFAULT_PROMPTS[key];
+        const dbEntry = dbMap.get(key);
+        return {
+          key: defaults.key,
+          name: dbEntry?.name || defaults.name,
+          description: dbEntry?.description || defaults.description,
+          template: dbEntry?.template || defaults.template,
+          isSystemPrompt: defaults.isSystemPrompt,
+          availableVariables: defaults.availableVariables,
+          isCustomized: !!dbEntry,
+          updatedAt: dbEntry?.updatedAt || null,
+        };
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/prompts/:key", async (req: Request, res: Response) => {
+    try {
+      const key = req.params.key as PromptKey;
+      if (!PROMPT_KEYS.includes(key)) {
+        return res.status(404).json({ error: "Unknown prompt key" });
+      }
+      const defaults = DEFAULT_PROMPTS[key];
+      const dbEntry = await storage.getPromptTemplateByKey(key);
+      res.json({
+        key: defaults.key,
+        name: dbEntry?.name || defaults.name,
+        description: dbEntry?.description || defaults.description,
+        template: dbEntry?.template || defaults.template,
+        defaultTemplate: defaults.template,
+        isSystemPrompt: defaults.isSystemPrompt,
+        availableVariables: defaults.availableVariables,
+        isCustomized: !!dbEntry,
+        updatedAt: dbEntry?.updatedAt || null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/prompts/:key", async (req: Request, res: Response) => {
+    try {
+      const key = req.params.key as PromptKey;
+      if (!PROMPT_KEYS.includes(key)) {
+        return res.status(404).json({ error: "Unknown prompt key" });
+      }
+      const { template } = req.body;
+      if (!template || typeof template !== "string" || template.trim().length === 0) {
+        return res.status(400).json({ error: "Template text is required" });
+      }
+      const defaults = DEFAULT_PROMPTS[key];
+      const saved = await storage.upsertPromptTemplate({
+        key,
+        name: defaults.name,
+        description: defaults.description,
+        template: template.trim(),
+        isSystemPrompt: defaults.isSystemPrompt,
+      });
+      res.json({
+        ...saved,
+        availableVariables: defaults.availableVariables,
+        isCustomized: true,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/prompts/:key/reset", async (req: Request, res: Response) => {
+    try {
+      const key = req.params.key as PromptKey;
+      if (!PROMPT_KEYS.includes(key)) {
+        return res.status(404).json({ error: "Unknown prompt key" });
+      }
+      await storage.deletePromptTemplate(key);
+      const defaults = DEFAULT_PROMPTS[key];
+      res.json({
+        key: defaults.key,
+        name: defaults.name,
+        description: defaults.description,
+        template: defaults.template,
+        isSystemPrompt: defaults.isSystemPrompt,
+        availableVariables: defaults.availableVariables,
+        isCustomized: false,
+        updatedAt: null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.patch("/api/scenarios/:id/preferred-model", async (req: Request, res: Response) => {
@@ -881,32 +924,7 @@ export async function registerRoutes(
         return res.status(500).json({ error: "No AI provider is configured." });
       }
 
-      const systemPrompt = `You are a senior wastewater engineer with a specialization in treating high-strength food processing wastewater, food processing residuals, treating wastewater to acceptable effluent standards and creating RNG as a byproduct.
-
-You are reviewing a project intake submission for an anaerobic digestion / biogas project. Your job is to identify the THREE most important missing or ambiguous pieces of information that would significantly improve the quality of the project specification.
-
-Focus on questions that would help clarify:
-- Feedstock details (types, volumes, seasonal variation, contaminants, current disposal method)
-- Output goals (RNG pipeline injection, electricity generation, digestate use, effluent discharge path)
-- Site/location specifics (permits, utility interconnections, space constraints)
-- Operational constraints (hours of operation, existing infrastructure, budget range)
-- Liquid handling pathway (discharge to WWTP, land application, on-site treatment)
-
-RULES:
-1. Ask exactly 3 questions - no more, no less.
-2. Each question should target a DIFFERENT aspect of the project.
-3. Questions should be specific and actionable - not vague or generic.
-4. Tailor questions to what is actually MISSING from the provided inputs. Don't ask about things already clearly stated.
-5. Keep questions concise (1-2 sentences each).
-6. Return ONLY valid JSON in this exact format:
-
-{
-  "questions": [
-    { "question": "First question text here?" },
-    { "question": "Second question text here?" },
-    { "question": "Third question text here?" }
-  ]
-}`;
+      const systemPrompt = await getPromptTemplate("clarify");
 
       const response = await llmComplete({
         model,
@@ -1410,38 +1428,10 @@ RULES:
       const chatHistory = await storage.getChatMessagesByScenario(scenarioId);
       const recentHistory = chatHistory.slice(-10);
 
-      const systemPrompt = `You are a senior wastewater engineer with a specialization in treating high-strength food processing wastewater, food processing residuals, treating wastewater to acceptable effluent standards and creating RNG as a byproduct, acting as the project Reviewer. You help refine the Unified Project Intake Form (UPIF) by applying feedback.
-
-CURRENT UPIF STATE:
-${JSON.stringify(upifSnapshot, null, 2)}
-
-LOCKED FIELDS (DO NOT MODIFY THESE):
-${lockedFieldsList.length > 0 ? lockedFieldsList.map(f => `- ${f}`).join("\n") : "None - all fields are unlocked"}
-
-RULES:
-1. You MUST NOT modify any locked field. If feedback asks to change a locked field, explain that it is confirmed/locked and cannot be changed until unlocked.
-2. Treat locked/confirmed fields as established truth and accepted project parameters. Use their values as context and constraints when evaluating whether other unlocked fields should be modified. For example, if a feedstock volume is locked at 50 tons/day, that should inform your assessment of throughput, output capacity, and other dependent parameters.
-3. For unlocked fields, analyze the feedback along with the locked field context and determine which UPIF fields should be updated.
-4. Return a JSON response with EXACTLY this structure:
-{
-  "assistantMessage": "A helpful explanation of what you changed or why you couldn't make a change",
-  "updates": {
-    "location": "new value or null if unchanged",
-    "outputRequirements": "new value or null if unchanged",
-    "constraints": ["full array of constraints if changed, or null if unchanged"],
-    "feedstocks": [array of full feedstock objects if changed, or null if unchanged],
-    "outputSpecs": {object of output specs if changed, or null if unchanged}
-  },
-  "changedFields": ["list of field paths that were changed, e.g. 'location', 'feedstocks[0].feedstockVolume', 'constraints[2]'"]
-}
-
-IMPORTANT:
-- Set unchanged fields to null in the updates object
-- For feedstocks: if changing ANY feedstock field, return the COMPLETE feedstocks array with all feedstocks (not just the changed one). Preserve all existing feedstockSpecs that you don't modify.
-- For constraints: if changing ANY constraint, return the COMPLETE constraints array
-- For outputSpecs: if changing ANY output spec, return the COMPLETE outputSpecs structure. Preserve all existing spec metadata (source, confidence, provenance, group, displayName, sortOrder) and only update the value/unit.
-- Be precise with numeric values. Use appropriate units.
-- If the request is unclear, ask for clarification in assistantMessage and set all updates to null.`;
+      const reviewerTemplate = await getPromptTemplate("reviewer_chat");
+      const systemPrompt = reviewerTemplate
+        .replace("{{UPIF_STATE}}", JSON.stringify(upifSnapshot, null, 2))
+        .replace("{{LOCKED_FIELDS}}", lockedFieldsList.length > 0 ? lockedFieldsList.map(f => `- ${f}`).join("\n") : "None - all fields are unlocked");
 
       const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
         { role: "system", content: systemPrompt },
@@ -1689,13 +1679,14 @@ IMPORTANT:
           `${f.feedstockType}${f.feedstockVolume ? ` (${formatNumericValue(f.feedstockVolume)} ${f.feedstockUnit || ""})` : ""}`
         ).join(", ");
 
-        const prompt = `Write a concise one-paragraph project summary for a biogas/anaerobic digestion project intake form. The project "${project.name}" (scenario: "${scenario.name}") involves the following:
-- Feedstock(s): ${feedstockDesc || "Not specified"}
-- Location: ${upif.location || "Not specified"}
-- Output requirements: ${upif.outputRequirements || "Not specified"}
-- Constraints: ${upif.constraints?.join("; ") || "None specified"}
-
-Provide a professional, technical summary in 3-5 sentences.`;
+        const pdfTemplate = await getPromptTemplate("pdf_summary");
+        const prompt = pdfTemplate
+          .replace("{{PROJECT_NAME}}", project.name)
+          .replace("{{SCENARIO_NAME}}", scenario.name)
+          .replace("{{FEEDSTOCKS}}", feedstockDesc || "Not specified")
+          .replace("{{LOCATION}}", upif.location || "Not specified")
+          .replace("{{OUTPUT_REQUIREMENTS}}", upif.outputRequirements || "Not specified")
+          .replace("{{CONSTRAINTS}}", upif.constraints?.join("; ") || "None specified");
 
         const pdfScenario = await storage.getScenario(scenarioId);
         const pdfModel = (pdfScenario?.preferredModel as LLMProvider) || "gpt5";

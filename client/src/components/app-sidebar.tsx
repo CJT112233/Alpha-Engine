@@ -104,7 +104,15 @@ export function AppSidebar() {
       <SidebarFooter className="p-4 border-t border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild>
+            <SidebarMenuButton asChild isActive={location === "/settings"}>
+              <Link href="/settings" data-testid="link-settings">
+                <Settings className="h-4 w-4" />
+                <span>Settings</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={location === "/documentation"}>
               <Link href="/documentation" data-testid="link-docs">
                 <FileText className="h-4 w-4" />
                 <span>Documentation</span>

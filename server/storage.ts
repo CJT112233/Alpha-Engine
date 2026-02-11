@@ -9,6 +9,7 @@ import {
   extractedParameters,
   upifRecords,
   upifChatMessages,
+  promptTemplates,
   type Project,
   type InsertProject,
   type Scenario,
@@ -23,6 +24,8 @@ import {
   type InsertUpif,
   type UpifChatMessage,
   type InsertChatMessage,
+  type PromptTemplate,
+  type InsertPromptTemplate,
 } from "@shared/schema";
 
 const pool = new pg.Pool({
@@ -73,6 +76,12 @@ export interface IStorage {
   // UPIF Chat
   getChatMessagesByScenario(scenarioId: string): Promise<UpifChatMessage[]>;
   createChatMessage(msg: InsertChatMessage): Promise<UpifChatMessage>;
+
+  // Prompt Templates
+  getAllPromptTemplates(): Promise<PromptTemplate[]>;
+  getPromptTemplateByKey(key: string): Promise<PromptTemplate | undefined>;
+  upsertPromptTemplate(data: InsertPromptTemplate): Promise<PromptTemplate>;
+  deletePromptTemplate(key: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -282,6 +291,33 @@ export class DatabaseStorage implements IStorage {
   async createChatMessage(msg: InsertChatMessage): Promise<UpifChatMessage> {
     const result = await db.insert(upifChatMessages).values(msg).returning();
     return result[0];
+  }
+
+  async getAllPromptTemplates(): Promise<PromptTemplate[]> {
+    return db.select().from(promptTemplates).orderBy(promptTemplates.key);
+  }
+
+  async getPromptTemplateByKey(key: string): Promise<PromptTemplate | undefined> {
+    const result = await db.select().from(promptTemplates).where(eq(promptTemplates.key, key));
+    return result[0];
+  }
+
+  async upsertPromptTemplate(data: InsertPromptTemplate): Promise<PromptTemplate> {
+    const existing = await this.getPromptTemplateByKey(data.key);
+    if (existing) {
+      const result = await db
+        .update(promptTemplates)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(promptTemplates.key, data.key))
+        .returning();
+      return result[0];
+    }
+    const result = await db.insert(promptTemplates).values(data).returning();
+    return result[0];
+  }
+
+  async deletePromptTemplate(key: string): Promise<void> {
+    await db.delete(promptTemplates).where(eq(promptTemplates.key, key));
   }
 }
 

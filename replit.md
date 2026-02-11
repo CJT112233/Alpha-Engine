@@ -72,6 +72,15 @@ Number formatting: Always display numbers with comma separators for thousands (e
   - Users can skip the clarification step and generate directly
   - Re-generation reuses stored answers automatically
 
+- **Prompt Templates**: AI prompts are stored in the database and editable via Settings page
+  - `prompt_templates` table stores customized prompts by key (extraction, clarify, reviewer_chat, pdf_summary)
+  - Default prompts defined in `shared/default-prompts.ts` with metadata (name, description, available variables)
+  - GET /api/prompts lists all prompts (DB overrides merged with defaults)
+  - PATCH /api/prompts/:key updates a prompt template
+  - POST /api/prompts/:key/reset deletes customization, restoring the default
+  - Reviewer chat and PDF summary prompts use template variables (e.g., {{UPIF_STATE}}, {{LOCKED_FIELDS}}, {{PROJECT_NAME}}) replaced at runtime
+  - Settings page at /settings with expandable prompt cards, edit mode, save/reset functionality
+
 ### Key Design Patterns
 - **Shared Types**: Schema definitions in `shared/` directory used by both client and server
 - **API Request Helper**: Centralized `apiRequest` function for consistent error handling

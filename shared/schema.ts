@@ -162,6 +162,21 @@ export const insertChatMessageSchema = createInsertSchema(upifChatMessages).omit
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 export type UpifChatMessage = typeof upifChatMessages.$inferSelect;
 
+// Prompt Templates - editable AI prompts
+export const promptTemplates = pgTable("prompt_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  template: text("template").notNull(),
+  isSystemPrompt: boolean("is_system_prompt").default(true),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPromptTemplateSchema = createInsertSchema(promptTemplates).omit({ id: true, updatedAt: true });
+export type InsertPromptTemplate = z.infer<typeof insertPromptTemplateSchema>;
+export type PromptTemplate = typeof promptTemplates.$inferSelect;
+
 // Users table (keeping existing structure)
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

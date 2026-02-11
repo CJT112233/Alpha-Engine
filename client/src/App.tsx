@@ -13,6 +13,7 @@ import ProjectDetail from "@/pages/project-detail";
 import NewProject from "@/pages/new-project";
 import ScenarioDetail from "@/pages/scenario-detail";
 import Documentation from "@/pages/documentation";
+import SettingsPage from "@/pages/settings";
 
 function Router() {
   return (
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/projects/:id" component={ProjectDetail} />
       <Route path="/scenarios/:id" component={ScenarioDetail} />
       <Route path="/documentation" component={Documentation} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );
