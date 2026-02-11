@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles, Download, Lock, Unlock, Plus, Minus, Trash2 } from "lucide-react";
+import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles, Download, Lock, Unlock, Plus, Minus, Trash2, HelpCircle, MessageCircle, SkipForward } from "lucide-react";
 import type { UpifRecord, FeedstockEntry, ConfirmedFields } from "@shared/schema";
 import { feedstockGroupLabels, feedstockGroupOrder, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { outputGroupLabels, outputGroupOrder, type EnrichedOutputSpec } from "@shared/output-criteria-library";
@@ -573,10 +573,16 @@ function OutputSpecsTable({
   );
 }
 
+type ClarifyingQuestion = { question: string };
+type ClarifyingAnswer = { question: string; answer: string };
+
 export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioStatus }: UpifReviewProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [clarifyingQuestions, setClarifyingQuestions] = useState<ClarifyingQuestion[] | null>(null);
+  const [clarifyingAnswers, setClarifyingAnswers] = useState<string[]>([]);
+  const [showClarifyPhase, setShowClarifyPhase] = useState(false);
   const [feedstockEdits, setFeedstockEdits] = useState<Record<number, Partial<FeedstockEntry>>>({});
   const [feedstockSpecEdits, setFeedstockSpecEdits] = useState<Record<number, Record<string, string>>>({});
   const [feedstockNoteEdits, setFeedstockNoteEdits] = useState<Record<number, Record<string, string>>>({});
@@ -949,6 +955,35 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
     );
   }
 
+  const [clarifyFailed, setClarifyFailed] = useState(false);
+
+  const clarifyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/scenarios/${scenarioId}/clarify`);
+      return res.json();
+    },
+    onSuccess: (data: { questions: ClarifyingQuestion[] }) => {
+      setClarifyingQuestions(data.questions || []);
+      setClarifyingAnswers(new Array(data.questions?.length || 0).fill(""));
+      setShowClarifyPhase(true);
+      setClarifyFailed(false);
+    },
+    onError: () => {
+      setClarifyFailed(true);
+      toast({
+        title: "Couldn't generate questions",
+        description: "You can still generate the UPIF directly using the button below.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const saveAnswersMutation = useMutation({
+    mutationFn: async (answers: ClarifyingAnswer[]) => {
+      return apiRequest("POST", `/api/scenarios/${scenarioId}/clarify-answers`, { answers });
+    },
+  });
+
   const extractParametersMutation = useMutation({
     mutationFn: async () => {
       return apiRequest("POST", `/api/scenarios/${scenarioId}/extract`);
@@ -956,6 +991,8 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "upif"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId] });
+      setShowClarifyPhase(false);
+      setClarifyingQuestions(null);
       toast({
         title: "UPIF generated",
         description: confirmedCount > 0
@@ -972,7 +1009,94 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
     },
   });
 
+  const handleGenerateWithAnswers = async () => {
+    try {
+      if (clarifyingQuestions) {
+        const answers: ClarifyingAnswer[] = clarifyingQuestions.map((q, i) => ({
+          question: q.question,
+          answer: clarifyingAnswers[i] || "",
+        }));
+        await saveAnswersMutation.mutateAsync(answers);
+      }
+    } catch {
+      toast({
+        title: "Warning",
+        description: "Couldn't save answers, but will proceed with UPIF generation.",
+      });
+    }
+    extractParametersMutation.mutate();
+  };
+
+  const handleSkipAndGenerate = () => {
+    setShowClarifyPhase(false);
+    setClarifyingQuestions(null);
+    extractParametersMutation.mutate();
+  };
+
   if (!upif) {
+    const isGenerating = extractParametersMutation.isPending || saveAnswersMutation.isPending;
+
+    if (showClarifyPhase && clarifyingQuestions && clarifyingQuestions.length > 0) {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <HelpCircle className="h-5 w-5" />
+              Clarifying Questions
+            </CardTitle>
+            <CardDescription>
+              The AI has identified a few questions to help produce a more accurate UPIF. Answer what you can, or skip to generate now.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-5">
+              {clarifyingQuestions.map((q, i) => (
+                <div key={i} className="space-y-2">
+                  <Label className="flex items-start gap-2 text-sm font-medium">
+                    <MessageCircle className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                    <span data-testid={`text-clarify-question-${i}`}>{q.question}</span>
+                  </Label>
+                  <Textarea
+                    placeholder="Type your answer here (optional)"
+                    value={clarifyingAnswers[i] || ""}
+                    onChange={(e) => {
+                      setClarifyingAnswers(prev => {
+                        const next = [...prev];
+                        next[i] = e.target.value;
+                        return next;
+                      });
+                    }}
+                    className="resize-none text-sm"
+                    rows={2}
+                    data-testid={`input-clarify-answer-${i}`}
+                  />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+          <CardFooter className="flex items-center justify-between gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={handleSkipAndGenerate}
+              disabled={isGenerating}
+              data-testid="button-skip-clarify"
+            >
+              <SkipForward className="h-4 w-4 mr-2" />
+              {isGenerating ? "Generating..." : "Skip & Generate"}
+            </Button>
+            <Button
+              onClick={handleGenerateWithAnswers}
+              disabled={isGenerating}
+              data-testid="button-submit-answers"
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              {isGenerating ? "Generating UPIF..." : "Submit & Generate UPIF"}
+            </Button>
+          </CardFooter>
+        </Card>
+      );
+    }
+
     return (
       <Card>
         <CardHeader>
@@ -991,16 +1115,29 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                 <Sparkles className="h-12 w-12 text-primary mb-4" />
                 <h3 className="font-medium mb-1" data-testid="text-ready-to-generate">Ready to Generate</h3>
                 <p className="text-sm text-muted-foreground mb-4 max-w-sm">
-                  Click below to have AI analyze your inputs and generate the Unified Project Intake Form.
+                  Click below to have AI analyze your inputs. The AI will first ask a few clarifying questions to produce a better result.
                 </p>
-                <Button
-                  onClick={() => extractParametersMutation.mutate()}
-                  disabled={extractParametersMutation.isPending}
-                  data-testid="button-generate-upif"
-                >
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  {extractParametersMutation.isPending ? "Generating..." : "Generate UPIF"}
-                </Button>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Button
+                    onClick={() => clarifyMutation.mutate()}
+                    disabled={clarifyMutation.isPending || extractParametersMutation.isPending}
+                    data-testid="button-generate-upif"
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    {clarifyMutation.isPending ? "Analyzing..." : "Generate UPIF"}
+                  </Button>
+                  {clarifyFailed && (
+                    <Button
+                      variant="outline"
+                      onClick={() => extractParametersMutation.mutate()}
+                      disabled={extractParametersMutation.isPending}
+                      data-testid="button-generate-direct"
+                    >
+                      <SkipForward className="h-4 w-4 mr-2" />
+                      {extractParametersMutation.isPending ? "Generating..." : "Generate Without Questions"}
+                    </Button>
+                  )}
+                </div>
               </>
             ) : (
               <>

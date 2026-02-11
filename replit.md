@@ -64,6 +64,14 @@ Number formatting: Always display numbers with comma separators for thousands (e
   - Applied updates are persisted with field-level change tracking
   - UpifChat component renders chat history with change badges, inline below UPIF review
 
+- **Clarifying Questions**: Before generating a UPIF, the AI asks 3 targeted clarifying questions based on missing/ambiguous information
+  - `clarifyingQuestions` and `clarifyingAnswers` JSONB columns on scenarios table
+  - POST /api/scenarios/:id/clarify generates AI-powered questions from inputs
+  - POST /api/scenarios/:id/clarify-answers saves user answers
+  - Answers are appended to extraction prompt for better UPIF quality
+  - Users can skip the clarification step and generate directly
+  - Re-generation reuses stored answers automatically
+
 ### Key Design Patterns
 - **Shared Types**: Schema definitions in `shared/` directory used by both client and server
 - **API Request Helper**: Centralized `apiRequest` function for consistent error handling

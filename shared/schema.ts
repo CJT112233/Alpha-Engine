@@ -22,6 +22,8 @@ export const scenarios = pgTable("scenarios", {
   name: text("name").notNull(),
   status: text("status").notNull().default("draft"), // draft, in_review, confirmed
   preferredModel: text("preferred_model").default("gpt5"), // gpt5, claude, claude-opus
+  clarifyingQuestions: jsonb("clarifying_questions"), // Array of { question: string }
+  clarifyingAnswers: jsonb("clarifying_answers"), // Array of { question: string, answer: string }
   createdAt: timestamp("created_at").defaultNow().notNull(),
   confirmedAt: timestamp("confirmed_at"),
 });

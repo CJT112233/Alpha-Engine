@@ -461,8 +461,18 @@ function extractParametersFromText(entries: Array<{ content: string; category: s
   return uniqueParams;
 }
 
-async function extractParametersWithAI(entries: Array<{ content: string; category: string | null }>, model: LLMProvider = "gpt5"): Promise<ExtractedParam[]> {
-  const content = entries.map(e => e.content).join("\n\n");
+async function extractParametersWithAI(entries: Array<{ content: string; category: string | null }>, model: LLMProvider = "gpt5", clarifyingQA?: Array<{ question: string; answer: string }>): Promise<ExtractedParam[]> {
+  let content = entries.map(e => e.content).join("\n\n");
+
+  if (clarifyingQA && clarifyingQA.length > 0) {
+    const qaSection = clarifyingQA
+      .filter(qa => qa.answer && qa.answer.trim())
+      .map((qa, i) => `Q${i + 1}: ${qa.question}\nA${i + 1}: ${qa.answer}`)
+      .join("\n\n");
+    if (qaSection) {
+      content += `\n\n--- ADDITIONAL CLARIFYING INFORMATION ---\nThe following answers were provided to clarifying questions about this project:\n\n${qaSection}`;
+    }
+  }
   
   if (!content.trim()) {
     console.log("AI extraction: No content to extract from");
@@ -844,6 +854,119 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/scenarios/:scenarioId/clarify", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId;
+
+      const entries = await storage.getTextEntriesByScenario(scenarioId);
+      const documents = await storage.getDocumentsByScenario(scenarioId);
+      const docEntries = documents
+        .filter(doc => doc.extractedText && doc.extractedText.trim())
+        .map(doc => ({
+          content: `[From document: ${doc.originalName}]\n${doc.extractedText}`,
+          category: null as string | null,
+        }));
+
+      const allEntries = [...entries, ...docEntries];
+      const content = allEntries.map(e => e.content).join("\n\n");
+
+      if (!content.trim()) {
+        return res.status(400).json({ error: "No input content to analyze. Add text or upload documents first." });
+      }
+
+      const scenario = await storage.getScenario(scenarioId);
+      const model = (scenario?.preferredModel as LLMProvider) || "gpt5";
+
+      if (getAvailableProviders().length === 0) {
+        return res.status(500).json({ error: "No AI provider is configured." });
+      }
+
+      const systemPrompt = `You are a senior wastewater engineer with a specialization in treating high-strength food processing wastewater, food processing residuals, treating wastewater to acceptable effluent standards and creating RNG as a byproduct.
+
+You are reviewing a project intake submission for an anaerobic digestion / biogas project. Your job is to identify the THREE most important missing or ambiguous pieces of information that would significantly improve the quality of the project specification.
+
+Focus on questions that would help clarify:
+- Feedstock details (types, volumes, seasonal variation, contaminants, current disposal method)
+- Output goals (RNG pipeline injection, electricity generation, digestate use, effluent discharge path)
+- Site/location specifics (permits, utility interconnections, space constraints)
+- Operational constraints (hours of operation, existing infrastructure, budget range)
+- Liquid handling pathway (discharge to WWTP, land application, on-site treatment)
+
+RULES:
+1. Ask exactly 3 questions - no more, no less.
+2. Each question should target a DIFFERENT aspect of the project.
+3. Questions should be specific and actionable - not vague or generic.
+4. Tailor questions to what is actually MISSING from the provided inputs. Don't ask about things already clearly stated.
+5. Keep questions concise (1-2 sentences each).
+6. Return ONLY valid JSON in this exact format:
+
+{
+  "questions": [
+    { "question": "First question text here?" },
+    { "question": "Second question text here?" },
+    { "question": "Third question text here?" }
+  ]
+}`;
+
+      const response = await llmComplete({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Here is the project information submitted so far:\n\n${content}` },
+        ],
+        maxTokens: 2048,
+        jsonMode: true,
+      });
+
+      const rawResponse = response.content || "{}";
+      let parsed: { questions?: Array<{ question: string }> };
+      try {
+        parsed = JSON.parse(rawResponse);
+      } catch {
+        parsed = { questions: [
+          { question: "What are the specific feedstock types and their expected daily/annual volumes?" },
+          { question: "What is the intended use for the biogas produced (e.g., RNG pipeline injection, electricity generation, flaring)?" },
+          { question: "How will the liquid effluent from the digester be managed (e.g., discharge to municipal WWTP, land application, on-site treatment)?" },
+        ]};
+      }
+
+      const questions = parsed.questions || [];
+      await storage.updateScenarioClarification(scenarioId, questions, null);
+
+      res.json({ questions, provider: response.provider });
+    } catch (error: any) {
+      console.error("Error generating clarifying questions:", error?.message || error);
+      res.status(500).json({ error: `Failed to generate clarifying questions: ${error?.message || "Unknown error"}` });
+    }
+  });
+
+  app.post("/api/scenarios/:scenarioId/clarify-answers", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId;
+      const { answers } = req.body;
+
+      if (!answers || !Array.isArray(answers)) {
+        return res.status(400).json({ error: "Answers array is required" });
+      }
+
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) {
+        return res.status(404).json({ error: "Scenario not found" });
+      }
+
+      await storage.updateScenarioClarification(
+        scenarioId,
+        scenario.clarifyingQuestions,
+        answers
+      );
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error saving clarifying answers:", error?.message || error);
+      res.status(500).json({ error: "Failed to save answers" });
+    }
+  });
+
   app.post("/api/scenarios/:scenarioId/extract", async (req: Request, res: Response) => {
     try {
       const scenarioId = req.params.scenarioId;
@@ -869,7 +992,8 @@ export async function registerRoutes(
       
       const extractScenario = await storage.getScenario(scenarioId);
       const extractModel = (extractScenario?.preferredModel as LLMProvider) || "gpt5";
-      const extractedParams = await extractParametersWithAI(allEntries, extractModel);
+      const clarifyingAnswers = (extractScenario?.clarifyingAnswers as Array<{ question: string; answer: string }>) || undefined;
+      const extractedParams = await extractParametersWithAI(allEntries, extractModel, clarifyingAnswers);
       
       // Clear existing parameters
       await storage.deleteParametersByScenario(scenarioId);
