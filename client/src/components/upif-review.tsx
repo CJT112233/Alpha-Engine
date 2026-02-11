@@ -939,23 +939,6 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
     updateUpifMutation.mutate(data);
   };
 
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-4 w-64" />
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <Skeleton className="h-32 w-full" />
-            <Skeleton className="h-32 w-full" />
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
   const [clarifyFailed, setClarifyFailed] = useState(false);
 
   const clarifyMutation = useMutation({
@@ -1033,6 +1016,23 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
     setClarifyingQuestions(null);
     extractParametersMutation.mutate();
   };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-4 w-64" />
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!upif) {
     const isGenerating = extractParametersMutation.isPending || saveAnswersMutation.isPending;
