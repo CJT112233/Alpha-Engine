@@ -20,6 +20,7 @@ import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useCallback, useEffect } from "react";
+import { AiThinking } from "@/components/ai-thinking";
 
 function formatDisplayValue(val: string): string {
   if (!val) return val;
@@ -1049,30 +1050,34 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-5">
-              {clarifyingQuestions.map((q, i) => (
-                <div key={i} className="space-y-2">
-                  <Label className="flex items-start gap-2 text-sm font-medium">
-                    <MessageCircle className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
-                    <span data-testid={`text-clarify-question-${i}`}>{q.question}</span>
-                  </Label>
-                  <Textarea
-                    placeholder="Type your answer here (optional)"
-                    value={clarifyingAnswers[i] || ""}
-                    onChange={(e) => {
-                      setClarifyingAnswers(prev => {
-                        const next = [...prev];
-                        next[i] = e.target.value;
-                        return next;
-                      });
-                    }}
-                    className="resize-none text-sm"
-                    rows={2}
-                    data-testid={`input-clarify-answer-${i}`}
-                  />
-                </div>
-              ))}
-            </div>
+            {isGenerating ? (
+              <AiThinking isActive={true} label="Generating UPIF from your answers..." />
+            ) : (
+              <div className="space-y-5">
+                {clarifyingQuestions.map((q, i) => (
+                  <div key={i} className="space-y-2">
+                    <Label className="flex items-start gap-2 text-sm font-medium">
+                      <MessageCircle className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                      <span data-testid={`text-clarify-question-${i}`}>{q.question}</span>
+                    </Label>
+                    <Textarea
+                      placeholder="Type your answer here (optional)"
+                      value={clarifyingAnswers[i] || ""}
+                      onChange={(e) => {
+                        setClarifyingAnswers(prev => {
+                          const next = [...prev];
+                          next[i] = e.target.value;
+                          return next;
+                        });
+                      }}
+                      className="resize-none text-sm"
+                      rows={2}
+                      data-testid={`input-clarify-answer-${i}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
           <CardFooter className="flex items-center justify-between gap-2 flex-wrap">
             <Button
@@ -1112,32 +1117,41 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
           <div className="flex flex-col items-center justify-center py-12 text-center">
             {hasInputs ? (
               <>
-                <Sparkles className="h-12 w-12 text-primary mb-4" />
-                <h3 className="font-medium mb-1" data-testid="text-ready-to-generate">Ready to Generate</h3>
-                <p className="text-sm text-muted-foreground mb-4 max-w-sm">
-                  Click below to have AI analyze your inputs. The AI will first ask a few clarifying questions to produce a better result.
-                </p>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <Button
-                    onClick={() => clarifyMutation.mutate()}
-                    disabled={clarifyMutation.isPending || extractParametersMutation.isPending}
-                    data-testid="button-generate-upif"
-                  >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    {clarifyMutation.isPending ? "Analyzing..." : "Generate UPIF"}
-                  </Button>
-                  {clarifyFailed && (
+                {clarifyMutation.isPending || extractParametersMutation.isPending ? (
+                  <AiThinking
+                    isActive={true}
+                    label={clarifyMutation.isPending ? "Analyzing your inputs..." : "Generating UPIF..."}
+                  />
+                ) : (
+                  <>
+                    <Sparkles className="h-12 w-12 text-primary mb-4" />
+                    <h3 className="font-medium mb-1" data-testid="text-ready-to-generate">Ready to Generate</h3>
+                    <p className="text-sm text-muted-foreground mb-4 max-w-sm">
+                      Click below to have AI analyze your inputs. The AI will first ask a few clarifying questions to produce a better result.
+                    </p>
+                  </>
+                )}
+                {!(clarifyMutation.isPending || extractParametersMutation.isPending) && (
+                  <div className="flex items-center gap-3 flex-wrap">
                     <Button
-                      variant="outline"
-                      onClick={() => extractParametersMutation.mutate()}
-                      disabled={extractParametersMutation.isPending}
-                      data-testid="button-generate-direct"
+                      onClick={() => clarifyMutation.mutate()}
+                      data-testid="button-generate-upif"
                     >
-                      <SkipForward className="h-4 w-4 mr-2" />
-                      {extractParametersMutation.isPending ? "Generating..." : "Generate Without Questions"}
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Generate UPIF
                     </Button>
-                  )}
-                </div>
+                    {clarifyFailed && (
+                      <Button
+                        variant="outline"
+                        onClick={() => extractParametersMutation.mutate()}
+                        data-testid="button-generate-direct"
+                      >
+                        <SkipForward className="h-4 w-4 mr-2" />
+                        Generate Without Questions
+                      </Button>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -1157,6 +1171,11 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
 
   return (
     <Card>
+      {extractParametersMutation.isPending && (
+        <div className="border-b px-6 py-2 bg-primary/5">
+          <AiThinking isActive={true} label="Re-generating UPIF..." compact />
+        </div>
+      )}
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -1915,6 +1934,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                 <Download className="h-4 w-4 mr-2" />
                 {isExportingPdf ? "Exporting..." : "Export PDF"}
               </Button>
+              {isExportingPdf && (
+                <AiThinking isActive={true} label="Generating PDF..." compact />
+              )}
               {!isConfirmed && (
                 <Button
                   onClick={() => {

@@ -9,6 +9,7 @@ import { MessageSquare, Send, Bot, User, ArrowDownRight, Loader2, AlertCircle } 
 import type { UpifChatMessage } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AiThinking } from "@/components/ai-thinking";
 
 interface UpifChatProps {
   scenarioId: string;
@@ -165,10 +166,7 @@ export function UpifChat({ scenarioId, hasUpif, isConfirmed }: UpifChatProps) {
                 </div>
               </div>
               <div className="bg-muted rounded-md px-3 py-2">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Reviewing your feedback...
-                </div>
+                <AiThinking isActive={true} label="Reviewing your feedback..." compact />
               </div>
             </div>
           )}
