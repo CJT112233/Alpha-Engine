@@ -139,6 +139,11 @@ function FeedstockSpecsTable({
   confirmedSpecs,
   onToggleConfirm,
   showConfirmToggles,
+  newSpecs,
+  onAddSpec,
+  onDeleteNewSpec,
+  onUpdateNewSpec,
+  testIdPrefix = "",
 }: {
   specs: Record<string, EnrichedFeedstockSpec>;
   isEditing: boolean;
@@ -149,6 +154,11 @@ function FeedstockSpecsTable({
   confirmedSpecs?: Record<string, boolean>;
   onToggleConfirm?: (key: string) => void;
   showConfirmToggles?: boolean;
+  newSpecs?: Array<{key: string; displayName: string; value: string; unit: string; provenance: string; group: string}>;
+  onAddSpec?: () => void;
+  onDeleteNewSpec?: (index: number) => void;
+  onUpdateNewSpec?: (index: number, field: string, value: string) => void;
+  testIdPrefix?: string;
 }) {
   const grouped: Record<string, Array<[string, EnrichedFeedstockSpec]>> = {};
 
@@ -284,6 +294,51 @@ function FeedstockSpecsTable({
           </div>
         );
       })}
+      {isEditing && (
+        <div className="space-y-2 pt-2">
+          {newSpecs && newSpecs.length > 0 && (
+            <div className="border rounded-md overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[28%]">Parameter</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[18%]">Value</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[12%]">Unit</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Notes</th>
+                    <th className="p-2 w-[40px]"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {newSpecs.map((spec, i) => (
+                    <tr key={`new-${i}`} className="border-b last:border-b-0">
+                      <td className="p-2">
+                        <Input className="h-7 text-sm" placeholder="Parameter name" defaultValue={spec.displayName} onChange={(e) => onUpdateNewSpec?.(i, "displayName", e.target.value)} data-testid={`input-new-spec-name-${testIdPrefix}${i}`} />
+                      </td>
+                      <td className="p-2">
+                        <Input className="h-7 text-sm" placeholder="Value" defaultValue={spec.value} onChange={(e) => onUpdateNewSpec?.(i, "value", e.target.value)} data-testid={`input-new-spec-value-${testIdPrefix}${i}`} />
+                      </td>
+                      <td className="p-2">
+                        <Input className="h-7 text-sm" placeholder="Unit" defaultValue={spec.unit} onChange={(e) => onUpdateNewSpec?.(i, "unit", e.target.value)} data-testid={`input-new-spec-unit-${testIdPrefix}${i}`} />
+                      </td>
+                      <td className="p-2">
+                        <Input className="h-7 text-xs" placeholder="Notes/provenance" defaultValue={spec.provenance} onChange={(e) => onUpdateNewSpec?.(i, "provenance", e.target.value)} data-testid={`input-new-spec-note-${testIdPrefix}${i}`} />
+                      </td>
+                      <td className="p-1 text-center">
+                        <Button type="button" size="icon" variant="ghost" className="text-destructive" onClick={() => onDeleteNewSpec?.(i)} data-testid={`button-delete-new-spec-${testIdPrefix}${i}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <Button type="button" variant="outline" size="sm" onClick={() => onAddSpec?.()} data-testid={`button-add-feedstock-spec-${testIdPrefix.replace(/-$/, '') || '0'}`}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add Parameter
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -318,6 +373,10 @@ function OutputSpecsTable({
   confirmedSpecs,
   onToggleConfirm,
   showConfirmToggles,
+  newSpecs,
+  onAddSpec,
+  onDeleteNewSpec,
+  onUpdateNewSpec,
 }: {
   profileName: string;
   specs: Record<string, EnrichedOutputSpec>;
@@ -329,6 +388,10 @@ function OutputSpecsTable({
   confirmedSpecs?: Record<string, boolean>;
   onToggleConfirm?: (key: string) => void;
   showConfirmToggles?: boolean;
+  newSpecs?: Array<{key: string; displayName: string; value: string; unit: string; provenance: string; group: string}>;
+  onAddSpec?: () => void;
+  onDeleteNewSpec?: (index: number) => void;
+  onUpdateNewSpec?: (index: number, field: string, value: string) => void;
 }) {
   const grouped: Record<string, Array<[string, EnrichedOutputSpec]>> = {};
 
@@ -461,6 +524,51 @@ function OutputSpecsTable({
           </div>
         );
       })}
+      {isEditing && (
+        <div className="space-y-2 pt-2">
+          {newSpecs && newSpecs.length > 0 && (
+            <div className="border rounded-md overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[28%]">Criterion</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[18%]">Requirement</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[12%]">Unit</th>
+                    <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Notes</th>
+                    <th className="p-2 w-[40px]"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {newSpecs.map((spec, i) => (
+                    <tr key={`new-output-${i}`} className="border-b last:border-b-0">
+                      <td className="p-2">
+                        <Input className="h-7 text-sm" placeholder="Criterion name" defaultValue={spec.displayName} onChange={(e) => onUpdateNewSpec?.(i, "displayName", e.target.value)} data-testid={`input-new-output-name-${profileName}-${i}`} />
+                      </td>
+                      <td className="p-2">
+                        <Input className="h-7 text-sm" placeholder="Value" defaultValue={spec.value} onChange={(e) => onUpdateNewSpec?.(i, "value", e.target.value)} data-testid={`input-new-output-value-${profileName}-${i}`} />
+                      </td>
+                      <td className="p-2">
+                        <Input className="h-7 text-sm" placeholder="Unit" defaultValue={spec.unit} onChange={(e) => onUpdateNewSpec?.(i, "unit", e.target.value)} data-testid={`input-new-output-unit-${profileName}-${i}`} />
+                      </td>
+                      <td className="p-2">
+                        <Input className="h-7 text-xs" placeholder="Notes/provenance" defaultValue={spec.provenance} onChange={(e) => onUpdateNewSpec?.(i, "provenance", e.target.value)} data-testid={`input-new-output-note-${profileName}-${i}`} />
+                      </td>
+                      <td className="p-1 text-center">
+                        <Button type="button" size="icon" variant="ghost" className="text-destructive" onClick={() => onDeleteNewSpec?.(i)} data-testid={`button-delete-new-output-${profileName}-${i}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <Button type="button" variant="outline" size="sm" onClick={() => onAddSpec?.()} data-testid={`button-add-output-spec-${profileName}`}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add Criterion
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -559,6 +667,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
   const [outputSpecEdits, setOutputSpecEdits] = useState<Record<string, Record<string, string>>>({});
   const [outputNoteEdits, setOutputNoteEdits] = useState<Record<string, Record<string, string>>>({});
   const [deletedOutputSpecs, setDeletedOutputSpecs] = useState<Record<string, Set<string>>>({});
+  const [newFeedstockSpecs, setNewFeedstockSpecs] = useState<Record<number, Array<{key: string; displayName: string; value: string; unit: string; provenance: string; group: string}>>>({});
+  const [newOutputSpecs, setNewOutputSpecs] = useState<Record<string, Array<{key: string; displayName: string; value: string; unit: string; provenance: string; group: string}>>>({});
+  const [newFeedstockEntries, setNewFeedstockEntries] = useState<Array<{feedstockType: string; feedstockVolume: string; feedstockUnit: string}>>([]);
 
   const confirmedCount = (() => {
     let count = 0;
@@ -633,8 +744,38 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
             }
             entry.feedstockSpecs = updated;
           }
+          if (newFeedstockSpecs[i] && newFeedstockSpecs[i].length > 0) {
+            const specs = (entry.feedstockSpecs as Record<string, EnrichedFeedstockSpec>) || {};
+            for (const ns of newFeedstockSpecs[i]) {
+              if (ns.displayName && ns.value) {
+                specs[ns.key] = {
+                  value: ns.value,
+                  unit: ns.unit,
+                  source: "user_provided",
+                  confidence: "high",
+                  provenance: ns.provenance || "User-provided",
+                  group: (ns.group as EnrichedFeedstockSpec["group"]) || "extended",
+                  displayName: ns.displayName,
+                  sortOrder: 999,
+                };
+              }
+            }
+            entry.feedstockSpecs = specs;
+          }
           return entry;
         });
+
+      for (const nf of newFeedstockEntries) {
+        if (nf.feedstockType) {
+          updatedFeedstocks.push({
+            feedstockType: nf.feedstockType,
+            feedstockVolume: nf.feedstockVolume || undefined,
+            feedstockUnit: nf.feedstockUnit || undefined,
+            feedstockParameters: {},
+            feedstockSpecs: {},
+          });
+        }
+      }
 
       const primary = updatedFeedstocks[0];
 
@@ -677,6 +818,26 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
         }
       }
 
+      if (updatedOutputSpecs) {
+        for (const [profileName, newSpecsArr] of Object.entries(newOutputSpecs)) {
+          if (!updatedOutputSpecs[profileName]) updatedOutputSpecs[profileName] = {};
+          for (const ns of newSpecsArr) {
+            if (ns.displayName && ns.value) {
+              updatedOutputSpecs[profileName][ns.key] = {
+                value: ns.value,
+                unit: ns.unit,
+                source: "user_provided",
+                confidence: "high",
+                provenance: ns.provenance || "User-provided",
+                group: ns.group || "regulatory",
+                displayName: ns.displayName,
+                sortOrder: 999,
+              };
+            }
+          }
+        }
+      }
+
       const patchData: Record<string, unknown> = {
         ...data,
         constraints: data.constraints?.split("\n").filter(Boolean),
@@ -704,6 +865,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
       setOutputSpecEdits({});
       setOutputNoteEdits({});
       setDeletedOutputSpecs({});
+      setNewFeedstockSpecs({});
+      setNewOutputSpecs({});
+      setNewFeedstockEntries([]);
       toast({
         title: "UPIF updated",
         description: "Your changes have been saved.",
@@ -908,6 +1072,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   setOutputSpecEdits({});
                   setOutputNoteEdits({});
                   setDeletedOutputSpecs({});
+                  setNewFeedstockSpecs({});
+                  setNewOutputSpecs({});
+                  setNewFeedstockEntries([]);
                   setIsEditing(true);
                 }}
                 data-testid="button-edit-upif"
@@ -1025,6 +1192,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                             <FeedstockSpecsTable
                               specs={specs!}
                               isEditing={true}
+                              testIdPrefix={`${idx}-`}
                               onSpecUpdate={(key, value) => {
                                 setFeedstockSpecEdits(prev => ({
                                   ...prev,
@@ -1046,12 +1214,88 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                               deletedKeys={deletedFeedstockSpecs[idx]}
                               confirmedSpecs={localConfirmedFields.feedstocks?.[idx]?.feedstockSpecs}
                               showConfirmToggles={false}
+                              newSpecs={newFeedstockSpecs[idx]}
+                              onAddSpec={() => {
+                                setNewFeedstockSpecs(prev => ({
+                                  ...prev,
+                                  [idx]: [...(prev[idx] || []), {key: `custom_${Date.now()}`, displayName: "", value: "", unit: "", provenance: "User-provided", group: "extended"}],
+                                }));
+                              }}
+                              onDeleteNewSpec={(i) => {
+                                setNewFeedstockSpecs(prev => ({
+                                  ...prev,
+                                  [idx]: (prev[idx] || []).filter((_, j) => j !== i),
+                                }));
+                              }}
+                              onUpdateNewSpec={(i, field, value) => {
+                                setNewFeedstockSpecs(prev => ({
+                                  ...prev,
+                                  [idx]: (prev[idx] || []).map((s, j) => j === i ? {...s, [field]: value} : s),
+                                }));
+                              }}
                             />
                           </div>
                         )}
                       </div>
                     );
                   })}
+                  {newFeedstockEntries.map((nf, nfIdx) => (
+                    <div key={`new-feedstock-${nfIdx}`} className="border rounded-md p-4 space-y-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <h5 className="text-sm font-semibold">New Feedstock {nfIdx + 1}</h5>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="text-destructive"
+                          onClick={() => setNewFeedstockEntries(prev => prev.filter((_, j) => j !== nfIdx))}
+                          data-testid={`button-delete-new-feedstock-${nfIdx}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Type</Label>
+                          <Input
+                            defaultValue={nf.feedstockType}
+                            placeholder="e.g., Dairy Manure"
+                            onChange={(e) => setNewFeedstockEntries(prev => prev.map((entry, j) => j === nfIdx ? {...entry, feedstockType: e.target.value} : entry))}
+                            data-testid={`input-new-feedstock-type-${nfIdx}`}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Volume</Label>
+                            <Input
+                              defaultValue={nf.feedstockVolume}
+                              placeholder="e.g., 100,000"
+                              onChange={(e) => setNewFeedstockEntries(prev => prev.map((entry, j) => j === nfIdx ? {...entry, feedstockVolume: e.target.value} : entry))}
+                              data-testid={`input-new-feedstock-volume-${nfIdx}`}
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Unit</Label>
+                            <Input
+                              defaultValue={nf.feedstockUnit}
+                              placeholder="e.g., tons/year"
+                              onChange={(e) => setNewFeedstockEntries(prev => prev.map((entry, j) => j === nfIdx ? {...entry, feedstockUnit: e.target.value} : entry))}
+                              data-testid={`input-new-feedstock-unit-${nfIdx}`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setNewFeedstockEntries(prev => [...prev, {feedstockType: "", feedstockVolume: "", feedstockUnit: ""}])}
+                    data-testid="button-add-feedstock"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Feedstock
+                  </Button>
                 </div>
               )}
 
@@ -1157,6 +1401,25 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                           deletedKeys={deletedOutputSpecs[profileName]}
                           confirmedSpecs={localConfirmedFields.outputSpecs?.[profileName]}
                           showConfirmToggles={false}
+                          newSpecs={newOutputSpecs[profileName]}
+                          onAddSpec={() => {
+                            setNewOutputSpecs(prev => ({
+                              ...prev,
+                              [profileName]: [...(prev[profileName] || []), {key: `custom_${Date.now()}`, displayName: "", value: "", unit: "", provenance: "User-provided", group: "regulatory"}],
+                            }));
+                          }}
+                          onDeleteNewSpec={(i) => {
+                            setNewOutputSpecs(prev => ({
+                              ...prev,
+                              [profileName]: (prev[profileName] || []).filter((_, j) => j !== i),
+                            }));
+                          }}
+                          onUpdateNewSpec={(i, field, value) => {
+                            setNewOutputSpecs(prev => ({
+                              ...prev,
+                              [profileName]: (prev[profileName] || []).map((s, j) => j === i ? {...s, [field]: value} : s),
+                            }));
+                          }}
                         />
                       </div>
                     ))}
@@ -1249,6 +1512,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                     setOutputSpecEdits({});
                     setOutputNoteEdits({});
                     setDeletedOutputSpecs({});
+                    setNewFeedstockSpecs({});
+                    setNewOutputSpecs({});
+                    setNewFeedstockEntries([]);
                   }}
                 >
                   <X className="h-4 w-4 mr-2" />
