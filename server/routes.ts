@@ -517,6 +517,10 @@ async function extractParametersWithAI(entries: Array<{ content: string; categor
     }
 
     console.log("AI extraction: Successfully extracted", result.parameters.length, "parameters");
+    if (result.parameters.length > 0) {
+      console.log("AI extraction: First parameter keys:", Object.keys(result.parameters[0]));
+      console.log("AI extraction: First parameter sample:", JSON.stringify(result.parameters[0]));
+    }
     console.log("AI extraction: Categories breakdown:", 
       result.parameters.reduce((acc: Record<string, number>, p: { category: string }) => {
         acc[p.category] = (acc[p.category] || 0) + 1;
@@ -524,14 +528,16 @@ async function extractParametersWithAI(entries: Array<{ content: string; categor
       }, {} as Record<string, number>)
     );
 
-    return result.parameters.map((p: { category: string; name: string; value: string; unit?: string; confidence: string }) => ({
-      category: p.category,
-      name: p.name,
-      value: String(p.value),
-      unit: p.unit || undefined,
-      source: "ai_extraction",
-      confidence: p.confidence,
-    }));
+    return result.parameters
+      .map((p: any) => ({
+        category: p.category,
+        name: p.name || p.parameter_name || p.parameter || p.label || p.field,
+        value: String(p.value ?? ""),
+        unit: p.unit || p.units || undefined,
+        source: "ai_extraction",
+        confidence: p.confidence || "medium",
+      }))
+      .filter((p: any) => p.name && p.category && p.value !== undefined);
   } catch (error) {
     console.error("AI extraction failed, falling back to pattern matching. Error:", error);
     return extractParametersFromText(entries);
@@ -1016,8 +1022,12 @@ export async function registerRoutes(
       // Clear existing parameters
       await storage.deleteParametersByScenario(scenarioId);
       
-      // Create new parameters
-      for (const param of extractedParams) {
+      // Create new parameters (filter out any with missing name/category)
+      const validParams = extractedParams.filter(p => p.name && p.category);
+      if (validParams.length < extractedParams.length) {
+        console.log(`AI extraction: Filtered out ${extractedParams.length - validParams.length} parameters with missing name/category`);
+      }
+      for (const param of validParams) {
         await storage.createParameter({
           scenarioId,
           ...param,

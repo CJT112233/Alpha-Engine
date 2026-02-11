@@ -99,12 +99,14 @@ Number formatting: Always display numbers with comma separators for thousands (e
 - Lucide React for icons
 
 ### AI/ML Integration
-- **Multi-LLM Support**: Users can switch between GPT-5 (OpenAI) and Claude Sonnet 4.5 (Anthropic) per scenario
-  - Unified LLM service in `server/llm.ts` abstracts both providers behind a common interface
-  - `preferredModel` column on scenarios table stores the user's choice (default: gpt5)
-  - Model selector dropdown in UPIF tab (only shown when both providers are available)
+- **Multi-LLM Support**: Users can switch between GPT-5 (OpenAI), Claude Sonnet 4.5, and Claude Opus 4.6 (Anthropic) per scenario
+  - Unified LLM service in `server/llm.ts` abstracts all providers behind a common interface
+  - Smart client routing: Sonnet uses Replit AI Integration proxy (model ID: claude-sonnet-4-5), Opus requires direct ANTHROPIC_API_KEY (model ID: claude-opus-4-6)
+  - `preferredModel` column on scenarios table stores the user's choice (default: gpt5), values: "gpt5", "claude", "claude-opus"
+  - Model selector dropdown in UPIF tab (only shown when providers are available)
   - All LLM call points (extraction, reviewer chat, PDF summary) use the scenario's preferred model
   - GET `/api/llm-providers` returns available providers
+  - Response parsing handles model-specific JSON field names (Opus uses "parameter" instead of "name", "units" instead of "unit")
   - PATCH `/api/scenarios/:id/preferred-model` updates model preference
   - Anthropic access via Replit AI Integrations (no separate API key needed, billed to credits)
 - Falls back to available provider if preferred one is not configured, then to pattern matching

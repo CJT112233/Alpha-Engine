@@ -24,14 +24,31 @@ export interface LLMCompletionResult {
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const anthropicApiKey = process.env.ANTHROPIC_API_KEY || process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
-const anthropicOptions: ConstructorParameters<typeof Anthropic>[0] = {
-  apiKey: anthropicApiKey,
+const directAnthropicKey = process.env.ANTHROPIC_API_KEY;
+const integrationAnthropicKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
+
+const directAnthropicOptions: ConstructorParameters<typeof Anthropic>[0] = {
+  apiKey: directAnthropicKey || integrationAnthropicKey,
 };
-if (!process.env.ANTHROPIC_API_KEY && process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL) {
-  anthropicOptions.baseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
-}
-const anthropic = new Anthropic(anthropicOptions);
+
+const integrationAnthropicOptions: ConstructorParameters<typeof Anthropic>[0] = {
+  apiKey: integrationAnthropicKey || directAnthropicKey,
+  ...(process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL
+    ? { baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL }
+    : {}),
+};
+
+const directAnthropic = directAnthropicKey ? new Anthropic(directAnthropicOptions) : null;
+
+const integrationAnthropic = (integrationAnthropicKey && process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL)
+  ? new Anthropic(integrationAnthropicOptions)
+  : null;
+
+const anthropic = directAnthropic || integrationAnthropic || new Anthropic({ apiKey: "missing" });
+
+const integrationSupportedModels = new Set([
+  "claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-1",
+]);
 
 function isAnthropicAvailable(): boolean {
   return !!process.env.ANTHROPIC_API_KEY || (!!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY && !!process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL);
@@ -41,8 +58,11 @@ export function isProviderAvailable(provider: LLMProvider): boolean {
   if (provider === "gpt5") {
     return !!process.env.OPENAI_API_KEY;
   }
-  if (provider === "claude" || provider === "claude-opus") {
+  if (provider === "claude") {
     return isAnthropicAvailable();
+  }
+  if (provider === "claude-opus") {
+    return !!directAnthropicKey;
   }
   return false;
 }
@@ -52,6 +72,8 @@ export function getAvailableProviders(): LLMProvider[] {
   if (isProviderAvailable("gpt5")) providers.push("gpt5");
   if (isAnthropicAvailable()) {
     providers.push("claude");
+  }
+  if (directAnthropicKey) {
     providers.push("claude-opus");
   }
   return providers;
@@ -80,10 +102,15 @@ export async function llmComplete(options: LLMCompletionOptions): Promise<LLMCom
     model = fallback;
   }
 
-  if (model === "claude" || model === "claude-opus") {
-    return completeWithClaude(model, messages, maxTokens, jsonMode);
+  try {
+    if (model === "claude" || model === "claude-opus") {
+      return await completeWithClaude(model, messages, maxTokens, jsonMode);
+    }
+    return await completeWithOpenAI(messages, maxTokens, jsonMode);
+  } catch (error: any) {
+    console.error(`LLM error with ${model}:`, error?.message || error);
+    throw error;
   }
-  return completeWithOpenAI(messages, maxTokens, jsonMode);
 }
 
 async function completeWithOpenAI(
@@ -91,6 +118,8 @@ async function completeWithOpenAI(
   maxTokens: number,
   jsonMode: boolean
 ): Promise<LLMCompletionResult> {
+  console.log(`LLM: Calling OpenAI model=gpt-5 maxTokens=${maxTokens} jsonMode=${jsonMode}`);
+
   const response = await openai.chat.completions.create({
     model: "gpt-5",
     messages,
@@ -133,15 +162,29 @@ async function completeWithClaude(
 
   const modelId = anthropicModelIds[provider] || "claude-sonnet-4-5";
 
-  const response = await anthropic.messages.create({
+  let client: Anthropic;
+  if (directAnthropic && (!integrationSupportedModels.has(modelId) || !integrationAnthropic)) {
+    client = directAnthropic;
+    console.log(`LLM: Calling Anthropic (direct key) model=${modelId} provider=${provider} maxTokens=${maxTokens} jsonMode=${jsonMode}`);
+  } else if (integrationAnthropic && integrationSupportedModels.has(modelId)) {
+    client = integrationAnthropic;
+    console.log(`LLM: Calling Anthropic (integration) model=${modelId} provider=${provider} maxTokens=${maxTokens} jsonMode=${jsonMode}`);
+  } else {
+    client = anthropic;
+    console.log(`LLM: Calling Anthropic (fallback) model=${modelId} provider=${provider} maxTokens=${maxTokens} jsonMode=${jsonMode}`);
+  }
+
+  const response = await client.messages.create({
     model: modelId,
     max_tokens: maxTokens,
     ...(effectiveSystemText ? { system: effectiveSystemText } : {}),
     messages: claudeMessages,
   });
 
-  const textBlock = response.content.find(b => b.type === "text");
-  let content = textBlock?.text || "";
+  console.log(`LLM: Anthropic response stop_reason=${response.stop_reason} content_blocks=${response.content.length} types=${response.content.map(b => b.type).join(",")}`);
+
+  const textBlocks = response.content.filter((b: any) => b.type === "text");
+  let content = textBlocks.map((b: any) => b.text).join("\n").trim();
 
   if (jsonMode) {
     const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
