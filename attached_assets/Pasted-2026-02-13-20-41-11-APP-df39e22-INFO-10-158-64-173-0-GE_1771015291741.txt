@@ -1,0 +1,66 @@
+2026-02-13 20:41:11	APP	...df39e22	
+INFO:     10.158.64.173:0 - "GET /api/scenarios/recent HTTP/1.1" 200 OK
+2026-02-13 20:41:11	APP	...df39e22	
+2026-02-13 20:41:11,564 [INFO] databricks.sql.client: Closing session 01f1091c-54d9-1944-a71c-e51e7eef79ff
+2026-02-13 20:41:11	APP	...df39e22	
+2026-02-13 20:41:11,276 [INFO] databricks.sql.client: Successfully opened session 01f1091c-54d9-1944-a71c-e51e7eef79ff
+2026-02-13 20:41:11	APP	...df39e22	
+INFO:     10.158.64.173:0 - "GET /api/projects HTTP/1.1" 200 OK
+2026-02-13 20:41:11	APP	...df39e22	
+2026-02-13 20:41:11,062 [INFO] databricks.sql.client: Closing session 01f1091c-5477-1935-bbf0-15fa9f094b04
+2026-02-13 20:41:10	APP	...df39e22	
+2026-02-13 20:41:10,633 [INFO] databricks.sql.client: Successfully opened session 01f1091c-5477-1935-bbf0-15fa9f094b04
+2026-02-13 20:41:10	APP	...df39e22	
+INFO:     10.158.64.173:0 - "GET /assets/index-BJBpBtMO.css HTTP/1.1" 304 Not Modified
+2026-02-13 20:41:10	APP	...df39e22	
+INFO:     10.158.64.173:0 - "GET /assets/index-CI6GelT5.js HTTP/1.1" 304 Not Modified
+2026-02-13 20:41:10	APP	...df39e22	
+INFO:     10.158.64.173:0 - "GET / HTTP/1.1" 200 OK
+2026-02-13 20:40:54	APP	...df39e22	
+INFO:     10.158.66.53:0 - "GET /favicon.png HTTP/1.1" 200 OK
+2026-02-13 20:40:54	APP	...df39e22	
+INFO:     10.158.66.53:0 - "GET /api/projects HTTP/1.1" 200 OK
+2026-02-13 20:40:54	APP	...df39e22	
+2026-02-13 20:40:54,516 [INFO] databricks.sql.client: Closing session 01f1091c-4aac-165e-b5c1-1312acad0ab0
+2026-02-13 20:40:54	APP	...df39e22	
+2026-02-13 20:40:54,253 [INFO] databricks.sql.client: Successfully opened session 01f1091c-4aac-165e-b5c1-1312acad0ab0
+2026-02-13 20:40:54	APP	...df39e22	
+INFO:     10.158.66.53:0 - "GET /api/scenarios/recent HTTP/1.1" 200 OK
+2026-02-13 20:40:54	APP	...df39e22	
+2026-02-13 20:40:54,029 [INFO] databricks.sql.client: Closing session 01f1091c-4a5e-1869-9c0d-f7ef57c66247
+2026-02-13 20:40:53	APP	...df39e22	
+2026-02-13 20:40:53,695 [INFO] databricks.sql.client: Successfully opened session 01f1091c-4a5e-1869-9c0d-f7ef57c66247
+2026-02-13 20:40:53	APP	...df39e22	
+INFO:     10.158.64.173:0 - "GET /assets/index-BJBpBtMO.css HTTP/1.1" 200 OK
+2026-02-13 20:40:53	APP	...df39e22	
+INFO:     10.158.64.173:0 - "GET /assets/index-CI6GelT5.js HTTP/1.1" 200 OK
+2026-02-13 20:40:52	APP	...df39e22	
+INFO:     10.158.64.173:0 - "GET / HTTP/1.1" 200 OK
+2026-02-13 20:40:26	APP	...df39e22	
+INFO:     10.158.65.148:0 - "GET /api/scenarios/recent HTTP/1.1" 200 OK
+2026-02-13 20:40:26	APP	...df39e22	
+2026-02-13 20:40:26,730 [INFO] databricks.sql.client: Closing session 01f1091c-3a21-1595-8885-a0d543b0eb2d
+2026-02-13 20:40:26	APP	...df39e22	
+2026-02-13 20:40:26,478 [INFO] databricks.sql.client: Successfully opened session 01f1091c-3a21-1595-8885-a0d543b0eb2d
+2026-02-13 20:40:26	APP	...df39e22	
+INFO:     10.158.65.148:0 - "GET /api/projects HTTP/1.1" 200 OK
+2026-02-13 20:40:26	APP	...df39e22	
+2026-02-13 20:40:26,234 [INFO] databricks.sql.client: Closing session 01f1091c-39d2-178e-aa1f-48a981afc1d3
+2026-02-13 20:40:25	APP	...df39e22	
+2026-02-13 20:40:25,973 [INFO] databricks.sql.client: Successfully opened session 01f1091c-39d2-178e-aa1f-48a981afc1d3
+2026-02-13 20:40:25	APP	...df39e22	
+INFO:     10.158.65.148:0 - "GET /assets/index-BJBpBtMO.css HTTP/1.1" 304 Not Modified
+2026-02-13 20:40:25	APP	...df39e22	
+INFO:     10.158.65.148:0 - "GET /assets/index-CI6GelT5.js HTTP/1.1" 304 Not Modified
+2026-02-13 20:40:19	APP	...df39e22	
+INFO:     10.158.65.148:0 - "GET /api/projects HTTP/1.1" 200 OK
+2026-02-13 20:40:19	APP	...df39e22	
+2026-02-13 20:40:19,094 [INFO] databricks.sql.client: Closing session 01f1091c-359b-1230-ab9b-5df282470d87
+2026-02-13 20:40:18	APP	...df39e22	
+2026-02-13 20:40:18,866 [INFO] databricks.sql.client: Successfully opened session 01f1091c-359b-1230-ab9b-5df282470d87
+2026-02-13 20:40:18	APP	...df39e22	
+INFO:     10.158.65.148:0 - "GET /api/scenarios/recent HTTP/1.1" 200 OK
+2026-02-13 20:40:18	APP	...df39e22	
+2026-02-13 20:40:18,704 [INFO] databricks.sql.client: Closing session 01f1091c-3554-1da0-8bd7-5715ab17b463
+2026-02-13 20:40:18	APP	...df39e22	
+2026-02-13 20:40:18,443 [INFO] databricks.sql.client: Successfully opened session 01f1091c-3554-1da0-8bd7-5715ab17b463
