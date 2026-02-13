@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from databricks.sql import connect
-from databricks.sdk.core import Config, oauth_service_principal
+from databricks.sdk.core import Config
 
 logger = logging.getLogger(__name__)
 
@@ -23,21 +23,25 @@ JSON_FIELDS_CHAT = ["applied_updates"]
 DATABRICKS_HOST = os.environ.get("DATABRICKS_HOST", "adb-582457799522203.3.azuredatabricks.net")
 DATABRICKS_HTTP_PATH = os.environ.get("DATABRICKS_HTTP_PATH", "/sql/1.0/warehouses/7740505e6e4de417")
 
+_cfg = None
+
+def _get_config() -> Config:
+    global _cfg
+    if _cfg is None:
+        host = DATABRICKS_HOST
+        if not host.startswith("https://"):
+            host = f"https://{host}"
+        _cfg = Config(host=host)
+    return _cfg
+
 
 def get_connection():
-    cfg = Config(
-        host=f"https://{DATABRICKS_HOST}",
-        client_id=os.environ.get("DATABRICKS_CLIENT_ID", ""),
-        client_secret=os.environ.get("DATABRICKS_CLIENT_SECRET", ""),
-    )
-
-    def credential_provider():
-        return oauth_service_principal(cfg)
+    cfg = _get_config()
 
     return connect(
         server_hostname=DATABRICKS_HOST,
         http_path=DATABRICKS_HTTP_PATH,
-        credentials_provider=credential_provider,
+        credentials_provider=lambda: cfg.authenticate,
         catalog=CATALOG,
     )
 

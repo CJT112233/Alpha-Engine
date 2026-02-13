@@ -5,7 +5,7 @@ import logging
 from typing import Literal, TypedDict, Optional
 
 from openai import OpenAI
-from databricks.sdk.core import Config, oauth_service_principal
+from databricks.sdk.core import Config
 
 logger = logging.getLogger(__name__)
 
@@ -54,22 +54,16 @@ _token_cache: dict[str, object] = {
 _TOKEN_TTL_SECONDS = 3000
 
 
+_llm_cfg = None
+
 def _get_databricks_config() -> Config:
-    host = os.environ.get("DATABRICKS_HOST", "adb-582457799522203.3.azuredatabricks.net")
-    client_id = os.environ.get("DATABRICKS_CLIENT_ID", "")
-    client_secret = os.environ.get("DATABRICKS_CLIENT_SECRET", "")
-
-    if not host or not client_id or not client_secret:
-        raise RuntimeError(
-            "Databricks credentials not configured. "
-            "Set DATABRICKS_HOST, DATABRICKS_CLIENT_ID, and DATABRICKS_CLIENT_SECRET."
-        )
-
-    return Config(
-        host=f"https://{host}" if not host.startswith("https://") else host,
-        client_id=client_id,
-        client_secret=client_secret,
-    )
+    global _llm_cfg
+    if _llm_cfg is None:
+        host = os.environ.get("DATABRICKS_HOST", "adb-582457799522203.3.azuredatabricks.net")
+        if not host.startswith("https://"):
+            host = f"https://{host}"
+        _llm_cfg = Config(host=host)
+    return _llm_cfg
 
 
 def _get_access_token() -> str:
@@ -82,7 +76,7 @@ def _get_access_token() -> str:
 
     logger.info("Refreshing Databricks OAuth token")
     cfg = _get_databricks_config()
-    header_factory = oauth_service_principal(cfg)
+    header_factory = cfg.authenticate
     headers = header_factory()
     token = headers.get("Authorization", "").replace("Bearer ", "")
 
@@ -97,7 +91,7 @@ def _get_access_token() -> str:
 
 def _create_openai_client() -> OpenAI:
     token = _get_access_token()
-    host = os.environ.get("DATABRICKS_HOST", "")
+    host = os.environ.get("DATABRICKS_HOST", "adb-582457799522203.3.azuredatabricks.net")
     if not host.startswith("https://"):
         host = f"https://{host}"
 
