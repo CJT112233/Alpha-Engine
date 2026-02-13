@@ -40,3 +40,10 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_openai:1.0.0", "javascript_anthropic_ai_integrations:2.0.0"]
+
+[userenv]
+
+[userenv.shared]
+DATABRICKS_HOST = "adb-582457799522203.3.azuredatabricks.net"
+DATABRICKS_HTTP_PATH = "/sql/1.0/warehouses/7740505e6e4de417"
+DATABRICKS_CATALOG = "burnham_rng"

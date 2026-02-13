@@ -149,3 +149,31 @@ Number formatting: Always display numbers with comma separators for thousands (e
 ### Additional Services
 - Stripe SDK (payment integration capability)
 - Nodemailer (email functionality)
+
+## Databricks App Migration (databricks_app/)
+
+### Architecture
+- **Deployment target**: Databricks Apps (adb-582457799522203.3.azuredatabricks.net)
+- **Backend**: FastAPI (Python) replacing Express.js
+- **Data**: Delta tables in Unity Catalog (`burnham_rng` catalog) replacing PostgreSQL
+- **AI**: Databricks Model Serving endpoints (databricks-gpt-5-2, databricks-claude-opus-4-6, databricks-gemini-3-pro, databricks-claude-opus-4-5)
+- **Auth**: OAuth service principal (brng-replit-AI) for SQL warehouse and Model Serving
+- **PDF**: ReportLab replacing PDFKit
+- **Frontend**: Same React frontend, built and served as static files
+
+### Key Files
+- `databricks_app/main.py` - FastAPI entry point with SPA static file serving
+- `databricks_app/api/routes.py` - All 31 API routes ported from Express
+- `databricks_app/services/storage.py` - Databricks SQL storage layer (Delta tables)
+- `databricks_app/services/llm.py` - Databricks Model Serving AI service
+- `databricks_app/knowledge_base/` - Feedstock library, output criteria, default prompts
+- `databricks_app/sql/create_tables.sql` - Delta table schemas for burnham_rng catalog
+- `databricks_app/app.yaml` - Databricks App manifest
+- `databricks_app/DEPLOY.md` - Deployment guide
+
+### Databricks Config
+- Workspace: adb-582457799522203.3.azuredatabricks.net
+- SQL Warehouse: /sql/1.0/warehouses/7740505e6e4de417
+- Catalog: burnham_rng
+- Schemas: project_intakes (7 tables), raw_documents (1 table)
+- Service Principal: brng-replit-AI (credentials in Replit Secrets)
