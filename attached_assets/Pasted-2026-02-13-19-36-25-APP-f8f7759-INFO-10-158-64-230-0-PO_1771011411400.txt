@@ -1,0 +1,76 @@
+2026-02-13 19:36:25	APP	...f8f7759	
+INFO:     10.158.64.230:0 - "POST /api/projects HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:36:25	APP	...f8f7759	
+2026-02-13 19:36:25,752 [ERROR] api.routes: Error creating project: [PARSE_SYNTAX_ERROR] Syntax error at or near '%'. SQLSTATE: 42601 (line 1, pos 93) == SQL == INSERT INTO burnham_rng.project_intakes.projects (id, name, description, created_at) VALUES (%s, %s, %s, %s) ---------------------------------------------------------------------------------------------^^^
+2026-02-13 19:36:25	APP	...f8f7759	
+2026-02-13 19:36:25,676 [INFO] databricks.sql.client: Closing session 01f10913-48b5-16dc-a813-3a312a009b61
+2026-02-13 19:36:25	APP	...f8f7759	
+2026-02-13 19:36:25,468 [WARNING] databricks.sql.utils: It looks like this query may contain un-named query markers like `%s` This format is not supported when use_inline_params=False. Use `?` instead or set use_inline_params=True
+2026-02-13 19:36:25	APP	...f8f7759	
+2026-02-13 19:36:25,468 [INFO] databricks.sql.client: Successfully opened session 01f10913-48b5-16dc-a813-3a312a009b61
+2026-02-13 19:36:15	APP	...f8f7759	
+INFO:     10.158.64.230:0 - "GET /api/projects HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:36:15	APP	...f8f7759	
+2026-02-13 19:36:15,953 [ERROR] api.routes: Error fetching projects: [INSUFFICIENT_PERMISSIONS] Insufficient privileges: User does not have USE CATALOG on Catalog 'burnham_rng'. SQLSTATE: 42501
+2026-02-13 19:36:15	APP	...f8f7759	
+2026-02-13 19:36:15,861 [INFO] databricks.sql.client: Closing session 01f10913-42ba-16f5-af99-9f313c32cb3b
+2026-02-13 19:36:15	APP	...f8f7759	
+2026-02-13 19:36:15,411 [INFO] databricks.sql.client: Successfully opened session 01f10913-42ba-16f5-af99-9f313c32cb3b
+2026-02-13 19:36:15	APP	...f8f7759	
+INFO:     10.158.64.230:0 - "GET /api/scenarios/recent HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:36:15	APP	...f8f7759	
+2026-02-13 19:36:15,013 [ERROR] api.routes: Error fetching recent scenarios: [PARSE_SYNTAX_ERROR] Syntax error at or near 'LIMIT'. SQLSTATE: 42601 (line 1, pos 180) == SQL == SELECT s.*, p.name AS project_name FROM burnham_rng.project_intakes.scenarios s INNER JOIN burnham_rng.project_intakes.projects p ON s.project_id = p.id ORDER BY s.created_at DESC LIMIT %s ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------^^^
+2026-02-13 19:36:14	APP	...f8f7759	
+2026-02-13 19:36:14,923 [INFO] databricks.sql.client: Closing session 01f10913-4251-1dc1-a5af-5019021b89bc
+2026-02-13 19:36:14	APP	...f8f7759	
+2026-02-13 19:36:14,778 [WARNING] databricks.sql.utils: It looks like this query may contain un-named query markers like `%s` This format is not supported when use_inline_params=False. Use `?` instead or set use_inline_params=True
+2026-02-13 19:36:14	APP	...f8f7759	
+2026-02-13 19:36:14,778 [INFO] databricks.sql.client: Successfully opened session 01f10913-4251-1dc1-a5af-5019021b89bc
+2026-02-13 19:36:14	APP	...f8f7759	
+INFO:     10.158.64.230:0 - "GET /assets/index-BJBpBtMO.css HTTP/1.1" 304 Not Modified
+2026-02-13 19:36:14	APP	...f8f7759	
+INFO:     10.158.64.230:0 - "GET /assets/index-CI6GelT5.js HTTP/1.1" 304 Not Modified
+2026-02-13 19:36:14	APP	...f8f7759	
+INFO:     10.158.64.230:0 - "GET / HTTP/1.1" 200 OK
+2026-02-13 19:36:04	APP	...f8f7759	
+INFO:     10.158.64.230:0 - "POST /api/projects HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:36:04	APP	...f8f7759	
+2026-02-13 19:36:04,836 [ERROR] api.routes: Error creating project: [PARSE_SYNTAX_ERROR] Syntax error at or near '%'. SQLSTATE: 42601 (line 1, pos 93) == SQL == INSERT INTO burnham_rng.project_intakes.projects (id, name, description, created_at) VALUES (%s, %s, %s, %s) ---------------------------------------------------------------------------------------------^^^
+2026-02-13 19:36:04	APP	...f8f7759	
+2026-02-13 19:36:04,743 [INFO] databricks.sql.client: Closing session 01f10913-3c2a-13c3-a278-29fdc334c4cd
+2026-02-13 19:36:04	APP	...f8f7759	
+2026-02-13 19:36:04,442 [WARNING] databricks.sql.utils: It looks like this query may contain un-named query markers like `%s` This format is not supported when use_inline_params=False. Use `?` instead or set use_inline_params=True
+2026-02-13 19:36:04	APP	...f8f7759	
+2026-02-13 19:36:04,442 [INFO] databricks.sql.client: Successfully opened session 01f10913-3c2a-13c3-a278-29fdc334c4cd
+2026-02-13 19:36:03	APP	...f8f7759	
+INFO:     10.158.64.230:0 - "GET /api/projects HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:36:03	APP	...f8f7759	
+2026-02-13 19:36:03,837 [ERROR] api.routes: Error fetching projects: [INSUFFICIENT_PERMISSIONS] Insufficient privileges: User does not have USE CATALOG on Catalog 'burnham_rng'. SQLSTATE: 42501
+2026-02-13 19:36:03	APP	...f8f7759	
+2026-02-13 19:36:03,730 [INFO] databricks.sql.client: Closing session 01f10913-37fa-1325-a434-4f8ee4a16aef
+2026-02-13 19:35:57	APP	...f8f7759	
+2026-02-13 19:35:57,506 [INFO] databricks.sql.client: Successfully opened session 01f10913-37fa-1325-a434-4f8ee4a16aef
+2026-02-13 19:35:54	APP	...f8f7759	
+INFO:     10.158.64.230:0 - "GET /assets/index-BJBpBtMO.css HTTP/1.1" 200 OK
+2026-02-13 19:35:54	APP	...f8f7759	
+INFO:     10.158.64.230:0 - "GET /assets/index-CI6GelT5.js HTTP/1.1" 200 OK
+2026-02-13 19:35:53	APP	...f8f7759	
+INFO:     10.158.64.230:0 - "GET /projects/new HTTP/1.1" 200 OK
+2026-02-13 19:35:17	APP	...f8f7759	
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2026-02-13 19:35:17	APP	...f8f7759	
+INFO:     Application startup complete.
+2026-02-13 19:35:17	APP	...f8f7759	
+2026-02-13 19:35:17,286 [INFO] project-factory: Catalog: burnham_rng
+2026-02-13 19:35:17	APP	...f8f7759	
+2026-02-13 19:35:17,286 [INFO] project-factory: HTTP Path: /sql/1.0/warehouses/7740505e6e4de417
+2026-02-13 19:35:17	APP	...f8f7759	
+2026-02-13 19:35:17,285 [INFO] project-factory: Databricks Host: adb-582457799522203.3.azuredatabricks.net
+2026-02-13 19:35:17	APP	...f8f7759	
+2026-02-13 19:35:17,285 [INFO] project-factory: Project Factory starting up...
+2026-02-13 19:35:17	APP	...f8f7759	
+INFO:     Waiting for application startup.
+2026-02-13 19:35:17	APP	...f8f7759	
+INFO:     Started server process [75]
+2026-02-13 19:35:16	SYSTEM	...f8f7759	
+[INFO] [01f109131585115bbe814241df8f7759] Deployment successful

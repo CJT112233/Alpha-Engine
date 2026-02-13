@@ -126,11 +126,11 @@ class DatabricksStorage:
             with conn.cursor() as cur:
                 cur.execute(
                     f"INSERT INTO {self._projects} (id, name, description, created_at) "
-                    "VALUES (%s, %s, %s, %s)",
+                    "VALUES (?, ?, ?, ?)",
                     (project_id, name, description, now),
                 )
                 cur.execute(
-                    f"SELECT * FROM {self._projects} WHERE id = %s",
+                    f"SELECT * FROM {self._projects} WHERE id = ?",
                     (project_id,),
                 )
                 row = cur.fetchone()
@@ -149,7 +149,7 @@ class DatabricksStorage:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT * FROM {self._projects} WHERE id = %s",
+                    f"SELECT * FROM {self._projects} WHERE id = ?",
                     (project_id,),
                 )
                 row = cur.fetchone()
@@ -161,7 +161,7 @@ class DatabricksStorage:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"DELETE FROM {self._projects} WHERE id = %s",
+                    f"DELETE FROM {self._projects} WHERE id = ?",
                     (project_id,),
                 )
 
@@ -183,11 +183,11 @@ class DatabricksStorage:
                 cur.execute(
                     f"INSERT INTO {self._scenarios} "
                     "(id, project_id, name, status, preferred_model, created_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    "VALUES (?, ?, ?, ?, ?, ?)",
                     (scenario_id, project_id, name, status, preferred_model, now),
                 )
                 cur.execute(
-                    f"SELECT * FROM {self._scenarios} WHERE id = %s",
+                    f"SELECT * FROM {self._scenarios} WHERE id = ?",
                     (scenario_id,),
                 )
                 row = cur.fetchone()
@@ -200,7 +200,7 @@ class DatabricksStorage:
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT * FROM {self._scenarios} "
-                    "WHERE project_id = %s ORDER BY created_at DESC",
+                    "WHERE project_id = ? ORDER BY created_at DESC",
                     (project_id,),
                 )
                 rows = cur.fetchall()
@@ -216,7 +216,7 @@ class DatabricksStorage:
                     f"SELECT s.*, p.name AS project_name "
                     f"FROM {self._scenarios} s "
                     f"LEFT JOIN {self._projects} p ON s.project_id = p.id "
-                    "WHERE s.id = %s",
+                    "WHERE s.id = ?",
                     (scenario_id,),
                 )
                 row = cur.fetchone()
@@ -233,7 +233,7 @@ class DatabricksStorage:
                     f"SELECT s.*, p.name AS project_name "
                     f"FROM {self._scenarios} s "
                     f"INNER JOIN {self._projects} p ON s.project_id = p.id "
-                    f"ORDER BY s.created_at DESC LIMIT %s",
+                    f"ORDER BY s.created_at DESC LIMIT ?",
                     (limit,),
                 )
                 rows = cur.fetchall()
@@ -250,7 +250,7 @@ class DatabricksStorage:
         set_clauses = []
         params = []
         for key, value in updates.items():
-            set_clauses.append(f"{key} = %s")
+            set_clauses.append(f"{key} = ?")
             if key in json_fields:
                 params.append(_serialize_json(value))
             else:
@@ -262,14 +262,14 @@ class DatabricksStorage:
             with conn.cursor() as cur:
                 cur.execute(
                     f"UPDATE {self._scenarios} SET {', '.join(set_clauses)} "
-                    "WHERE id = %s",
+                    "WHERE id = ?",
                     tuple(params),
                 )
                 cur.execute(
                     f"SELECT s.*, p.name AS project_name "
                     f"FROM {self._scenarios} s "
                     f"LEFT JOIN {self._projects} p ON s.project_id = p.id "
-                    "WHERE s.id = %s",
+                    "WHERE s.id = ?",
                     (scenario_id,),
                 )
                 row = cur.fetchone()
@@ -283,7 +283,7 @@ class DatabricksStorage:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"DELETE FROM {self._scenarios} WHERE id = %s",
+                    f"DELETE FROM {self._scenarios} WHERE id = ?",
                     (scenario_id,),
                 )
 
@@ -304,11 +304,11 @@ class DatabricksStorage:
                 cur.execute(
                     f"INSERT INTO {self._text_entries} "
                     "(id, scenario_id, content, category, created_at) "
-                    "VALUES (%s, %s, %s, %s, %s)",
+                    "VALUES (?, ?, ?, ?, ?)",
                     (entry_id, scenario_id, content, category, now),
                 )
                 cur.execute(
-                    f"SELECT * FROM {self._text_entries} WHERE id = %s",
+                    f"SELECT * FROM {self._text_entries} WHERE id = ?",
                     (entry_id,),
                 )
                 row = cur.fetchone()
@@ -319,7 +319,7 @@ class DatabricksStorage:
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT * FROM {self._text_entries} "
-                    "WHERE scenario_id = %s ORDER BY created_at DESC",
+                    "WHERE scenario_id = ? ORDER BY created_at DESC",
                     (scenario_id,),
                 )
                 rows = cur.fetchall()
@@ -329,7 +329,7 @@ class DatabricksStorage:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"DELETE FROM {self._text_entries} WHERE id = %s",
+                    f"DELETE FROM {self._text_entries} WHERE id = ?",
                     (entry_id,),
                 )
 
@@ -353,11 +353,11 @@ class DatabricksStorage:
                 cur.execute(
                     f"INSERT INTO {self._documents} "
                     "(id, scenario_id, filename, original_name, mime_type, size, extracted_text, created_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (doc_id, scenario_id, filename, original_name, mime_type, size, extracted_text, now),
                 )
                 cur.execute(
-                    f"SELECT * FROM {self._documents} WHERE id = %s",
+                    f"SELECT * FROM {self._documents} WHERE id = ?",
                     (doc_id,),
                 )
                 row = cur.fetchone()
@@ -368,7 +368,7 @@ class DatabricksStorage:
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT * FROM {self._documents} "
-                    "WHERE scenario_id = %s ORDER BY created_at DESC",
+                    "WHERE scenario_id = ? ORDER BY created_at DESC",
                     (scenario_id,),
                 )
                 rows = cur.fetchall()
@@ -378,7 +378,7 @@ class DatabricksStorage:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT * FROM {self._documents} WHERE id = %s",
+                    f"SELECT * FROM {self._documents} WHERE id = ?",
                     (doc_id,),
                 )
                 row = cur.fetchone()
@@ -393,7 +393,7 @@ class DatabricksStorage:
         set_clauses = []
         params = []
         for key, value in updates.items():
-            set_clauses.append(f"{key} = %s")
+            set_clauses.append(f"{key} = ?")
             params.append(value)
 
         params.append(doc_id)
@@ -402,11 +402,11 @@ class DatabricksStorage:
             with conn.cursor() as cur:
                 cur.execute(
                     f"UPDATE {self._documents} SET {', '.join(set_clauses)} "
-                    "WHERE id = %s",
+                    "WHERE id = ?",
                     tuple(params),
                 )
                 cur.execute(
-                    f"SELECT * FROM {self._documents} WHERE id = %s",
+                    f"SELECT * FROM {self._documents} WHERE id = ?",
                     (doc_id,),
                 )
                 row = cur.fetchone()
@@ -418,7 +418,7 @@ class DatabricksStorage:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"DELETE FROM {self._documents} WHERE id = %s",
+                    f"DELETE FROM {self._documents} WHERE id = ?",
                     (doc_id,),
                 )
 
@@ -443,11 +443,11 @@ class DatabricksStorage:
                 cur.execute(
                     f"INSERT INTO {self._extracted_parameters} "
                     "(id, scenario_id, category, name, value, unit, source, confidence, is_confirmed, created_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (param_id, scenario_id, category, name, value, unit, source, confidence, False, now),
                 )
                 cur.execute(
-                    f"SELECT * FROM {self._extracted_parameters} WHERE id = %s",
+                    f"SELECT * FROM {self._extracted_parameters} WHERE id = ?",
                     (param_id,),
                 )
                 row = cur.fetchone()
@@ -458,7 +458,7 @@ class DatabricksStorage:
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT * FROM {self._extracted_parameters} "
-                    "WHERE scenario_id = %s ORDER BY category, name",
+                    "WHERE scenario_id = ? ORDER BY category, name",
                     (scenario_id,),
                 )
                 rows = cur.fetchall()
@@ -468,7 +468,7 @@ class DatabricksStorage:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"DELETE FROM {self._extracted_parameters} WHERE scenario_id = %s",
+                    f"DELETE FROM {self._extracted_parameters} WHERE scenario_id = ?",
                     (scenario_id,),
                 )
 
@@ -502,7 +502,7 @@ class DatabricksStorage:
                     "feedstock_parameters, feedstock_specs, feedstocks, output_requirements, "
                     "output_specs, location, constraints, confirmed_fields, is_confirmed, "
                     "created_at, updated_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         upif_id, scenario_id, feedstock_type, feedstock_volume, feedstock_unit,
                         feedstock_parameters, feedstock_specs, feedstocks, output_requirements,
@@ -511,7 +511,7 @@ class DatabricksStorage:
                     ),
                 )
                 cur.execute(
-                    f"SELECT * FROM {self._upif_records} WHERE id = %s",
+                    f"SELECT * FROM {self._upif_records} WHERE id = ?",
                     (upif_id,),
                 )
                 row = cur.fetchone()
@@ -523,7 +523,7 @@ class DatabricksStorage:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT * FROM {self._upif_records} WHERE scenario_id = %s",
+                    f"SELECT * FROM {self._upif_records} WHERE scenario_id = ?",
                     (scenario_id,),
                 )
                 row = cur.fetchone()
@@ -538,11 +538,11 @@ class DatabricksStorage:
             return self.get_upif(scenario_id)
 
         json_fields = set(JSON_FIELDS_UPIF)
-        set_clauses = ["updated_at = %s"]
+        set_clauses = ["updated_at = ?"]
         params = [datetime.utcnow()]
 
         for key, value in updates.items():
-            set_clauses.append(f"{key} = %s")
+            set_clauses.append(f"{key} = ?")
             if key in json_fields:
                 params.append(_serialize_json(value))
             else:
@@ -554,11 +554,11 @@ class DatabricksStorage:
             with conn.cursor() as cur:
                 cur.execute(
                     f"UPDATE {self._upif_records} SET {', '.join(set_clauses)} "
-                    "WHERE scenario_id = %s",
+                    "WHERE scenario_id = ?",
                     tuple(params),
                 )
                 cur.execute(
-                    f"SELECT * FROM {self._upif_records} WHERE scenario_id = %s",
+                    f"SELECT * FROM {self._upif_records} WHERE scenario_id = ?",
                     (scenario_id,),
                 )
                 row = cur.fetchone()
@@ -574,12 +574,12 @@ class DatabricksStorage:
             with conn.cursor() as cur:
                 cur.execute(
                     f"UPDATE {self._upif_records} "
-                    "SET is_confirmed = %s, confirmed_at = %s, updated_at = %s "
-                    "WHERE scenario_id = %s",
+                    "SET is_confirmed = ?, confirmed_at = ?, updated_at = ? "
+                    "WHERE scenario_id = ?",
                     (True, now, now, scenario_id),
                 )
                 cur.execute(
-                    f"SELECT * FROM {self._upif_records} WHERE scenario_id = %s",
+                    f"SELECT * FROM {self._upif_records} WHERE scenario_id = ?",
                     (scenario_id,),
                 )
                 row = cur.fetchone()
@@ -593,7 +593,7 @@ class DatabricksStorage:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"DELETE FROM {self._upif_records} WHERE scenario_id = %s",
+                    f"DELETE FROM {self._upif_records} WHERE scenario_id = ?",
                     (scenario_id,),
                 )
 
@@ -615,11 +615,11 @@ class DatabricksStorage:
                 cur.execute(
                     f"INSERT INTO {self._upif_chat_messages} "
                     "(id, scenario_id, role, content, applied_updates, created_at) "
-                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    "VALUES (?, ?, ?, ?, ?, ?)",
                     (msg_id, scenario_id, role, content, _serialize_json(applied_updates), now),
                 )
                 cur.execute(
-                    f"SELECT * FROM {self._upif_chat_messages} WHERE id = %s",
+                    f"SELECT * FROM {self._upif_chat_messages} WHERE id = ?",
                     (msg_id,),
                 )
                 row = cur.fetchone()
@@ -632,7 +632,7 @@ class DatabricksStorage:
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT * FROM {self._upif_chat_messages} "
-                    "WHERE scenario_id = %s ORDER BY created_at ASC",
+                    "WHERE scenario_id = ? ORDER BY created_at ASC",
                     (scenario_id,),
                 )
                 rows = cur.fetchall()
@@ -658,7 +658,7 @@ class DatabricksStorage:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"SELECT * FROM {self._prompt_templates} WHERE key = %s",
+                    f"SELECT * FROM {self._prompt_templates} WHERE key = ?",
                     (key,),
                 )
                 row = cur.fetchone()
@@ -682,13 +682,13 @@ class DatabricksStorage:
                 if existing:
                     cur.execute(
                         f"UPDATE {self._prompt_templates} "
-                        "SET name = %s, description = %s, template = %s, "
-                        "is_system_prompt = %s, updated_at = %s "
-                        "WHERE key = %s",
+                        "SET name = ?, description = ?, template = ?, "
+                        "is_system_prompt = ?, updated_at = ? "
+                        "WHERE key = ?",
                         (name, description, template, is_system_prompt, now, key),
                     )
                     cur.execute(
-                        f"SELECT * FROM {self._prompt_templates} WHERE key = %s",
+                        f"SELECT * FROM {self._prompt_templates} WHERE key = ?",
                         (key,),
                     )
                 else:
@@ -696,11 +696,11 @@ class DatabricksStorage:
                     cur.execute(
                         f"INSERT INTO {self._prompt_templates} "
                         "(id, key, name, description, template, is_system_prompt, updated_at) "
-                        "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
                         (template_id, key, name, description, template, is_system_prompt, now),
                     )
                     cur.execute(
-                        f"SELECT * FROM {self._prompt_templates} WHERE id = %s",
+                        f"SELECT * FROM {self._prompt_templates} WHERE id = ?",
                         (template_id,),
                     )
                 row = cur.fetchone()
@@ -710,7 +710,7 @@ class DatabricksStorage:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    f"DELETE FROM {self._prompt_templates} WHERE key = %s",
+                    f"DELETE FROM {self._prompt_templates} WHERE key = ?",
                     (key,),
                 )
 
