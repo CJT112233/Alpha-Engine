@@ -1,0 +1,36 @@
+2026-02-13 20:35:47	APP	...df39e22	
+INFO:     10.158.65.44:0 - "POST /api/projects HTTP/1.1" 500 Internal Server Error
+2026-02-13 20:35:47	APP	...df39e22	
+2026-02-13 20:35:47,823 [ERROR] api.routes: Error creating project: PERMISSION_DENIED: User does not have USE CATALOG on Catalog 'burnham_rng'.
+2026-02-13 20:35:47	APP	...df39e22	
+2026-02-13 20:35:47,713 [INFO] databricks.sql.client: Closing session 01f1091b-93a4-169e-b9e5-08852a067b0e
+2026-02-13 20:35:47	APP	...df39e22	
+2026-02-13 20:35:47,190 [INFO] databricks.sql.client: Successfully opened session 01f1091b-93a4-169e-b9e5-08852a067b0e
+2026-02-13 20:35:43	APP	...df39e22	
+INFO:     10.158.65.44:0 - "GET /api/projects HTTP/1.1" 500 Internal Server Error
+2026-02-13 20:35:43	APP	...df39e22	
+2026-02-13 20:35:43,839 [ERROR] api.routes: Error fetching projects: [INSUFFICIENT_PERMISSIONS] Insufficient privileges: User does not have USE CATALOG on Catalog 'burnham_rng'. SQLSTATE: 42501
+2026-02-13 20:35:43	APP	...df39e22	
+2026-02-13 20:35:43,720 [INFO] databricks.sql.client: Closing session 01f1091b-8ddd-1413-9add-93654c4fdc0b
+2026-02-13 20:35:37	APP	...df39e22	
+2026-02-13 20:35:37,594 [INFO] databricks.sql.client: Successfully opened session 01f1091b-8ddd-1413-9add-93654c4fdc0b
+2026-02-13 20:35:36	APP	...df39e22	
+INFO:     10.158.65.44:0 - "GET /assets/index-BJBpBtMO.css HTTP/1.1" 200 OK
+2026-02-13 20:35:36	APP	...df39e22	
+INFO:     10.158.65.44:0 - "GET /assets/index-CI6GelT5.js HTTP/1.1" 200 OK
+2026-02-13 20:35:36	APP	...df39e22	
+INFO:     10.158.65.44:0 - "GET /projects/new HTTP/1.1" 200 OK
+2026-02-13 20:35:20	APP	...df39e22	
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2026-02-13 20:35:20	APP	...df39e22	
+INFO:     Application startup complete.
+2026-02-13 20:35:20	APP	...df39e22	
+2026-02-13 20:35:20,128 [INFO] project-factory: Catalog: burnham_rng
+2026-02-13 20:35:20	APP	...df39e22	
+2026-02-13 20:35:20,128 [INFO] project-factory: HTTP Path: /sql/1.0/warehouses/7740505e6e4de417
+2026-02-13 20:35:20	APP	...df39e22	
+2026-02-13 20:35:20,128 [INFO] project-factory: Databricks Host: adb-582457799522203.3.azuredatabricks.net
+2026-02-13 20:35:20	APP	...df39e22	
+2026-02-13 20:35:20,128 [INFO] project-factory: Project Factory starting up...
+2026-02-13 20:35:20	APP	...df39e22	
+INFO:     Waiting for application startup.
