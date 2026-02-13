@@ -1,8 +1,8 @@
-# Project Alpha - Databricks App Deployment Guide
+# Project Factory - Databricks App Deployment Guide
 
 ## Architecture
 
-Project Alpha runs as a **Databricks App** with:
+Project Factory runs as a **Databricks App** with:
 - **Frontend**: React (built to static files, served by FastAPI)
 - **Backend**: FastAPI (Python) with Databricks SQL Connector
 - **Data**: Delta tables in Unity Catalog (`burnham_rng` catalog)
@@ -55,15 +55,20 @@ The `static/` directory should contain `index.html` and an `assets/` folder.
 
 ## Step 3: Configure Environment Variables
 
-In your Databricks App configuration, set these environment variables:
+The following connection defaults are hardcoded in `app.yaml` and the service files, so they work out of the box for the Burnham RNG workspace:
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABRICKS_HOST` | Workspace hostname | `adb-582457799522203.3.azuredatabricks.net` |
-| `DATABRICKS_HTTP_PATH` | SQL warehouse HTTP path | `/sql/1.0/warehouses/7740505e6e4de417` |
-| `DATABRICKS_CATALOG` | Unity Catalog catalog name | `burnham_rng` |
-| `DATABRICKS_CLIENT_ID` | Service principal client ID | (from service principal) |
-| `DATABRICKS_CLIENT_SECRET` | Service principal client secret | (from service principal) |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABRICKS_HOST` | `adb-582457799522203.3.azuredatabricks.net` | Workspace hostname |
+| `DATABRICKS_HTTP_PATH` | `/sql/1.0/warehouses/7740505e6e4de417` | SQL warehouse HTTP path |
+| `DATABRICKS_CATALOG` | `burnham_rng` | Unity Catalog catalog name |
+
+The following credentials must be provided via `app.yaml` or the Databricks App service principal:
+
+| Variable | Description |
+|----------|-------------|
+| `DATABRICKS_CLIENT_ID` | Service principal client ID |
+| `DATABRICKS_CLIENT_SECRET` | Service principal client secret |
 
 ## Step 4: Deploy as Databricks App
 
@@ -77,16 +82,16 @@ pip install databricks-cli
 databricks configure --host https://adb-582457799522203.3.azuredatabricks.net
 
 # Deploy the app
-databricks apps deploy project-alpha \
+databricks apps deploy project-factory \
   --source-code-path databricks_app/ \
-  --description "Project Alpha - AI-enabled UPIF system"
+  --description "Project Factory - AI-enabled UPIF system"
 ```
 
 ### Option B: Using Databricks Workspace UI
 
 1. Navigate to **Compute > Apps** in your workspace
 2. Click **Create App**
-3. Name: `project-alpha`
+3. Name: `project-factory`
 4. Upload the `databricks_app/` directory
 5. Set environment variables in the app configuration
 6. Click **Deploy**
@@ -98,15 +103,15 @@ from databricks.sdk import WorkspaceClient
 
 w = WorkspaceClient()
 app = w.apps.deploy(
-    name="project-alpha",
+    name="project-factory",
     source_code_path="databricks_app/",
-    description="Project Alpha - AI-enabled UPIF system"
+    description="Project Factory - AI-enabled UPIF system"
 )
 ```
 
 ## Step 5: Verify Deployment
 
-1. Access the app URL provided by Databricks (e.g., `https://project-alpha.cloud.databricks.com/`)
+1. Access the app URL provided by Databricks (e.g., `https://project-factory.cloud.databricks.com/`)
 2. Create a test project and scenario
 3. Add text input describing a biogas project
 4. Generate the UPIF and verify feedstock enrichment

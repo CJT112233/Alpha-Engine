@@ -1,8 +1,8 @@
-# Project Alpha - Intelligent Project Intake System
+# Project Factory - Intelligent Project Intake System
 
 ## Overview
 
-Project Alpha is an AI-enabled project development system designed to transform unstructured project inputs into standardized specifications. The system allows users to capture project information through natural language (conversational input) and document uploads, then uses intelligent parameter extraction to generate a Unified Project Intake Form (UPIF).
+Project Factory is an AI-enabled project development system designed to transform unstructured project inputs into standardized specifications. The system allows users to capture project information through natural language (conversational input) and document uploads, then uses intelligent parameter extraction to generate a Unified Project Intake Form (UPIF).
 
 The core workflow follows a scenario-based approach where:
 1. Users create projects and scenarios within those projects
