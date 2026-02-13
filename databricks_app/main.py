@@ -1,5 +1,5 @@
 """
-Project Alpha - Databricks App Entry Point
+Project Factory - Databricks App Entry Point
 
 FastAPI application serving both the React frontend (static files)
 and the backend API. Deployed as a Databricks App with OAuth
@@ -17,10 +17,10 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger("project-alpha")
+logger = logging.getLogger("project-factory")
 
 app = FastAPI(
-    title="Project Alpha",
+    title="Project Factory",
     description="AI-enabled Unified Project Intake Form system for biogas/anaerobic digestion projects",
     version="1.0.0",
 )
@@ -53,18 +53,23 @@ else:
     async def root():
         return {
             "status": "running",
-            "message": "Project Alpha API is running. Frontend static files not found.",
+            "message": "Project Factory API is running. Frontend static files not found.",
             "docs": "/docs",
         }
 
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Project Alpha starting up...")
-    logger.info("Databricks Host: %s", os.environ.get("DATABRICKS_HOST", "NOT SET"))
-    logger.info("Catalog: %s", os.environ.get("DATABRICKS_CATALOG", "burnham_rng"))
+    host = os.environ.get("DATABRICKS_HOST", "adb-582457799522203.3.azuredatabricks.net")
+    http_path = os.environ.get("DATABRICKS_HTTP_PATH", "/sql/1.0/warehouses/7740505e6e4de417")
+    catalog = os.environ.get("DATABRICKS_CATALOG", "burnham_rng")
 
-    required_vars = ["DATABRICKS_HOST", "DATABRICKS_HTTP_PATH"]
+    logger.info("Project Factory starting up...")
+    logger.info("Databricks Host: %s", host)
+    logger.info("HTTP Path: %s", http_path)
+    logger.info("Catalog: %s", catalog)
+
+    required_vars = ["DATABRICKS_CLIENT_ID", "DATABRICKS_CLIENT_SECRET"]
     missing = [v for v in required_vars if not os.environ.get(v)]
     if missing:
         logger.warning("Missing environment variables: %s", ", ".join(missing))

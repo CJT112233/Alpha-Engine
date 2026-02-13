@@ -20,19 +20,23 @@ JSON_FIELDS_SCENARIO = ["clarifying_questions", "clarifying_answers"]
 JSON_FIELDS_CHAT = ["applied_updates"]
 
 
+DATABRICKS_HOST = os.environ.get("DATABRICKS_HOST", "adb-582457799522203.3.azuredatabricks.net")
+DATABRICKS_HTTP_PATH = os.environ.get("DATABRICKS_HTTP_PATH", "/sql/1.0/warehouses/7740505e6e4de417")
+
+
 def get_connection():
     cfg = Config(
-        host=f"https://{os.environ['DATABRICKS_HOST']}",
-        client_id=os.environ["DATABRICKS_CLIENT_ID"],
-        client_secret=os.environ["DATABRICKS_CLIENT_SECRET"],
+        host=f"https://{DATABRICKS_HOST}",
+        client_id=os.environ.get("DATABRICKS_CLIENT_ID", ""),
+        client_secret=os.environ.get("DATABRICKS_CLIENT_SECRET", ""),
     )
 
     def credential_provider():
         return oauth_service_principal(cfg)
 
     return connect(
-        server_hostname=os.environ["DATABRICKS_HOST"],
-        http_path=os.environ["DATABRICKS_HTTP_PATH"],
+        server_hostname=DATABRICKS_HOST,
+        http_path=DATABRICKS_HTTP_PATH,
         credentials_provider=credential_provider,
         catalog=CATALOG,
     )

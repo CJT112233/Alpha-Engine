@@ -55,7 +55,7 @@ _TOKEN_TTL_SECONDS = 3000
 
 
 def _get_databricks_config() -> Config:
-    host = os.environ.get("DATABRICKS_HOST", "")
+    host = os.environ.get("DATABRICKS_HOST", "adb-582457799522203.3.azuredatabricks.net")
     client_id = os.environ.get("DATABRICKS_CLIENT_ID", "")
     client_secret = os.environ.get("DATABRICKS_CLIENT_SECRET", "")
 
