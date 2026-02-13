@@ -1,0 +1,29 @@
+2026-02-13 19:12:52APP...c747d62INFO:     10.158.64.230:0 - "POST /api/projects HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:12:52APP...c747d622026-02-13 19:12:52,788 [ERROR] api.routes: Error creating project: 'DATABRICKS_HTTP_PATH'
+2026-02-13 19:12:44APP...c747d62INFO:     10.158.64.230:0 - "GET /api/scenarios/recent HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:12:44APP...c747d622026-02-13 19:12:44,965 [ERROR] api.routes: Error fetching recent scenarios: 'DATABRICKS_HTTP_PATH'
+2026-02-13 19:12:44APP...c747d62INFO:     10.158.64.230:0 - "GET /api/projects HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:12:44APP...c747d622026-02-13 19:12:44,919 [ERROR] api.routes: Error fetching projects: 'DATABRICKS_HTTP_PATH'
+2026-02-13 19:12:41APP...c747d62INFO:     10.158.64.230:0 - "POST /api/projects HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:12:41APP...c747d622026-02-13 19:12:41,776 [ERROR] api.routes: Error creating project: 'DATABRICKS_HTTP_PATH'
+2026-02-13 19:12:28APP...c747d62INFO:     10.158.64.230:0 - "GET /api/projects HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:12:28APP...c747d622026-02-13 19:12:28,710 [ERROR] api.routes: Error fetching projects: 'DATABRICKS_HTTP_PATH'
+2026-02-13 19:12:28APP...c747d62INFO:     10.158.64.230:0 - "GET /api/scenarios/recent HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:12:28APP...c747d622026-02-13 19:12:28,661 [ERROR] api.routes: Error fetching recent scenarios: 'DATABRICKS_HTTP_PATH'
+2026-02-13 19:10:38APP...c747d62INFO:     10.158.64.230:0 - "GET /favicon.png HTTP/1.1" 200 OK
+2026-02-13 19:10:37APP...c747d62INFO:     10.158.64.230:0 - "GET /api/scenarios/recent HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:10:37APP...c747d622026-02-13 19:10:37,990 [ERROR] api.routes: Error fetching recent scenarios: 'DATABRICKS_HTTP_PATH'
+2026-02-13 19:10:37APP...c747d62INFO:     10.158.64.230:0 - "GET /api/projects HTTP/1.1" 500 Internal Server Error
+2026-02-13 19:10:37APP...c747d622026-02-13 19:10:37,942 [ERROR] api.routes: Error fetching projects: 'DATABRICKS_HTTP_PATH'
+2026-02-13 19:10:37APP...c747d62INFO:     10.158.64.230:0 - "GET /assets/index-BJBpBtMO.css HTTP/1.1" 200 OK
+2026-02-13 19:10:37APP...c747d62INFO:     10.158.64.230:0 - "GET /assets/index-CI6GelT5.js HTTP/1.1" 200 OK
+2026-02-13 19:10:37APP...c747d62INFO:     10.158.64.230:0 - "GET / HTTP/1.1" 200 OK
+2026-02-13 19:10:24APP...c747d62INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2026-02-13 19:10:24APP...c747d62INFO:     Application startup complete.
+2026-02-13 19:10:24APP...c747d622026-02-13 19:10:24,633 [WARNING] project-alpha: Missing environment variables: DATABRICKS_HTTP_PATH
+2026-02-13 19:10:24APP...c747d622026-02-13 19:10:24,633 [INFO] project-alpha: Catalog: burnham_rng
+2026-02-13 19:10:24APP...c747d622026-02-13 19:10:24,633 [INFO] project-alpha: Databricks Host: adb-582457799522203.3.azuredatabricks.net
+2026-02-13 19:10:24APP...c747d622026-02-13 19:10:24,633 [INFO] project-alpha: Project Alpha starting up...
+2026-02-13 19:10:24APP...c747d62INFO:     Waiting for application startup.
+2026-02-13 19:10:24APP...c747d62INFO:     Started server process [54]
+2026-02-13 19:10:23SYSTEM...c747d62[INFO] [01f1090f93f3118ead9b5b478c747d62] Deployment successful
