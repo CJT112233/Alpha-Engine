@@ -178,7 +178,7 @@ class DatabricksStorage:
         project_id: str,
         name: str,
         status: str = "draft",
-        preferred_model: str = "databricks-gpt-5-2",
+        preferred_model: str = "databricks-gpt-5-2-codex",
     ) -> dict:
         scenario_id = str(uuid.uuid4())
         now = datetime.utcnow()

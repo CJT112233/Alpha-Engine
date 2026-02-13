@@ -19,10 +19,10 @@ Project Factory runs as a **Databricks App** with:
    - `SELECT`, `INSERT`, `UPDATE`, `DELETE` on all tables
    - Access to Model Serving endpoints
 4. **Model Serving Endpoints** deployed:
-   - `databricks-gpt-5-2`
+   - `databricks-gpt-5-2-codex`
    - `databricks-claude-opus-4-6`
-   - `databricks-gemini-3-pro`
-   - `databricks-claude-opus-4-5`
+   - `databricks-claude-sonnet-4-5`
+   - `databricks-claude-sonnet-4-5`
 
 ## Step 1: Create Delta Tables
 
@@ -158,7 +158,7 @@ databricks_app/
 ### Model Serving Issues
 - Verify endpoints are deployed and running in the Serving tab
 - Check that the service principal has `CAN_QUERY` permission on each endpoint
-- Model endpoint names must match exactly (e.g., `databricks-gpt-5-2`)
+- Model endpoint names must match exactly (e.g., `databricks-gpt-5-2-codex`)
 
 ### Table Access Issues
 - Run `SHOW GRANTS ON CATALOG burnham_rng` to verify catalog permissions

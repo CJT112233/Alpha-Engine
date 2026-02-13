@@ -10,28 +10,25 @@ from databricks.sdk.core import Config
 logger = logging.getLogger(__name__)
 
 LLMProvider = Literal[
-    "databricks-gpt-5-2",
+    "databricks-gpt-5-2-codex",
     "databricks-claude-opus-4-6",
-    "databricks-gemini-3-pro",
-    "databricks-claude-opus-4-5",
+    "databricks-claude-sonnet-4-5",
 ]
 
 ALL_PROVIDERS: list[str] = [
-    "databricks-gpt-5-2",
+    "databricks-gpt-5-2-codex",
     "databricks-claude-opus-4-6",
-    "databricks-gemini-3-pro",
-    "databricks-claude-opus-4-5",
+    "databricks-claude-sonnet-4-5",
 ]
 
 PROVIDER_LABELS: dict[str, str] = {
-    "databricks-gpt-5-2": "GPT-5 (Databricks)",
+    "databricks-gpt-5-2-codex": "GPT-5 Codex (Databricks)",
     "databricks-claude-opus-4-6": "Claude Opus 4.6 (Databricks)",
-    "databricks-gemini-3-pro": "Gemini 3 Pro (Databricks)",
-    "databricks-claude-opus-4-5": "Claude Opus 4.5 (Databricks)",
+    "databricks-claude-sonnet-4-5": "Claude Sonnet 4.5 (Databricks)",
 }
 
-CLAUDE_MODELS = {"databricks-claude-opus-4-6", "databricks-claude-opus-4-5"}
-GPT_MODELS = {"databricks-gpt-5-2"}
+CLAUDE_MODELS = {"databricks-claude-opus-4-6", "databricks-claude-sonnet-4-5"}
+GPT_MODELS = {"databricks-gpt-5-2-codex"}
 
 
 class LLMMessage(TypedDict):

@@ -22,7 +22,7 @@ class ScenarioCreate(BaseModel):
     project_id: str = Field(alias="projectId")
     name: str
     status: str = "draft"
-    preferred_model: str = Field(default="databricks-gpt-5-2", alias="preferredModel")
+    preferred_model: str = Field(default="databricks-gpt-5-2-codex", alias="preferredModel")
 
     model_config = {"populate_by_name": True}
 
@@ -31,7 +31,7 @@ class Scenario(BaseModel):
     project_id: str
     name: str
     status: str = "draft"
-    preferred_model: Optional[str] = "databricks-gpt-5-2"
+    preferred_model: Optional[str] = "databricks-gpt-5-2-codex"
     clarifying_questions: Optional[Any] = None
     clarifying_answers: Optional[Any] = None
     created_at: Optional[datetime] = None

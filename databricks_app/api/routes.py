@@ -45,10 +45,9 @@ logger = logging.getLogger(__name__)
 api_router = APIRouter(prefix="/api")
 
 VALID_MODELS = [
-    "databricks-gpt-5-2",
+    "databricks-gpt-5-2-codex",
     "databricks-claude-opus-4-6",
-    "databricks-gemini-3-pro",
-    "databricks-claude-opus-4-5",
+    "databricks-claude-sonnet-4-5",
 ]
 
 UPLOAD_DIR = "uploads"
@@ -360,7 +359,7 @@ def extract_parameters_from_text(entries: list[dict]) -> list[dict]:
 
 async def extract_parameters_with_ai(
     entries: list[dict],
-    model: str = "databricks-gpt-5-2",
+    model: str = "databricks-gpt-5-2-codex",
     clarifying_qa: Optional[list[dict]] = None,
 ) -> list[dict]:
     content = "\n\n".join(e["content"] for e in entries)
@@ -522,7 +521,7 @@ class ProjectBody(BaseModel):
 class ScenarioBody(BaseModel):
     name: str
     status: str = "draft"
-    preferredModel: str = "databricks-gpt-5-2"
+    preferredModel: str = "databricks-gpt-5-2-codex"
 
 
 # ---------------------------------------------------------------------------
@@ -535,7 +534,7 @@ async def get_llm_providers():
     available = get_available_providers()
     return {
         "providers": [{"id": p, "label": PROVIDER_LABELS.get(p, p)} for p in available],
-        "default": available[0] if available else "databricks-gpt-5-2",
+        "default": available[0] if available else "databricks-gpt-5-2-codex",
     }
 
 
@@ -904,7 +903,7 @@ async def generate_clarifying_questions(scenario_id: str):
             raise HTTPException(status_code=400, detail="No input content to analyze. Add text or upload documents first.")
 
         scenario = storage.get_scenario(scenario_id)
-        model = (scenario or {}).get("preferred_model") or "databricks-gpt-5-2"
+        model = (scenario or {}).get("preferred_model") or "databricks-gpt-5-2-codex"
 
         if not get_available_providers():
             raise HTTPException(status_code=500, detail="No AI provider is configured.")
@@ -986,7 +985,7 @@ async def extract_parameters(scenario_id: str):
         all_entries = list(entries) + doc_entries
 
         extract_scenario = storage.get_scenario(scenario_id)
-        extract_model = (extract_scenario or {}).get("preferred_model") or "databricks-gpt-5-2"
+        extract_model = (extract_scenario or {}).get("preferred_model") or "databricks-gpt-5-2-codex"
         clarifying_answers = (extract_scenario or {}).get("clarifying_answers") or None
 
         extracted_params = await extract_parameters_with_ai(all_entries, extract_model, clarifying_answers)
@@ -1293,7 +1292,7 @@ async def post_chat_message(scenario_id: str, body: ChatMessageBody):
         )
 
         scenario = storage.get_scenario(scenario_id)
-        chat_model = (scenario or {}).get("preferred_model") or "databricks-gpt-5-2"
+        chat_model = (scenario or {}).get("preferred_model") or "databricks-gpt-5-2-codex"
 
         if not get_available_providers():
             assistant_msg = storage.create_chat_message(
@@ -1611,7 +1610,7 @@ async def export_pdf(scenario_id: str):
                 .replace("{{CONSTRAINTS}}", "; ".join(upif.get("constraints") or []) or "None specified")
             )
 
-            pdf_model = scenario.get("preferred_model") or "databricks-gpt-5-2"
+            pdf_model = scenario.get("preferred_model") or "databricks-gpt-5-2-codex"
             completion = llm_complete(
                 model=pdf_model,
                 messages=[{"role": "user", "content": prompt}],
