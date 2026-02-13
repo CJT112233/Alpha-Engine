@@ -14,7 +14,3 @@ env:
   - name: DATABRICKS_CATALOG
     description: "Unity Catalog catalog name"
     value: "burnham_rng"
-  - name: DATABRICKS_CLIENT_ID
-    description: "OAuth service principal client ID"
-  - name: DATABRICKS_CLIENT_SECRET
-    description: "OAuth service principal client secret"
