@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, MessageSquare, FileUp, FileText, Check, Trash2, AlertCircle, Bot } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, MessageSquare, FileUp, FileText, Check, Trash2, AlertCircle, Bot, Cog } from "lucide-react";
 import type { Scenario, Project, TextEntry, Document, UpifRecord } from "@shared/schema";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -20,6 +21,7 @@ export default function ScenarioDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [massBalanceState, setMassBalanceState] = useState<"idle" | "confirm" | "done">("idle");
 
   const { data: scenario, isLoading: scenarioLoading } = useQuery<Scenario & { project: Project }>({
     queryKey: ["/api/scenarios", id],
@@ -174,17 +176,65 @@ export default function ScenarioDetail() {
 
         {scenario.status === "confirmed" && (
           <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="flex items-center gap-3 pt-4">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <CardContent className="flex items-center gap-3 pt-4 flex-wrap">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shrink-0">
                 <Check className="h-4 w-4" />
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="font-medium text-primary">UPIF Confirmed</p>
                 <p className="text-sm text-muted-foreground">
                   This scenario's Unified Project Intake Form has been confirmed and locked.
                 </p>
               </div>
+              {massBalanceState === "idle" && (
+                <Button
+                  size="sm"
+                  onClick={() => setMassBalanceState("confirm")}
+                  data-testid="button-generate-mass-balance"
+                >
+                  <Cog className="h-4 w-4 mr-2" />
+                  Next Step
+                </Button>
+              )}
             </CardContent>
+            {massBalanceState === "confirm" && (
+              <CardContent className="pt-0">
+                <Card>
+                  <CardContent className="pt-4 space-y-3">
+                    <p className="text-sm font-medium" data-testid="text-mass-balance-prompt">
+                      Generate Mass Balance &amp; Equipment List?
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      This will use the confirmed UPIF to generate a preliminary mass balance and equipment list for this scenario.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => setMassBalanceState("done")}
+                        data-testid="button-confirm-mass-balance"
+                      >
+                        Yes, Generate
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setMassBalanceState("idle")}
+                        data-testid="button-cancel-mass-balance"
+                      >
+                        Not Yet
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </CardContent>
+            )}
+            {massBalanceState === "done" && (
+              <CardContent className="pt-0">
+                <div className="flex items-center justify-center py-8" data-testid="mass-balance-placeholder">
+                  <span className="text-6xl">😏</span>
+                </div>
+              </CardContent>
+            )}
           </Card>
         )}
 
