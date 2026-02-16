@@ -48,7 +48,7 @@ export default function Dashboard() {
 
           <Card className="hover-elevate">
             <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Scenarios</CardTitle>
+              <CardTitle className="text-sm font-medium">In-Progress Scenarios</CardTitle>
               <Beaker className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -164,7 +164,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {recentScenarios?.slice(0, 5).map((scenario) => (
+                  {recentScenarios?.map((scenario) => (
                     <Link key={scenario.id} href={`/scenarios/${scenario.id}`}>
                       <div
                         className="flex items-center justify-between p-3 rounded-md border hover-elevate cursor-pointer"

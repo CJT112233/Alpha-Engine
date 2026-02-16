@@ -230,15 +230,14 @@ class DatabricksStorage:
                     _row_to_dict(cur, row), JSON_FIELDS_SCENARIO
                 )
 
-    def get_recent_scenarios(self, limit: int = 10) -> list:
+    def get_recent_scenarios(self) -> list:
         with get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     f"SELECT s.*, p.name AS project_name "
                     f"FROM {self._scenarios} s "
                     f"INNER JOIN {self._projects} p ON s.project_id = p.id "
-                    f"ORDER BY s.created_at DESC LIMIT ?",
-                    (limit,),
+                    f"ORDER BY s.created_at DESC"
                 )
                 rows = cur.fetchall()
                 return [

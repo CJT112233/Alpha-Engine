@@ -167,8 +167,7 @@ export class DatabaseStorage implements IStorage {
       })
       .from(scenarios)
       .innerJoin(projects, eq(scenarios.projectId, projects.id))
-      .orderBy(desc(scenarios.createdAt))
-      .limit(10);
+      .orderBy(desc(scenarios.createdAt));
 
     return result.map((r) => ({
       ...r.scenario,
