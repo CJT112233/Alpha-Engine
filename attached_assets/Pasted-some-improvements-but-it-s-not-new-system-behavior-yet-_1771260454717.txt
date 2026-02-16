@@ -1,0 +1,94 @@
+some improvements, but it’s not “new system” behavior yet (or it’s only partially implemented). The output still shows the same two core failure modes: sludge-template contamination and cross-stream/spec leakage.
+
+What improved
+
+Project summary is coherent and captures key intent (industrial wastewater, Pasco, AD, RNG specs, POTW discharge, 12 acres, odor/enclosed, modular). 
+
+cc38b198-a767-4084-9a95-f4d52c9…
+
+Methane % / H2S / BTU range are in the RNG section correctly (mostly). 
+
+cc38b198-a767-4084-9a95-f4d52c9…
+
+The prior “molybdenum = MMBtu/day” corruption is gone (heavy metals table is internally consistent this time). 
+
+cc38b198-a767-4084-9a95-f4d52c9…
+
+What’s still wrong (and why it matters)
+1) Still misclassifying the influent as sludge
+
+Even though the feedstock header says “Industrial wastewater…”, the Identity & Flow section still asserts:
+
+“Delivery Form: Thickened liquid sludge”
+
+“Receiving condition… blend primary and WAS…”
+
+VS/TS defaults, sludge preprocessing defaults 
+
+cc38b198-a767-4084-9a95-f4d52c9…
+
+This should not exist in a Type A wastewater project unless the input explicitly says the influent is a sludge stream. This means the Type A extractor prompt routing is likely not active, or the renderer is still injecting legacy sludge defaults.
+
+2) TS/TSS confusion persists
+
+It still states:
+
+“Total Solids (TS): 2,800 mg/L (User-provided)” 
+
+cc38b198-a767-4084-9a95-f4d52c9…
+
+In your original test case, 2,800 mg/L was TSS, not TS. This indicates the TS/TSS guardrail is not being enforced in code.
+
+3) Cross-stream leakage still present (gas specs contaminated by solids)
+
+RNG section includes:
+
+“RNG Water Vapor Limit … Land application… % total solids” 
+
+cc38b198-a767-4084-9a95-f4d52c9…
+
+That’s exactly the failure you were trying to eliminate: solids %TS showing up in a gas-quality parameter. That should be impossible if stream-based routing + validation is implemented.
+
+4) Effluent limits got overwritten by removal efficiencies
+
+In “Discharge Limits” / “Liquid Effluent” sections, it shows:
+
+“BOD … >94%” and “TSS … >89%” as if those are effluent limits. 
+
+cc38b198-a767-4084-9a95-f4d52c9…
+
+Those are removal efficiencies, not effluent concentration limits. The effluent limits (BOD <250 mg/L, TSS <300 mg/L) appear elsewhere, but the system is mixing two different parameter types under the same “limit” slots.
+
+5) Still introducing biosolids/Part 503 tables
+
+Even if land application is mentioned, the current output expands into:
+
+Class A/B pathogen language
+
+Vector attraction reduction
+
+EPA Part 503 metals table 
+
+cc38b198-a767-4084-9a95-f4d52c9…
+
+Your rules said don’t introduce these unless explicitly triggered. Land application is a trigger, so it’s arguably acceptable, but it should be clearly labeled “industry typical / requires confirmation” and not dominate the UPIF.
+
+So… how did the “new system” perform?
+
+If the new 2-stage + type-specific extractor + validation + deterministic renderer was fully implemented, you would expect:
+
+No sludge defaults in Type A
+
+No TS derived from TSS
+
+No solids values in RNG gas spec tables
+
+No removal efficiencies shown as “effluent limits”
+
+Since all four problems are still present, either:
+
+The new architecture is not wired in yet, or
+
+Only the prompt changed, but the renderer / validation layer did not, or
+
+Type routing is happening, but the UPIF generator is still using the old “table population” logic and overriding extracted parameters.
