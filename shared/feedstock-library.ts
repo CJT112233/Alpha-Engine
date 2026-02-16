@@ -1003,15 +1003,41 @@ export function matchFeedstockType(feedstockName: string): FeedstockProfile | un
   return undefined;
 }
 
+const SLUDGE_ONLY_KEYS = new Set([
+  "deliveryForm",
+  "receivingCondition",
+  "preprocessingRequirement",
+]);
+
+const SOLIDS_ONLY_KEYS = new Set([
+  "totalSolids",
+  "volatileSolids",
+  "vsTs",
+  "moistureContent",
+  "bulkDensity",
+  "cnRatio",
+  "methanePotential",
+  "biodegradableFraction",
+  "inertFraction",
+]);
+
 export function enrichFeedstockSpecs(
   feedstockType: string,
   userProvidedParams: Record<string, { value: string; unit?: string }>,
+  projectType?: string | null,
 ): Record<string, EnrichedFeedstockSpec> {
   const profile = matchFeedstockType(feedstockType);
   const specs: Record<string, EnrichedFeedstockSpec> = {};
+  const isTypeA = projectType === "A";
 
   if (profile) {
     for (const [key, prop] of Object.entries(profile.properties)) {
+      if (isTypeA && SLUDGE_ONLY_KEYS.has(key)) {
+        continue;
+      }
+      if (isTypeA && SOLIDS_ONLY_KEYS.has(key) && prop.unit.includes("%")) {
+        continue;
+      }
       specs[key] = {
         value: prop.value,
         unit: prop.unit,

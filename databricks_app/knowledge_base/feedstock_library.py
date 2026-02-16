@@ -1007,15 +1007,40 @@ def match_feedstock_type(feedstock_name: str) -> Optional[FeedstockProfile]:
     return None
 
 
+SLUDGE_ONLY_KEYS = {
+    "deliveryForm",
+    "receivingCondition",
+    "preprocessingRequirement",
+}
+
+SOLIDS_ONLY_KEYS = {
+    "totalSolids",
+    "volatileSolids",
+    "vsTs",
+    "moistureContent",
+    "bulkDensity",
+    "cnRatio",
+    "methanePotential",
+    "biodegradableFraction",
+    "inertFraction",
+}
+
+
 def enrich_feedstock_specs(
     feedstock_type: str,
     user_provided_params: dict[str, dict],
+    project_type: str | None = None,
 ) -> dict[str, EnrichedFeedstockSpec]:
     profile = match_feedstock_type(feedstock_type)
     specs: dict[str, EnrichedFeedstockSpec] = {}
+    is_type_a = project_type == "A"
 
     if profile:
         for key, prop in profile["properties"].items():
+            if is_type_a and key in SLUDGE_ONLY_KEYS:
+                continue
+            if is_type_a and key in SOLIDS_ONLY_KEYS and "%" in prop["unit"]:
+                continue
             specs[key] = {
                 "value": prop["value"],
                 "unit": prop["unit"],

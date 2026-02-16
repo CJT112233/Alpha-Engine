@@ -281,12 +281,41 @@ RULES:
 - Look for IMPLIED information: if someone mentions a facility, extract both the source AND the location.
 - Populate typical values for influent composition parameters when they can be reasonably estimated from the industry/source type.
 - Most of our projects use food processing wastewater, NOT municipal wastewater. Do not assume municipal values unless explicitly stated.
-- TS is not the same as TSS. Double check TS, TSS, and TDS before presenting.
 - If anaerobic digestion is included, estimate methane production based on provided BOD/COD and flow rate (not TS assumptions).
 - For confidence levels: "high" = explicitly stated, "medium" = clearly implied, "low" = requires assumption.
 
+CRITICAL RULES — NEVER VIOLATE:
+
+1. TS vs TSS — These are DIFFERENT measurements:
+   - TSS (Total Suspended Solids) is measured in mg/L and is a WASTEWATER parameter.
+   - TS (Total Solids) is measured in % wet basis and is a SLUDGE/SOLIDS parameter.
+   - NEVER convert TSS (mg/L) into TS (%). If user says "TSS = 2,800 mg/L", report it as TSS = 2,800 mg/L. Do NOT report it as "TS = 2,800 mg/L".
+   - Only report TS (%) if user explicitly provides TS in percent, or the stream is a sludge/solids stream.
+
+2. SLUDGE DEFAULTS — NEVER APPLY TO WASTEWATER:
+   - NEVER assign "Delivery Form" (e.g., "Thickened liquid sludge") to wastewater influents.
+   - NEVER assign "Receiving Condition" (e.g., "Blend primary and WAS") to wastewater influents.
+   - NEVER assign "Preprocessing Requirements" to wastewater influents.
+   - NEVER assign VS/TS ratios in "% of TS" to wastewater streams — those are for solid feedstocks only.
+   - These parameters ONLY apply when the input is literally a sludge or biosolids stream, not wastewater.
+
+3. EFFLUENT LIMITS vs REMOVAL EFFICIENCIES — Different concepts:
+   - Effluent discharge limits are CONCENTRATION limits (e.g., "BOD < 250 mg/L", "TSS < 300 mg/L").
+   - Removal efficiencies are PERCENTAGES (e.g., ">94% BOD removal").
+   - NEVER report a removal efficiency as an effluent limit or vice versa.
+   - If user provides both, create SEPARATE parameters: one for the limit (mg/L) and one for the removal efficiency (%).
+
+4. CROSS-STREAM CONTAMINATION — Keep streams separate:
+   - RNG/gas quality specs (CH4%, H2S, BTU, Wobbe) must NEVER appear in effluent or solids sections.
+   - Solids parameters (% TS, dewatered cake, land application) must NEVER appear in RNG/gas sections.
+   - Effluent limits (mg/L concentrations) must NEVER appear in RNG/gas or solids sections.
+
+5. BIOSOLIDS — ALMOST NEVER APPLICABLE:
+   - We primarily deal with food processing wastewater — Federal Biosolids standards (EPA 40 CFR Part 503) DO NOT APPLY.
+   - NEVER include Class A/B pathogen requirements, Vector Attraction Reduction, or Part 503 metals tables unless the user EXPLICITLY states they are treating municipal wastewater sludge or biosolids.
+   - "Land application" of digestate from food processing waste is NOT the same as biosolids land application.
+
 COMMONLY MISSED DETAILS - check for these:
-- We primarily deal with food processing wastewater meaning the Federal Biosolids standards do not exist. DO NOT include anything about biosolids unless we are treating municipal wastewater (sludge, biosolids). This is rare. If you want to provide any information regarding biosolids, please triple check before printing.
 - Seasonal flow variations (wet weather, production cycles)
 - Peak vs average flow rates
 - Current treatment infrastructure (what exists now?)

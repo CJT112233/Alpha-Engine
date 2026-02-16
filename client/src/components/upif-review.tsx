@@ -1374,11 +1374,16 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 flex-wrap">
               <FileText className="h-5 w-5" />
               Unified Project Intake Form
+              {propProjectType && propProjectTypeConfirmed && (
+                <Badge variant="outline" className="ml-1" data-testid="badge-upif-project-type">
+                  Type {propProjectType}: {PROJECT_TYPE_LABELS[propProjectType as keyof typeof PROJECT_TYPE_LABELS] || propProjectType}
+                </Badge>
+              )}
               {isConfirmed && (
-                <Badge className="ml-2">
+                <Badge className="ml-1">
                   <CheckCircle2 className="h-3 w-3 mr-1" />
                   Confirmed
                 </Badge>

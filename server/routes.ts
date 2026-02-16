@@ -1309,7 +1309,7 @@ export async function registerRoutes(
           rawParams[p.cleanName] = { value: p.value, unit: p.unit || "" };
         }
         
-        const specs = enrichFeedstockSpecs(feedstockType, userParams);
+        const specs = enrichFeedstockSpecs(feedstockType, userParams, projectType);
         console.log(`Enrichment: Feedstock ${idx} "${feedstockType}" - ${Object.keys(specs).length} specs`);
         
         feedstockEntries.push({
@@ -1369,16 +1369,31 @@ export async function registerRoutes(
       const digestateProfile = "Solid Digestate - Land Application";
       const effluentProfile = "Liquid Effluent - Discharge to WWTP";
       
+      const isTypeA = projectType === "A";
+      
       if (!outputSpecs[rngProfile] && rngKeywords.some(k => searchText.includes(k))) {
         const enriched = enrichOutputSpecs(rngProfile, userOutputCriteria, location || undefined);
         outputSpecs[rngProfile] = enriched;
         console.log("Output enrichment (keyword fallback): Generated", Object.keys(enriched).length, "criteria for", rngProfile);
       }
+      
       if (!outputSpecs[digestateProfile] && digestateKeywords.some(k => searchText.includes(k))) {
-        const enriched = enrichOutputSpecs(digestateProfile, userOutputCriteria, location || undefined);
-        outputSpecs[digestateProfile] = enriched;
-        console.log("Output enrichment (keyword fallback): Generated", Object.keys(enriched).length, "criteria for", digestateProfile);
+        if (isTypeA) {
+          const explicitBiosolids = searchText.includes("biosolids") || searchText.includes("municipal sludge") || searchText.includes("class a") || searchText.includes("class b") || searchText.includes("part 503");
+          if (explicitBiosolids) {
+            const enriched = enrichOutputSpecs(digestateProfile, userOutputCriteria, location || undefined);
+            outputSpecs[digestateProfile] = enriched;
+            console.log("Output enrichment (keyword fallback, Type A explicit biosolids): Generated", Object.keys(enriched).length, "criteria for", digestateProfile);
+          } else {
+            console.log("Output enrichment: Skipping digestate/biosolids profile for Type A (wastewater) project — not explicitly requested");
+          }
+        } else {
+          const enriched = enrichOutputSpecs(digestateProfile, userOutputCriteria, location || undefined);
+          outputSpecs[digestateProfile] = enriched;
+          console.log("Output enrichment (keyword fallback): Generated", Object.keys(enriched).length, "criteria for", digestateProfile);
+        }
       }
+      
       if (!outputSpecs[effluentProfile] && effluentKeywords.some(k => searchText.includes(k))) {
         const enriched = enrichOutputSpecs(effluentProfile, userOutputCriteria, location || undefined);
         outputSpecs[effluentProfile] = enriched;
@@ -1386,6 +1401,34 @@ export async function registerRoutes(
       }
       
       console.log("Output enrichment: Total output profiles enriched:", Object.keys(outputSpecs).length);
+      
+      // Post-extraction validation: catch cross-stream contamination
+      if (outputSpecs[rngProfile]) {
+        const rngSpecs = outputSpecs[rngProfile];
+        const solidsContaminants = Object.entries(rngSpecs).filter(([key, spec]) => {
+          const v = `${spec.displayName} ${spec.value} ${spec.unit}`.toLowerCase();
+          return v.includes("% total solids") || v.includes("% ts") || v.includes("dewatered") || 
+                 v.includes("land application") || v.includes("cake") || v.includes("mg/kg dry weight") ||
+                 v.includes("pathogen") || v.includes("vector attraction") || v.includes("part 503");
+        });
+        for (const [key] of solidsContaminants) {
+          console.log(`Validation: Removing cross-stream contaminant "${key}" from RNG profile`);
+          delete rngSpecs[key];
+        }
+      }
+      
+      if (outputSpecs[effluentProfile]) {
+        const effSpecs = outputSpecs[effluentProfile];
+        for (const [key, spec] of Object.entries(effSpecs)) {
+          if (spec.source === "user_provided" && spec.value.includes("%") && !spec.value.includes("mg/L")) {
+            const v = spec.value.toLowerCase();
+            if (v.includes("removal") || (v.startsWith(">") && v.includes("%"))) {
+              console.log(`Validation: Removal efficiency "${spec.displayName}: ${spec.value}" detected in effluent limits — removing`);
+              delete effSpecs[key];
+            }
+          }
+        }
+      }
       
       const newOutputRequirements = outputParams.map(p => `${p.name}: ${p.value}${p.unit ? ` ${p.unit}` : ""}`).join("; ");
 
@@ -2006,6 +2049,14 @@ export async function registerRoutes(
 
       doc.font("Helvetica").fontSize(11).fillColor("#666666")
         .text(`Scenario: ${scenario.name}`, leftMargin, doc.y + 4, { align: "center", width: contentWidth });
+
+      const pdfProjectType = (scenario as any).projectType as string | null;
+      const pdfTypeConfirmed = (scenario as any).projectTypeConfirmed as boolean;
+      const pdfTypeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
+      if (pdfProjectType && pdfTypeConfirmed) {
+        doc.font("Helvetica-Bold").fontSize(11).fillColor("#2563eb")
+          .text(`Project Type ${pdfProjectType}: ${pdfTypeLabels[pdfProjectType] || pdfProjectType}`, leftMargin, doc.y + 4, { align: "center", width: contentWidth });
+      }
 
       const dateStr = upif.createdAt ? new Date(upif.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "";
       doc.font("Helvetica").fontSize(9).fillColor("#888888")

@@ -1160,7 +1160,7 @@ async def extract_parameters(scenario_id: str):
                     user_params[mapped] = {"value": p["value"], "unit": p.get("unit")}
                 raw_params[p["clean_name"]] = {"value": p["value"], "unit": p.get("unit", "")}
 
-            specs = enrich_feedstock_specs(feedstock_type, user_params)
+            specs = enrich_feedstock_specs(feedstock_type, user_params, project_type)
             logger.info("Enrichment: Feedstock %d %r - %d specs", idx, feedstock_type, len(specs))
 
             entry: dict[str, Any] = {
@@ -1216,16 +1216,52 @@ async def extract_parameters(scenario_id: str):
             enriched = enrich_output_specs(rng_profile, user_output_criteria, location or None)
             output_specs[rng_profile] = enriched
             logger.info("Output enrichment (keyword fallback): Generated %d criteria for %s", len(enriched), rng_profile)
+        is_type_a = project_type == "A"
+
         if digestate_profile not in output_specs and any(k in search_text for k in digestate_keywords):
-            enriched = enrich_output_specs(digestate_profile, user_output_criteria, location or None)
-            output_specs[digestate_profile] = enriched
-            logger.info("Output enrichment (keyword fallback): Generated %d criteria for %s", len(enriched), digestate_profile)
+            if is_type_a:
+                explicit_biosolids = any(kw in search_text for kw in ["biosolids", "municipal sludge", "class a", "class b", "part 503"])
+                if explicit_biosolids:
+                    enriched = enrich_output_specs(digestate_profile, user_output_criteria, location or None)
+                    output_specs[digestate_profile] = enriched
+                    logger.info("Output enrichment (keyword fallback, Type A explicit biosolids): Generated %d criteria for %s", len(enriched), digestate_profile)
+                else:
+                    logger.info("Output enrichment: Skipping digestate/biosolids profile for Type A (wastewater) project — not explicitly requested")
+            else:
+                enriched = enrich_output_specs(digestate_profile, user_output_criteria, location or None)
+                output_specs[digestate_profile] = enriched
+                logger.info("Output enrichment (keyword fallback): Generated %d criteria for %s", len(enriched), digestate_profile)
         if effluent_profile not in output_specs and any(k in search_text for k in effluent_keywords):
             enriched = enrich_output_specs(effluent_profile, user_output_criteria, location or None)
             output_specs[effluent_profile] = enriched
             logger.info("Output enrichment (keyword fallback): Generated %d criteria for %s", len(enriched), effluent_profile)
 
         logger.info("Output enrichment: Total output profiles enriched: %d", len(output_specs))
+
+        if rng_profile in output_specs:
+            rng_specs = output_specs[rng_profile]
+            solids_contaminants = [
+                key for key, spec in rng_specs.items()
+                if any(term in f"{spec.get('displayName', '')} {spec.get('value', '')} {spec.get('unit', '')}".lower()
+                       for term in ["% total solids", "% ts", "dewatered", "land application", "cake",
+                                    "mg/kg dry weight", "pathogen", "vector attraction", "part 503"])
+            ]
+            for key in solids_contaminants:
+                logger.info('Validation: Removing cross-stream contaminant "%s" from RNG profile', key)
+                del rng_specs[key]
+
+        if effluent_profile in output_specs:
+            eff_specs = output_specs[effluent_profile]
+            removal_keys = []
+            for key, spec in eff_specs.items():
+                if spec.get("source") == "user_provided" and "%" in str(spec.get("value", "")) and "mg/L" not in str(spec.get("value", "")):
+                    v = str(spec.get("value", "")).lower()
+                    if "removal" in v or (v.startswith(">") and "%" in v):
+                        logger.info('Validation: Removal efficiency "%s: %s" detected in effluent limits — removing',
+                                    spec.get("displayName", ""), spec.get("value", ""))
+                        removal_keys.append(key)
+            for key in removal_keys:
+                del eff_specs[key]
 
         new_output_requirements = "; ".join(
             f"{p['name']}: {p.get('value', '')}{' ' + p['unit'] if p.get('unit') else ''}"
@@ -1787,6 +1823,15 @@ async def export_pdf(scenario_id: str):
         c.setFillColor(HexColor("#666666"))
         c.drawCentredString(page_width / 2, current_y, f"Scenario: {scenario['name']}")
         current_y -= 16
+
+        pdf_project_type = scenario.get("project_type")
+        pdf_type_confirmed = scenario.get("project_type_confirmed")
+        pdf_type_labels = {"A": "Wastewater Treatment", "B": "RNG Greenfield", "C": "RNG Bolt-On", "D": "Hybrid"}
+        if pdf_project_type and pdf_type_confirmed:
+            c.setFont("Helvetica-Bold", 11)
+            c.setFillColor(HexColor("#2563eb"))
+            c.drawCentredString(page_width / 2, current_y, f"Project Type {pdf_project_type}: {pdf_type_labels.get(pdf_project_type, pdf_project_type)}")
+            current_y -= 16
 
         date_str = ""
         if upif.get("created_at"):
