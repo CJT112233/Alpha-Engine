@@ -201,7 +201,7 @@ Provide a professional, technical summary in 3-5 sentences.""",
 
 PROJECT TYPES:
 
-(A) Wastewater Treatment (WWT): We accept wastewater from municipalities and industrial food producers and reduce key contaminants such as BOD, COD, TSS, N and P. A typical project will have a wastewater influent specification and a wastewater effluent specification. The 'feedstock' is called 'influent' and the output is called 'effluent'. Some, but not all, of these projects produce RNG as a byproduct — typically when there is sufficient organic loading to justify anaerobic treatment and gas recovery.
+(A) Wastewater Treatment (WWT): We accept wastewater from industrial food producers and sometimes municipalities and reduce key contaminants such as BOD, COD, TSS, N and P. A typical project will have a wastewater influent specification and a wastewater effluent specification. The 'feedstock' is called 'influent' and the output is called 'effluent'. Some, but not all, of these projects produce RNG as a byproduct — typically when there is sufficient organic loading to justify anaerobic treatment and gas recovery.
 
 (B) RNG Production (Greenfield): We take feedstock — typically food processing residuals in solid (non-pumpable) form as either packaged or de-packaged waste — and upgrade this to RNG or other productive use of biogas (e.g., power). We also produce both solid and liquid digestate in these projects.
 
@@ -257,7 +257,7 @@ When a project mentions more than one influent source, use a NUMBERED prefix:
 If there is only one influent, you may omit the number prefix or use "Influent 1".
 
 EXAMPLE INPUT:
-"A food processing facility in Salem, OR generates 500,000 GPD of high-strength wastewater with BOD of 3,000 mg/L and TSS of 1,500 mg/L. They need to meet city pretreatment limits of BOD < 300 mg/L and TSS < 350 mg/L before discharge to the municipal WWTP. The organic loading is high enough that we expect to recover biogas and produce roughly 200 SCFM of RNG. Need operational by Q2 2027."
+"A cheese processing facility in Salem, OR generates 500,000 GPD of high-strength wastewater with BOD of 3,000 mg/L and TSS of 1,500 mg/L. They need to meet city pretreatment limits of BOD < 300 mg/L and TSS < 350 mg/L before discharge to the municipal WWTP. The organic loading is high enough that we expect to recover biogas and produce RNG"
 
 EXAMPLE OUTPUT:
 {"parameters": [
@@ -270,8 +270,6 @@ EXAMPLE OUTPUT:
   {"category": "output_requirements", "name": "Discharge Pathway", "value": "Municipal WWTP (indirect discharge)", "unit": null, "confidence": "high"},
   {"category": "output_requirements", "name": "Effluent BOD Limit", "value": "300", "unit": "mg/L", "confidence": "high"},
   {"category": "output_requirements", "name": "Effluent TSS Limit", "value": "350", "unit": "mg/L", "confidence": "high"},
-  {"category": "output_requirements", "name": "RNG Production Estimate", "value": "200", "unit": "SCFM", "confidence": "medium"},
-  {"category": "constraints", "name": "Target Online Date", "value": "Q2 2027", "unit": null, "confidence": "high"},
   {"category": "constraints", "name": "Permit Type", "value": "City pretreatment permit", "unit": null, "confidence": "medium"}
 ]}
 
@@ -288,13 +286,13 @@ RULES:
 - For confidence levels: "high" = explicitly stated, "medium" = clearly implied, "low" = requires assumption.
 
 COMMONLY MISSED DETAILS - check for these:
+- We primarily deal with food processing wastewater meaning the Federal Biosolids standards do not exist. DO NOT include anything about biosolids unless we are treating municipal wastewater (sludge, biosolids). This is rare. If you want to provide any information regarding biosolids, please triple check before printing.
 - Seasonal flow variations (wet weather, production cycles)
 - Peak vs average flow rates
 - Current treatment infrastructure (what exists now?)
 - Influent temperature (affects biological treatment)
 - Discharge permit type (NPDES, pretreatment, reuse)
 - FOG or high-strength slug loading events
-- Sludge/biosolids handling pathway
 - If RNG is a byproduct, gas quality specs and pipeline proximity
 
 Return ONLY the JSON object with the "parameters" array.""",
@@ -447,7 +445,7 @@ Return ONLY the JSON object with the "parameters" array.""",
         "available_variables": [],
         "template": """You are a senior wastewater engineer at Burnham RNG with a specialization in treating high-strength food processing wastewater with supplemental solid feedstock co-digestion. You are conducting a detailed project intake review for a Hybrid project.
 
-This project type combines wastewater treatment with trucked-in supplemental waste. The base operation treats wastewater (influent -> effluent) while also accepting additional solid or high-strength liquid feedstock to boost gas production. These projects have both influent AND feedstock inputs, and produce both treated effluent AND RNG/biogas.
+This project type combines wastewater treatment with trucked-in supplemental waste. The base operation treats wastewater (influent \u2192 effluent) while also accepting additional solid or high-strength liquid feedstock to boost gas production. These projects have both influent AND feedstock inputs, and produce both treated effluent AND RNG/biogas.
 
 APPROACH:
 1. Read the entire text carefully and identify every piece of factual information.
@@ -457,8 +455,8 @@ APPROACH:
 
 CATEGORIES:
 - input: TWO types of input must be tracked separately:
-  Influent (wastewater): Flow rate, BOD, COD, TSS, TDS, N, P, pH, temperature, seasonal flow variations, source type
-  Feedstock (trucked-in): Types, volumes (tons/day), composition (TS%, VS/TS, C:N, BMP, moisture), packaging status, sources, hauling distances, current disposal, seasonal availability
+  - Influent (wastewater): Flow rate, BOD, COD, TSS, TDS, N, P, pH, temperature, seasonal flow variations, source type
+  - Feedstock (trucked-in): Types, volumes (tons/day), composition (TS%, VS/TS, C:N, BMP, moisture), packaging status, sources, hauling distances, current disposal, seasonal availability
 - location: City, state, county, region, GPS coordinates, site details, proximity to gas pipelines or electrical grid, zoning information, land area/acreage, receiving station details
 - output_requirements: Effluent discharge limits (BOD, COD, TSS, N, P), discharge pathway (NPDES, POTW, reuse), RNG production targets, gas quality specs, solid digestate handling, LCFS/RFS credits
 - constraints: Regulatory requirements (EPA, state DEQ, NPDES, air permits, pretreatment ordinances), timeline/deadlines, existing treatment infrastructure, technology preferences, odor/noise/setback requirements, receiving station capacity for trucked-in waste, hauling logistics
@@ -496,18 +494,20 @@ RULES:
 - Look for IMPLIED information: extract both sources AND locations when mentioned.
 - WE DO NOT do manure projects. Unless specifically mentioned, the feedstock is not manure.
 - TS is not the same as TSS. Double check TS, TSS, and TDS before presenting.
-- Estimate methane production from wastewater based on BOD/COD and flow rate (not TS assumptions).
+- Estimate methane production from wastewater based on BOD/COD and flow rate (not TS assumptions). From trucked in solid waste, use TS and BMP assumptions. Add the two together to get methane production estimate.
 - Populate typical composition values for both influent and feedstock when they can be estimated.
 - For confidence levels: "high" = explicitly stated, "medium" = clearly implied, "low" = requires assumption.
 
 COMMONLY MISSED DETAILS - check for these:
+- We do not typically do manure projects. DO NOT assume manure unless explicitly noted.
+- We do not typically do biosolids projects. DO NOT assume we need to adhere to federal biosolids standards unless explicitly mentioned.
+- DO NOT assume that the liquid effluent is being sent to a WWTP unless explicitly mentioned. Land application should be the default value unless mentioned.
 - Seasonal variations in both wastewater flow and trucked-in feedstock
 - Existing treatment infrastructure and digester capacity
 - Receiving station requirements (unloading, screening, storage)
 - How much incremental gas the supplemental feedstock will produce
 - Effluent discharge limits and permit type
 - Distance to pipeline interconnect
-- Current disposal method for both wastewater and trucked-in waste
 - Regulatory requirements specific to accepting off-site waste
 - Environmental requirements (odor from receiving station, truck traffic)
 
