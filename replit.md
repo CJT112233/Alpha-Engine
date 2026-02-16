@@ -43,7 +43,7 @@ Number formatting: Always display numbers with comma separators for thousands (e
 
 ### Core Data Models
 - **Projects**: Top-level containers for related scenarios
-- **Scenarios**: Individual project evaluations with their own inputs/outputs (status: draft, in_review, confirmed), with per-scenario `preferredModel` field (gpt5 or claude)
+- **Scenarios**: Individual project evaluations with their own inputs/outputs (status: draft, in_review, confirmed), with per-scenario `preferredModel` field (gpt5 or claude), `projectType` (A/B/C/D) and `projectTypeConfirmed` (boolean) for 2-step classification
 - **Text Entries**: Conversational inputs categorized by type
 - **Documents**: Uploaded files with metadata
 - **Extracted Parameters**: AI-extracted parameters with confidence levels
@@ -80,6 +80,16 @@ Number formatting: Always display numbers with comma separators for thousands (e
   - POST /api/prompts/:key/reset deletes customization, restoring the default
   - Reviewer chat and PDF summary prompts use template variables (e.g., {{UPIF_STATE}}, {{LOCKED_FIELDS}}, {{PROJECT_NAME}}) replaced at runtime
   - Settings page at /settings with expandable prompt cards, edit mode, save/reset functionality
+
+- **2-Step Project Type Classification**: UPIF generation starts with AI classifying the project type before extraction
+  - Project types: A (Wastewater Treatment), B (RNG Greenfield), C (RNG Bolt-On), D (Hybrid)
+  - POST /api/scenarios/:id/classify calls AI with classification prompt, returns suggested type with confidence and reasoning
+  - Classification result saved with projectTypeConfirmed=false; user must confirm via PATCH /api/scenarios/:id/project-type
+  - UI shows 4 selectable type cards with AI suggestion badge and confidence indicator
+  - After confirmation, extraction uses type-specific prompt (extraction_type_a through extraction_type_d)
+  - Type-specific prompts use appropriate terminology (e.g., "influent/effluent" for Type A, "feedstock" for Type B)
+  - Falls back to generic extraction prompt if project type not confirmed
+  - Project type badge displayed on scenario header when confirmed
 
 ### Key Design Patterns
 - **Shared Types**: Schema definitions in `shared/` directory used by both client and server
