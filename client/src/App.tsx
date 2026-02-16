@@ -17,16 +17,19 @@ import Dashboard from "@/pages/dashboard";
 import ProjectDetail from "@/pages/project-detail";
 import NewProject from "@/pages/new-project";
 import ScenarioDetail from "@/pages/scenario-detail";
+import ProjectsList from "@/pages/projects-list";
+import ScenariosList from "@/pages/scenarios-list";
 import Documentation from "@/pages/documentation";
 import SettingsPage from "@/pages/settings";
 
-// Client-side route definitions using wouter's Switch/Route pattern
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/projects" component={ProjectsList} />
       <Route path="/projects/new" component={NewProject} />
       <Route path="/projects/:id" component={ProjectDetail} />
+      <Route path="/scenarios" component={ScenariosList} />
       <Route path="/scenarios/:id" component={ScenarioDetail} />
       <Route path="/documentation" component={Documentation} />
       <Route path="/settings" component={SettingsPage} />

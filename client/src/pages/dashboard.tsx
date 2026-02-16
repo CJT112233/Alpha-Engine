@@ -30,53 +30,59 @@ export default function Dashboard() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <Card className="hover-elevate">
-            <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
-              <FolderKanban className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {projectsLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <div className="text-2xl font-bold" data-testid="text-project-count">
-                  {projects?.length || 0}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <Link href="/projects">
+            <Card className="hover-elevate cursor-pointer" data-testid="card-metric-projects">
+              <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
+                <FolderKanban className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {projectsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold" data-testid="text-project-count">
+                    {projects?.length || 0}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </Link>
 
-          <Card className="hover-elevate">
-            <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">In-Progress Scenarios</CardTitle>
-              <Beaker className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {scenariosLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <div className="text-2xl font-bold" data-testid="text-scenario-count">
-                  {recentScenarios?.filter(s => s.status !== "confirmed").length || 0}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <Link href="/scenarios?filter=in_progress">
+            <Card className="hover-elevate cursor-pointer" data-testid="card-metric-in-progress">
+              <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">In-Progress Scenarios</CardTitle>
+                <Beaker className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {scenariosLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold" data-testid="text-scenario-count">
+                    {recentScenarios?.filter(s => s.status !== "confirmed").length || 0}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </Link>
 
-          <Card className="hover-elevate">
-            <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Confirmed UPIFs</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {scenariosLoading ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <div className="text-2xl font-bold" data-testid="text-confirmed-count">
-                  {recentScenarios?.filter(s => s.status === "confirmed").length || 0}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <Link href="/scenarios?filter=confirmed">
+            <Card className="hover-elevate cursor-pointer" data-testid="card-metric-confirmed">
+              <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Confirmed UPIFs</CardTitle>
+                <FileText className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {scenariosLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold" data-testid="text-confirmed-count">
+                    {recentScenarios?.filter(s => s.status === "confirmed").length || 0}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
@@ -117,7 +123,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {projects?.slice(0, 5).map((project) => (
+                  {projects?.map((project) => (
                     <Link key={project.id} href={`/projects/${project.id}`}>
                       <div
                         className="flex items-center justify-between p-3 rounded-md border hover-elevate cursor-pointer"

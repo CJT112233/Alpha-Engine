@@ -50,6 +50,14 @@ export function AppSidebar() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={location.startsWith("/scenarios")}>
+                  <Link href="/scenarios" data-testid="link-scenarios">
+                    <Beaker className="h-4 w-4" />
+                    <span>All Scenarios</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
