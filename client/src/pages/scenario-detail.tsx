@@ -144,6 +144,11 @@ export default function ScenarioDetail() {
                     ? "In Review"
                     : "Draft"}
                 </Badge>
+                {(scenario as any).projectType && (scenario as any).projectTypeConfirmed && (
+                  <Badge variant="outline" data-testid="badge-project-type">
+                    Type {(scenario as any).projectType}
+                  </Badge>
+                )}
               </div>
               <p className="text-sm text-muted-foreground mt-1">
                 Created {format(new Date(scenario.createdAt), "MMMM d, yyyy 'at' h:mm a")}
@@ -248,6 +253,8 @@ export default function ScenarioDetail() {
               isLoading={upifLoading}
               hasInputs={hasInputs}
               scenarioStatus={scenario.status}
+              projectType={(scenario as any).projectType}
+              projectTypeConfirmed={(scenario as any).projectTypeConfirmed}
             />
             <UpifChat
               scenarioId={id!}

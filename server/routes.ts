@@ -514,7 +514,7 @@ function extractParametersFromText(entries: Array<{ content: string; category: s
  *   "parameter" / "label" fields vs standard "name" field)
  * - Falling back to regex pattern matching (extractParametersFromText) on failure
  */
-async function extractParametersWithAI(entries: Array<{ content: string; category: string | null }>, model: LLMProvider = "gpt5", clarifyingQA?: Array<{ question: string; answer: string }>): Promise<ExtractedParam[]> {
+async function extractParametersWithAI(entries: Array<{ content: string; category: string | null }>, model: LLMProvider = "gpt5", clarifyingQA?: Array<{ question: string; answer: string }>, promptKey?: PromptKey): Promise<ExtractedParam[]> {
   let content = entries.map(e => e.content).join("\n\n");
 
   if (clarifyingQA && clarifyingQA.length > 0) {
@@ -544,7 +544,9 @@ async function extractParametersWithAI(entries: Array<{ content: string; categor
 
   console.log(`AI extraction: Starting extraction with ${providerLabels[model]} for content length:`, content.length);
 
-  const systemPrompt = await getPromptTemplate("extraction");
+  const effectivePromptKey = promptKey || "extraction";
+  console.log(`AI extraction: Using prompt key: ${effectivePromptKey}`);
+  const systemPrompt = await getPromptTemplate(effectivePromptKey);
 
   try {
     const response = await llmComplete({
@@ -740,6 +742,94 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating preferred model:", error);
       res.status(500).json({ error: "Failed to update preferred model" });
+    }
+  });
+
+  app.post("/api/scenarios/:id/classify", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.id;
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) {
+        return res.status(404).json({ error: "Scenario not found" });
+      }
+
+      const entries = await storage.getTextEntriesByScenario(scenarioId);
+      const documents = await storage.getDocumentsByScenario(scenarioId);
+      const docEntries = documents
+        .filter(doc => doc.extractedText && doc.extractedText.trim())
+        .map(doc => ({
+          content: `[From document: ${doc.originalName}]\n${doc.extractedText}`,
+          category: null as string | null,
+        }));
+      const allEntries = [...entries, ...docEntries];
+      const content = allEntries.map(e => e.content).join("\n\n");
+
+      if (!content.trim()) {
+        return res.status(400).json({ error: "No input content to analyze. Add text or upload documents first." });
+      }
+
+      const model = (scenario.preferredModel as LLMProvider) || "gpt5";
+      if (getAvailableProviders().length === 0) {
+        return res.status(500).json({ error: "No AI provider is configured." });
+      }
+
+      const systemPrompt = await getPromptTemplate("classification");
+
+      const response = await llmComplete({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Here is the project information submitted so far:\n\n${content}` },
+        ],
+        maxTokens: 2048,
+        jsonMode: true,
+      });
+
+      const rawResponse = response.content || "{}";
+      console.log(`Classification: Received response from ${response.provider}, length: ${rawResponse.length}`);
+
+      let parsed: { projectType?: string; projectTypeName?: string; confidence?: string; reasoning?: string };
+      try {
+        parsed = JSON.parse(rawResponse);
+      } catch {
+        console.error("Classification: Failed to parse JSON response:", rawResponse.substring(0, 300));
+        return res.status(500).json({ error: "Failed to parse classification response from AI." });
+      }
+
+      if (!parsed.projectType || !["A", "B", "C", "D"].includes(parsed.projectType)) {
+        return res.status(500).json({ error: "AI returned an invalid project type." });
+      }
+
+      await storage.updateScenarioProjectType(scenarioId, parsed.projectType, false);
+
+      res.json({
+        projectType: parsed.projectType,
+        projectTypeName: parsed.projectTypeName || "",
+        confidence: parsed.confidence || "medium",
+        reasoning: parsed.reasoning || "",
+        provider: response.provider,
+      });
+    } catch (error: any) {
+      console.error("Error classifying project type:", error?.message || error);
+      res.status(500).json({ error: `Failed to classify project type: ${error?.message || "Unknown error"}` });
+    }
+  });
+
+  app.patch("/api/scenarios/:id/project-type", async (req: Request, res: Response) => {
+    try {
+      const { projectType, confirmed } = req.body;
+      if (!projectType || !["A", "B", "C", "D"].includes(projectType)) {
+        return res.status(400).json({ error: "Invalid project type. Must be 'A', 'B', 'C', or 'D'." });
+      }
+      const scenario = await storage.getScenario(req.params.id);
+      if (!scenario) {
+        return res.status(404).json({ error: "Scenario not found" });
+      }
+      const updated = await storage.updateScenarioProjectType(req.params.id, projectType, confirmed !== false);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating project type:", error);
+      res.status(500).json({ error: "Failed to update project type" });
     }
   });
 
@@ -1114,7 +1204,18 @@ export async function registerRoutes(
       const extractScenario = await storage.getScenario(scenarioId);
       const extractModel = (extractScenario?.preferredModel as LLMProvider) || "gpt5";
       const clarifyingAnswers = (extractScenario?.clarifyingAnswers as Array<{ question: string; answer: string }>) || undefined;
-      const extractedParams = await extractParametersWithAI(allEntries, extractModel, clarifyingAnswers);
+
+      const typePromptMap: Record<string, PromptKey> = {
+        A: "extraction_type_a",
+        B: "extraction_type_b",
+        C: "extraction_type_c",
+        D: "extraction_type_d",
+      };
+      const projectType = extractScenario?.projectType as string | null;
+      const extractionPromptKey = (projectType && extractScenario?.projectTypeConfirmed && typePromptMap[projectType]) || "extraction";
+      console.log(`Extraction: projectType=${projectType}, confirmed=${extractScenario?.projectTypeConfirmed}, using prompt: ${extractionPromptKey}`);
+
+      const extractedParams = await extractParametersWithAI(allEntries, extractModel, clarifyingAnswers, extractionPromptKey);
       
       // Clear existing parameters
       await storage.deleteParametersByScenario(scenarioId);

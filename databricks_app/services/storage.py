@@ -282,6 +282,31 @@ class DatabricksStorage:
                     _row_to_dict(cur, row), JSON_FIELDS_SCENARIO
                 )
 
+    def update_scenario_project_type(
+        self, scenario_id: str, project_type: str, confirmed: bool
+    ) -> dict:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE {self._scenarios} "
+                    "SET project_type = ?, project_type_confirmed = ? "
+                    "WHERE id = ?",
+                    (project_type, confirmed, scenario_id),
+                )
+                cur.execute(
+                    f"SELECT s.*, p.name AS project_name "
+                    f"FROM {self._scenarios} s "
+                    f"LEFT JOIN {self._projects} p ON s.project_id = p.id "
+                    "WHERE s.id = ?",
+                    (scenario_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return {}
+                return _deserialize_fields(
+                    _row_to_dict(cur, row), JSON_FIELDS_SCENARIO
+                )
+
     def delete_scenario(self, scenario_id: str):
         with get_connection() as conn:
             with conn.cursor() as cur:

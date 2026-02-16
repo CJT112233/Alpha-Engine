@@ -44,6 +44,8 @@ interface UpifReviewProps {
   isLoading: boolean;
   hasInputs: boolean;
   scenarioStatus: string;
+  projectType?: string | null;
+  projectTypeConfirmed?: boolean;
 }
 
 const upifFormSchema = z.object({
@@ -607,13 +609,35 @@ type ClarifyingAnswer = { question: string; answer: string };
  * - PDF export
  * - Reviewer chat integration
  */
-export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioStatus }: UpifReviewProps) {
+const PROJECT_TYPE_LABELS: Record<string, string> = {
+  A: "Wastewater Treatment (WWT)",
+  B: "RNG Production (Greenfield)",
+  C: "RNG Production (Bolt-On)",
+  D: "Hybrid (WWT + Trucked-In Waste)",
+};
+
+const PROJECT_TYPE_DESCRIPTIONS: Record<string, string> = {
+  A: "Accepts wastewater and reduces contaminants (BOD, COD, TSS, N, P). May produce RNG as a byproduct.",
+  B: "Takes solid food processing residuals and converts to RNG. Produces solid and liquid digestate.",
+  C: "Upgrades existing flared or underutilized biogas to pipeline-quality RNG. No feedstock handling.",
+  D: "Combines wastewater treatment with trucked-in supplemental waste for enhanced gas production.",
+};
+
+export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioStatus, projectType: propProjectType, projectTypeConfirmed: propProjectTypeConfirmed }: UpifReviewProps) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [clarifyingQuestions, setClarifyingQuestions] = useState<ClarifyingQuestion[] | null>(null);
   const [clarifyingAnswers, setClarifyingAnswers] = useState<string[]>([]);
   const [showClarifyPhase, setShowClarifyPhase] = useState(false);
+  const [showClassifyPhase, setShowClassifyPhase] = useState(false);
+  const [classificationResult, setClassificationResult] = useState<{
+    projectType: string;
+    projectTypeName: string;
+    confidence: string;
+    reasoning: string;
+  } | null>(null);
+  const [selectedType, setSelectedType] = useState<string>("");
   const [feedstockEdits, setFeedstockEdits] = useState<Record<number, Partial<FeedstockEntry>>>({});
   const [feedstockSpecEdits, setFeedstockSpecEdits] = useState<Record<number, Record<string, string>>>({});
   const [feedstockNoteEdits, setFeedstockNoteEdits] = useState<Record<number, Record<string, string>>>({});
@@ -971,6 +995,50 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
 
   const [clarifyFailed, setClarifyFailed] = useState(false);
 
+  const classifyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/scenarios/${scenarioId}/classify`);
+      return res.json();
+    },
+    onSuccess: (data: { projectType: string; projectTypeName: string; confidence: string; reasoning: string }) => {
+      setClassificationResult(data);
+      setSelectedType(data.projectType);
+      setShowClassifyPhase(true);
+    },
+    onError: (error: any) => {
+      console.error("Classification failed:", error);
+      toast({
+        title: "Classification failed",
+        description: "Could not determine project type. You can select one manually or proceed without it.",
+        variant: "destructive",
+      });
+      setShowClassifyPhase(true);
+      setClassificationResult(null);
+      setSelectedType("B");
+    },
+  });
+
+  const confirmTypeMutation = useMutation({
+    mutationFn: async (projectType: string) => {
+      return apiRequest("PATCH", `/api/scenarios/${scenarioId}/project-type`, {
+        projectType,
+        confirmed: true,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId] });
+      setShowClassifyPhase(false);
+      clarifyMutation.mutate();
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save project type.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const clarifyMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/scenarios/${scenarioId}/clarify`);
@@ -1068,6 +1136,91 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
   if (!upif) {
     const isGenerating = extractParametersMutation.isPending || saveAnswersMutation.isPending;
 
+    if (showClassifyPhase) {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Layers className="h-5 w-5" />
+              Project Type Classification
+            </CardTitle>
+            <CardDescription>
+              {classificationResult
+                ? "The AI has analyzed your inputs and determined the project type. Please confirm or change the selection below."
+                : "Select the project type that best matches your project."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {classificationResult && (
+              <div className="rounded-md border p-4 space-y-2" data-testid="classification-result">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="default" data-testid="badge-ai-classification">
+                    AI Suggestion
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className={confidenceBadgeClass[classificationResult.confidence] || ""}
+                  >
+                    {classificationResult.confidence} confidence
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground" data-testid="text-classification-reasoning">
+                  {classificationResult.reasoning}
+                </p>
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {(["A", "B", "C", "D"] as const).map((type) => (
+                <div
+                  key={type}
+                  className={`rounded-md border p-4 cursor-pointer transition-colors ${
+                    selectedType === type
+                      ? "border-primary bg-primary/5"
+                      : "hover-elevate"
+                  }`}
+                  onClick={() => setSelectedType(type)}
+                  data-testid={`card-type-${type}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`flex h-7 w-7 items-center justify-center rounded-md text-sm font-bold ${
+                      selectedType === type
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
+                    }`}>
+                      {type}
+                    </div>
+                    <span className="font-medium text-sm">{PROJECT_TYPE_LABELS[type]}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground ml-9">
+                    {PROJECT_TYPE_DESCRIPTIONS[type]}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+          <CardFooter className="flex items-center gap-3 flex-wrap">
+            <Button
+              onClick={() => confirmTypeMutation.mutate(selectedType)}
+              disabled={!selectedType || confirmTypeMutation.isPending}
+              data-testid="button-confirm-type"
+            >
+              {confirmTypeMutation.isPending ? "Saving..." : `Confirm Type ${selectedType} & Continue`}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setShowClassifyPhase(false);
+                setClassificationResult(null);
+              }}
+              data-testid="button-cancel-classify"
+            >
+              Cancel
+            </Button>
+          </CardFooter>
+        </Card>
+      );
+    }
+
     // Two-phase generation flow: first show AI-generated clarifying questions,
     // then extract parameters using the user's answers (or skip straight to extraction)
     if (showClarifyPhase && clarifyingQuestions && clarifyingQuestions.length > 0) {
@@ -1150,21 +1303,21 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
           <div className="flex flex-col items-center justify-center py-12 text-center">
             {hasInputs ? (
               <>
-                {clarifyMutation.isPending || extractParametersMutation.isPending ? (
+                {classifyMutation.isPending || clarifyMutation.isPending || extractParametersMutation.isPending ? (
                   <AiThinking
                     isActive={true}
-                    label={clarifyMutation.isPending ? "Analyzing your inputs..." : "Generating UPIF..."}
+                    label={classifyMutation.isPending ? "Classifying project type..." : clarifyMutation.isPending ? "Analyzing your inputs..." : "Generating UPIF..."}
                   />
                 ) : (
                   <>
                     <Sparkles className="h-12 w-12 text-primary mb-4" />
                     <h3 className="font-medium mb-1" data-testid="text-ready-to-generate">Ready to Generate</h3>
                     <p className="text-sm text-muted-foreground mb-4 max-w-sm">
-                      Click below to have AI analyze your inputs. The AI will first ask a few clarifying questions to produce a better result.
+                      Click below to have AI analyze your inputs. The AI will first classify your project type, then ask clarifying questions to produce a better result.
                     </p>
                   </>
                 )}
-                {!(clarifyMutation.isPending || extractParametersMutation.isPending) && (
+                {!(classifyMutation.isPending || clarifyMutation.isPending || extractParametersMutation.isPending) && (
                   <div className="flex flex-col items-center gap-3">
                     {clarifyFailed && (
                       <p className="text-sm text-destructive" data-testid="text-clarify-error">
@@ -1173,7 +1326,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                     )}
                     <div className="flex items-center gap-3 flex-wrap">
                       <Button
-                        onClick={() => clarifyMutation.mutate()}
+                        onClick={() => classifyMutation.mutate()}
                         data-testid="button-generate-upif"
                       >
                         <Sparkles className="h-4 w-4 mr-2" />

@@ -361,6 +361,7 @@ async def extract_parameters_with_ai(
     entries: list[dict],
     model: str = "databricks-gpt-5-2-codex",
     clarifying_qa: Optional[list[dict]] = None,
+    prompt_key: str = "extraction",
 ) -> list[dict]:
     content = "\n\n".join(e["content"] for e in entries)
 
@@ -384,9 +385,9 @@ async def extract_parameters_with_ai(
         logger.info("AI extraction: %s not available, falling back to %s", model, fallback[0])
         model = fallback[0]
 
-    logger.info("AI extraction: Starting extraction with %s for content length: %d", PROVIDER_LABELS.get(model, model), len(content))
+    logger.info("AI extraction: Starting extraction with %s for content length: %d (prompt: %s)", PROVIDER_LABELS.get(model, model), len(content), prompt_key)
 
-    system_prompt = await get_prompt_template("extraction")
+    system_prompt = await get_prompt_template(prompt_key)
 
     try:
         response = llm_complete(
@@ -766,6 +767,99 @@ async def delete_scenario(scenario_id: str):
         raise HTTPException(status_code=500, detail="Failed to delete scenario")
 
 
+@api_router.post("/scenarios/{scenario_id}/classify")
+async def classify_project_type(scenario_id: str):
+    try:
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        entries = storage.get_text_entries(scenario_id)
+        documents = storage.get_documents(scenario_id)
+        doc_entries = [
+            {"content": f"[From document: {doc['original_name']}]\n{doc['extracted_text']}", "category": None}
+            for doc in documents
+            if doc.get("extracted_text") and doc["extracted_text"].strip()
+        ]
+
+        all_entries = list(entries) + doc_entries
+        content = "\n\n".join(e["content"] for e in all_entries)
+
+        if not content.strip():
+            raise HTTPException(status_code=400, detail="No input content to analyze. Add text or upload documents first.")
+
+        model = scenario.get("preferred_model") or "databricks-gpt-5-2-codex"
+
+        if not get_available_providers():
+            raise HTTPException(status_code=500, detail="No AI provider is configured.")
+
+        system_prompt = await get_prompt_template("classification")
+
+        response = llm_complete(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Here is the project information submitted so far:\n\n{content}"},
+            ],
+            max_tokens=2048,
+            json_mode=True,
+        )
+
+        raw_response = response.get("content", "") or "{}"
+        logger.info("Classification: Received response from %s, length: %d", response.get("provider", model), len(raw_response))
+
+        try:
+            parsed = json.loads(raw_response)
+        except json.JSONDecodeError:
+            logger.error("Classification: Failed to parse JSON response: %s", raw_response[:300])
+            raise HTTPException(status_code=500, detail="Failed to parse classification response from AI.")
+
+        project_type = parsed.get("projectType")
+        if not project_type or project_type not in ["A", "B", "C", "D"]:
+            raise HTTPException(status_code=500, detail="AI returned an invalid project type.")
+
+        storage.update_scenario_project_type(scenario_id, project_type, False)
+
+        return {
+            "projectType": project_type,
+            "projectTypeName": parsed.get("projectTypeName", ""),
+            "confidence": parsed.get("confidence", "medium"),
+            "reasoning": parsed.get("reasoning", ""),
+            "provider": response.get("provider", model),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error classifying project type: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to classify project type: {str(e)}")
+
+
+class ProjectTypeBody(BaseModel):
+    projectType: str
+    confirmed: Optional[bool] = True
+
+
+@api_router.patch("/scenarios/{scenario_id}/project-type")
+async def update_project_type(scenario_id: str, body: ProjectTypeBody):
+    try:
+        if body.projectType not in ["A", "B", "C", "D"]:
+            raise HTTPException(status_code=400, detail="Invalid project type. Must be 'A', 'B', 'C', or 'D'.")
+
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        updated = storage.update_scenario_project_type(
+            scenario_id, body.projectType, body.confirmed is not False
+        )
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating project type: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to update project type")
+
+
 # ---------------------------------------------------------------------------
 # Text Entries CRUD
 # ---------------------------------------------------------------------------
@@ -988,7 +1082,25 @@ async def extract_parameters(scenario_id: str):
         extract_model = (extract_scenario or {}).get("preferred_model") or "databricks-gpt-5-2-codex"
         clarifying_answers = (extract_scenario or {}).get("clarifying_answers") or None
 
-        extracted_params = await extract_parameters_with_ai(all_entries, extract_model, clarifying_answers)
+        type_prompt_map = {
+            "A": "extraction_type_a",
+            "B": "extraction_type_b",
+            "C": "extraction_type_c",
+            "D": "extraction_type_d",
+        }
+        project_type = (extract_scenario or {}).get("project_type")
+        project_type_confirmed = (extract_scenario or {}).get("project_type_confirmed")
+        extraction_prompt_key = (
+            type_prompt_map.get(project_type, "extraction")
+            if project_type and project_type_confirmed
+            else "extraction"
+        )
+        logger.info(
+            "Extraction: projectType=%s, confirmed=%s, using prompt: %s",
+            project_type, project_type_confirmed, extraction_prompt_key,
+        )
+
+        extracted_params = await extract_parameters_with_ai(all_entries, extract_model, clarifying_answers, extraction_prompt_key)
 
         storage.delete_parameters(scenario_id)
 

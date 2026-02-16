@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS burnham_rng.project_intakes.scenarios (
   preferred_model STRING,
   clarifying_questions STRING,
   clarifying_answers STRING,
+  project_type STRING,
+  project_type_confirmed BOOLEAN,
   created_at TIMESTAMP NOT NULL,
   confirmed_at TIMESTAMP
 )
