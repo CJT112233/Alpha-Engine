@@ -987,9 +987,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
       setClarifyingAnswers(new Array(questions.length).fill(""));
       setShowClarifyPhase(true);
     },
-    onError: () => {
+    onError: (error: any) => {
+      console.error("Clarify failed:", error);
       setClarifyFailed(true);
-      extractParametersMutation.mutate();
     },
   });
 
@@ -1165,24 +1165,31 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   </>
                 )}
                 {!(clarifyMutation.isPending || extractParametersMutation.isPending) && (
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <Button
-                      onClick={() => clarifyMutation.mutate()}
-                      data-testid="button-generate-upif"
-                    >
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Generate UPIF
-                    </Button>
+                  <div className="flex flex-col items-center gap-3">
                     {clarifyFailed && (
-                      <Button
-                        variant="outline"
-                        onClick={() => extractParametersMutation.mutate()}
-                        data-testid="button-generate-direct"
-                      >
-                        <SkipForward className="h-4 w-4 mr-2" />
-                        Generate Without Questions
-                      </Button>
+                      <p className="text-sm text-destructive" data-testid="text-clarify-error">
+                        Clarifying questions could not be generated. You can retry or generate directly.
+                      </p>
                     )}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <Button
+                        onClick={() => clarifyMutation.mutate()}
+                        data-testid="button-generate-upif"
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        {clarifyFailed ? "Retry with Questions" : "Generate UPIF"}
+                      </Button>
+                      {clarifyFailed && (
+                        <Button
+                          variant="outline"
+                          onClick={() => extractParametersMutation.mutate()}
+                          data-testid="button-generate-direct"
+                        >
+                          <SkipForward className="h-4 w-4 mr-2" />
+                          Generate Without Questions
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
               </>

@@ -471,7 +471,7 @@ function extractParametersFromText(entries: Array<{ content: string; category: s
   }
   
   // Add predicted parameters if feedstock is mentioned but technical params are missing
-  const hasFeedstock = params.some(p => p.category === "feedstock");
+  const hasFeedstock = params.some(p => p.category === "feedstock" || p.category === "input");
   const hasTechnicalParams = params.some(p => ["Total Solids (TS)", "VS/TS Ratio", "BOD"].includes(p.name));
   
   if (hasFeedstock && !hasTechnicalParams) {
@@ -978,6 +978,7 @@ export async function registerRoutes(
   app.post("/api/scenarios/:scenarioId/clarify", async (req: Request, res: Response) => {
     try {
       const scenarioId = req.params.scenarioId;
+      console.log(`Clarify: Starting for scenario ${scenarioId}`);
 
       const entries = await storage.getTextEntriesByScenario(scenarioId);
       const documents = await storage.getDocumentsByScenario(scenarioId);
@@ -990,6 +991,7 @@ export async function registerRoutes(
 
       const allEntries = [...entries, ...docEntries];
       const content = allEntries.map(e => e.content).join("\n\n");
+      console.log(`Clarify: ${entries.length} text entries, ${docEntries.length} doc entries, content length: ${content.length}`);
 
       if (!content.trim()) {
         return res.status(400).json({ error: "No input content to analyze. Add text or upload documents first." });
@@ -997,8 +999,10 @@ export async function registerRoutes(
 
       const scenario = await storage.getScenario(scenarioId);
       const model = (scenario?.preferredModel as LLMProvider) || "gpt5";
+      console.log(`Clarify: Using model ${model}`);
 
       if (getAvailableProviders().length === 0) {
+        console.log("Clarify: No AI providers available");
         return res.status(500).json({ error: "No AI provider is configured." });
       }
 
@@ -1015,10 +1019,12 @@ export async function registerRoutes(
       });
 
       const rawResponse = response.content || "{}";
+      console.log(`Clarify: Received response, length: ${rawResponse.length}, provider: ${response.provider}`);
       let parsed: { questions?: Array<{ question: string }> };
       try {
         parsed = JSON.parse(rawResponse);
-      } catch {
+      } catch (parseErr) {
+        console.error("Clarify: Failed to parse JSON response, using defaults. Raw:", rawResponse.substring(0, 300));
         parsed = { questions: [
           { question: "What are the specific feedstock types and their expected daily/annual volumes?" },
           { question: "What is the intended use for the biogas produced (e.g., RNG pipeline injection, electricity generation, flaring)?" },
@@ -1027,6 +1033,7 @@ export async function registerRoutes(
       }
 
       const questions = parsed.questions || [];
+      console.log(`Clarify: Generated ${questions.length} questions`);
       await storage.updateScenarioClarification(scenarioId, questions, null);
 
       res.json({ questions, provider: response.provider });
@@ -1128,17 +1135,18 @@ export async function registerRoutes(
       // Create or update UPIF with deterministic parameter mapping
       const existingUpif = await storage.getUpifByScenario(scenarioId);
       
-      // Step 1: Group feedstock parameters by feedstock identity (numbered prefix or legacy names)
-      const feedstockParams = extractedParams.filter(p => p.category === "feedstock");
+      // Step 1: Group feedstock/input parameters by feedstock identity (numbered prefix or legacy names)
+      // Accept both "feedstock" and "input" categories to support custom prompts that use "input" for influents/feedstocks
+      const feedstockParams = extractedParams.filter(p => p.category === "feedstock" || p.category === "input");
       
       function classifyFeedstockParam(name: string): { index: number; cleanName: string } {
-        const numbered = name.match(/^Feedstock\s+(\d+)\s+(.+)$/i);
+        const numbered = name.match(/^(?:Feedstock|Influent)\s+(\d+)\s+(.+)$/i);
         if (numbered) return { index: parseInt(numbered[1]), cleanName: numbered[2].trim() };
         const lower = name.toLowerCase();
-        if (lower.includes("primary") || lower.includes("feedstock type")) return { index: 1, cleanName: name.replace(/primary\s*/i, "").replace(/feedstock\s*/i, "").trim() || "Type" };
-        if (lower.includes("secondary")) return { index: 2, cleanName: name.replace(/secondary\s*/i, "").replace(/feedstock\s*/i, "").trim() || "Type" };
-        if (lower.includes("tertiary")) return { index: 3, cleanName: name.replace(/tertiary\s*/i, "").replace(/feedstock\s*/i, "").trim() || "Type" };
-        if (lower.includes("number of") || lower.includes("feedstock source")) return { index: 0, cleanName: name };
+        if (lower.includes("primary") || lower.includes("feedstock type") || lower.includes("influent type")) return { index: 1, cleanName: name.replace(/primary\s*/i, "").replace(/(?:feedstock|influent)\s*/i, "").trim() || "Type" };
+        if (lower.includes("secondary")) return { index: 2, cleanName: name.replace(/secondary\s*/i, "").replace(/(?:feedstock|influent)\s*/i, "").trim() || "Type" };
+        if (lower.includes("tertiary")) return { index: 3, cleanName: name.replace(/tertiary\s*/i, "").replace(/(?:feedstock|influent)\s*/i, "").trim() || "Type" };
+        if (lower.includes("number of") || lower.includes("feedstock source") || lower.includes("influent source")) return { index: 0, cleanName: name };
         return { index: 1, cleanName: name };
       }
       
@@ -1162,6 +1170,14 @@ export async function registerRoutes(
         if (n.includes("bulk density") || n === "density") return "Bulk Density";
         if (n.includes("bmp") || n.includes("biochemical methane") || n.includes("methane potential")) return "BMP";
         if (n.includes("biodegradable fraction") || n.includes("biodegradability")) return "Biodegradable Fraction";
+        if (n === "bod" || n.includes("biochemical oxygen demand")) return "BOD";
+        if (n === "cod" || n.includes("chemical oxygen demand")) return "COD";
+        if (n === "tss" || n.includes("total suspended solids")) return "TSS";
+        if (n === "tds" || n.includes("total dissolved solids")) return "TDS";
+        if (n === "ph" || n === "ph level") return "pH";
+        if (n === "temperature" || n.includes("temp")) return "Temperature";
+        if ((n === "n" || n === "nitrogen" || n.includes("total nitrogen") || n === "tkn" || n.includes("total kjeldahl")) && !n.includes("c:n") && !n.includes("c/n")) return "Nitrogen";
+        if (n === "p" || n === "phosphorus" || n.includes("total phosphorus")) return "Phosphorus";
         return null;
       }
       
@@ -1216,7 +1232,7 @@ export async function registerRoutes(
         : "";
       
       // Collect all output requirements
-      const outputParams = extractedParams.filter(p => p.category === "output_requirements");
+      const outputParams = extractedParams.filter(p => p.category === "output_requirements" || p.category === "output requirements");
       
       // Collect all constraints
       const constraints = extractedParams.filter(p => p.category === "constraints").map(p => 
