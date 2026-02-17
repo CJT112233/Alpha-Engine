@@ -11,15 +11,23 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Beaker, ArrowLeft, ArrowRight, Trash2 } from "lucide-react";
+import { Plus, Beaker, ArrowLeft, ArrowRight, Trash2, Droplets, Flame, Plug, Layers } from "lucide-react";
 import type { Project, Scenario } from "@shared/schema";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
+const PROJECT_TYPES = [
+  { value: "A", label: "Type A", name: "Wastewater Treatment", icon: Droplets, description: "Municipal or industrial wastewater treatment plant" },
+  { value: "B", label: "Type B", name: "RNG Greenfield", icon: Flame, description: "New anaerobic digestion facility producing RNG" },
+  { value: "C", label: "Type C", name: "RNG Bolt-On", icon: Plug, description: "Upgrade existing biogas to pipeline-quality RNG" },
+  { value: "D", label: "Type D", name: "Hybrid", icon: Layers, description: "Combined wastewater treatment with RNG production" },
+] as const;
+
 const createScenarioSchema = z.object({
   name: z.string().min(1, "Scenario name is required"),
+  projectType: z.enum(["A", "B", "C", "D"], { required_error: "Please select a project type" }),
 });
 
 type CreateScenarioForm = z.infer<typeof createScenarioSchema>;
@@ -42,12 +50,17 @@ export default function ProjectDetail() {
     resolver: zodResolver(createScenarioSchema),
     defaultValues: {
       name: "",
+      projectType: undefined as unknown as "A" | "B" | "C" | "D",
     },
   });
 
   const createScenarioMutation = useMutation({
     mutationFn: async (data: CreateScenarioForm) => {
-      return apiRequest("POST", `/api/projects/${id}/scenarios`, data);
+      return apiRequest("POST", `/api/projects/${id}/scenarios`, {
+        name: data.name,
+        projectType: data.projectType,
+        projectTypeConfirmed: true,
+      });
     },
     onSuccess: async (response) => {
       const scenario = await response.json();
@@ -181,6 +194,43 @@ export default function ProjectDetail() {
                         </FormItem>
                       )}
                     />
+                    <FormField
+                      control={form.control}
+                      name="projectType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Project Type</FormLabel>
+                          <FormControl>
+                            <div className="grid grid-cols-2 gap-2">
+                              {PROJECT_TYPES.map((pt) => {
+                                const Icon = pt.icon;
+                                const isSelected = field.value === pt.value;
+                                return (
+                                  <button
+                                    key={pt.value}
+                                    type="button"
+                                    onClick={() => field.onChange(pt.value)}
+                                    className={`flex items-start gap-3 p-3 rounded-md border text-left transition-colors ${
+                                      isSelected
+                                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                                        : "hover-elevate"
+                                    }`}
+                                    data-testid={`button-type-${pt.value}`}
+                                  >
+                                    <Icon className={`h-5 w-5 mt-0.5 shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                                    <div>
+                                      <p className="font-medium text-sm">{pt.label}: {pt.name}</p>
+                                      <p className="text-xs text-muted-foreground">{pt.description}</p>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <DialogFooter>
                       <Button
                         type="button"
@@ -261,7 +311,12 @@ export default function ProjectDetail() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        {scenario.projectType && (
+                          <Badge variant="outline">
+                            Type {scenario.projectType}
+                          </Badge>
+                        )}
                         <Badge
                           variant={
                             scenario.status === "confirmed"
