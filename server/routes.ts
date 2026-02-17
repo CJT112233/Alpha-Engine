@@ -1363,7 +1363,9 @@ export async function registerRoutes(
       
       const rngKeywords = ["rng", "pipeline", "biomethane", "renewable natural gas", "upgraded biogas", "pipeline injection"];
       const digestateKeywords = ["digestate", "land application", "biosolids", "compost", "soil amendment", "land apply"];
-      const effluentKeywords = ["effluent", "wwtp", "discharge", "sewer", "wastewater", "liquid effluent", "centrate", "filtrate", "liquid digestate", "treatment plant"];
+      const effluentKeywords = isTypeA
+        ? ["effluent", "discharge to sewer", "indirect discharge", "potw", "pretreatment", "liquid effluent", "centrate", "filtrate"]
+        : ["effluent", "wwtp", "discharge", "sewer", "wastewater", "liquid effluent", "centrate", "filtrate", "liquid digestate", "treatment plant"];
       
       const rngProfile = "Renewable Natural Gas (RNG) - Pipeline Injection";
       const digestateProfile = "Solid Digestate - Land Application";

@@ -1206,7 +1206,12 @@ async def extract_parameters(scenario_id: str):
 
         rng_keywords = ["rng", "pipeline", "biomethane", "renewable natural gas", "upgraded biogas", "pipeline injection"]
         digestate_keywords = ["digestate", "land application", "biosolids", "compost", "soil amendment", "land apply"]
-        effluent_keywords = ["effluent", "wwtp", "discharge", "sewer", "wastewater", "liquid effluent", "centrate", "filtrate", "liquid digestate", "treatment plant"]
+        is_type_a = project_type == "A"
+        effluent_keywords = (
+            ["effluent", "discharge to sewer", "indirect discharge", "potw", "pretreatment", "liquid effluent", "centrate", "filtrate"]
+            if is_type_a
+            else ["effluent", "wwtp", "discharge", "sewer", "wastewater", "liquid effluent", "centrate", "filtrate", "liquid digestate", "treatment plant"]
+        )
 
         rng_profile = "Renewable Natural Gas (RNG) - Pipeline Injection"
         digestate_profile = "Solid Digestate - Land Application"
@@ -1216,7 +1221,6 @@ async def extract_parameters(scenario_id: str):
             enriched = enrich_output_specs(rng_profile, user_output_criteria, location or None)
             output_specs[rng_profile] = enriched
             logger.info("Output enrichment (keyword fallback): Generated %d criteria for %s", len(enriched), rng_profile)
-        is_type_a = project_type == "A"
 
         if digestate_profile not in output_specs and any(k in search_text for k in digestate_keywords):
             if is_type_a:
