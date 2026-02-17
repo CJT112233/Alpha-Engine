@@ -3,7 +3,7 @@ export interface FeedstockProperty {
   unit: string;
   confidence: "high" | "medium" | "low";
   provenance: string;
-  group: "identity" | "physical" | "biochemical" | "contaminants" | "extended";
+  group: "identity" | "physical" | "biochemical" | "contaminants" | "extended" | "composition";
   displayName: string;
   sortOrder: number;
 }
@@ -21,7 +21,7 @@ export interface EnrichedFeedstockSpec {
   source: "user_provided" | "ai_inferred" | "estimated_default";
   confidence: "high" | "medium" | "low";
   provenance: string;
-  group: "identity" | "physical" | "biochemical" | "contaminants" | "extended";
+  group: "identity" | "physical" | "biochemical" | "contaminants" | "extended" | "composition";
   displayName: string;
   sortOrder: number;
 }
@@ -32,10 +32,12 @@ export const feedstockGroupLabels: Record<string, string> = {
   biochemical: "Organic & Biochemical Properties",
   contaminants: "Contaminants & Inerts",
   extended: "Extended Parameters",
+  composition: "Gas Composition",
 };
 
 export const feedstockGroupOrder: string[] = [
   "identity",
+  "composition",
   "physical",
   "biochemical",
   "contaminants",
@@ -1165,6 +1167,188 @@ export function enrichFeedstockSpecs(
         provenance: resolvedProvenance,
         group: "physical",
         displayName: paramName,
+        sortOrder: 50,
+      };
+    }
+  }
+
+  return specs;
+}
+
+export interface BiogasProfile {
+  name: string;
+  aliases: string[];
+  properties: Record<string, { value: string; unit: string; displayName: string; group: string; sortOrder: number; provenance: string }>;
+}
+
+const BIOGAS_PROFILES: BiogasProfile[] = [
+  {
+    name: "WWTP Digester Gas",
+    aliases: ["wwtp", "wastewater", "municipal digester", "sewage digester", "wwtf", "water reclamation", "wpcp"],
+    properties: {
+      ch4: { value: "55-65", unit: "%", displayName: "Methane (CH₄)", group: "composition", sortOrder: 1, provenance: "Typical WWTP digester gas composition (WEF MOP 8)" },
+      co2: { value: "35-45", unit: "%", displayName: "Carbon Dioxide (CO₂)", group: "composition", sortOrder: 2, provenance: "Typical WWTP digester gas composition" },
+      h2s: { value: "500-3,000", unit: "ppmv", displayName: "Hydrogen Sulfide (H₂S)", group: "contaminants", sortOrder: 3, provenance: "Typical WWTP digester gas; highly variable by sludge characteristics" },
+      siloxanes: { value: "5-50", unit: "mg/m³", displayName: "Siloxanes", group: "contaminants", sortOrder: 4, provenance: "WWTP digester gas typically has higher siloxanes from consumer products in sewage" },
+      o2: { value: "0.1-0.5", unit: "%", displayName: "Oxygen (O₂)", group: "composition", sortOrder: 5, provenance: "Trace O₂ from air leaks in gas collection system" },
+      n2: { value: "1-3", unit: "%", displayName: "Nitrogen (N₂)", group: "composition", sortOrder: 6, provenance: "Trace N₂ from air ingress" },
+      moisture: { value: "Saturated", unit: "at gas temp", displayName: "Moisture", group: "physical", sortOrder: 7, provenance: "Biogas exits digester water-saturated" },
+      heatingValue: { value: "550-650", unit: "BTU/scf", displayName: "Heating Value (LHV)", group: "physical", sortOrder: 8, provenance: "Based on 55-65% CH₄ content" },
+    },
+  },
+  {
+    name: "Landfill Gas",
+    aliases: ["landfill", "lfg", "municipal solid waste", "msw landfill"],
+    properties: {
+      ch4: { value: "45-55", unit: "%", displayName: "Methane (CH₄)", group: "composition", sortOrder: 1, provenance: "Typical landfill gas composition (EPA AP-42, Chapter 2.4)" },
+      co2: { value: "35-45", unit: "%", displayName: "Carbon Dioxide (CO₂)", group: "composition", sortOrder: 2, provenance: "Typical landfill gas composition" },
+      h2s: { value: "50-500", unit: "ppmv", displayName: "Hydrogen Sulfide (H₂S)", group: "contaminants", sortOrder: 3, provenance: "Landfill gas typically lower H₂S than digester gas" },
+      siloxanes: { value: "1-20", unit: "mg/m³", displayName: "Siloxanes", group: "contaminants", sortOrder: 4, provenance: "Variable; depends on waste composition" },
+      o2: { value: "0.5-3", unit: "%", displayName: "Oxygen (O₂)", group: "composition", sortOrder: 5, provenance: "Air infiltration through landfill cover" },
+      n2: { value: "2-15", unit: "%", displayName: "Nitrogen (N₂)", group: "composition", sortOrder: 6, provenance: "Air infiltration; can be significant in older wells" },
+      moisture: { value: "Saturated", unit: "at gas temp", displayName: "Moisture", group: "physical", sortOrder: 7, provenance: "Landfill gas exits saturated with moisture" },
+      heatingValue: { value: "450-550", unit: "BTU/scf", displayName: "Heating Value (LHV)", group: "physical", sortOrder: 8, provenance: "Based on 45-55% CH₄ content" },
+      nmoc: { value: "500-1,500", unit: "ppmv as hexane", displayName: "NMOCs", group: "contaminants", sortOrder: 9, provenance: "Non-methane organic compounds typical for MSW landfills" },
+    },
+  },
+  {
+    name: "Dairy Digester Gas",
+    aliases: ["dairy", "dairy manure", "cow manure", "cattle digester", "farm digester", "ag digester", "agricultural digester"],
+    properties: {
+      ch4: { value: "55-65", unit: "%", displayName: "Methane (CH₄)", group: "composition", sortOrder: 1, provenance: "Typical dairy manure digester gas (AgSTAR)" },
+      co2: { value: "35-45", unit: "%", displayName: "Carbon Dioxide (CO₂)", group: "composition", sortOrder: 2, provenance: "Typical dairy digester gas composition" },
+      h2s: { value: "1,000-5,000", unit: "ppmv", displayName: "Hydrogen Sulfide (H₂S)", group: "contaminants", sortOrder: 3, provenance: "Dairy manure digester gas; high sulfur from protein in feed" },
+      siloxanes: { value: "< 1", unit: "mg/m³", displayName: "Siloxanes", group: "contaminants", sortOrder: 4, provenance: "Agricultural biogas typically has negligible siloxanes" },
+      o2: { value: "0.1-0.5", unit: "%", displayName: "Oxygen (O₂)", group: "composition", sortOrder: 5, provenance: "Minimal air ingress in covered lagoon/plug flow systems" },
+      n2: { value: "1-3", unit: "%", displayName: "Nitrogen (N₂)", group: "composition", sortOrder: 6, provenance: "Trace N₂ from air ingress" },
+      moisture: { value: "Saturated", unit: "at gas temp", displayName: "Moisture", group: "physical", sortOrder: 7, provenance: "Biogas exits digester water-saturated" },
+      heatingValue: { value: "550-650", unit: "BTU/scf", displayName: "Heating Value (LHV)", group: "physical", sortOrder: 8, provenance: "Based on 55-65% CH₄ content" },
+    },
+  },
+  {
+    name: "Food Waste Digester Gas",
+    aliases: ["food waste", "food processing", "organic waste digester", "industrial digester", "co-digestion"],
+    properties: {
+      ch4: { value: "58-68", unit: "%", displayName: "Methane (CH₄)", group: "composition", sortOrder: 1, provenance: "Food waste AD biogas typically higher CH₄ due to high VS destruction" },
+      co2: { value: "30-40", unit: "%", displayName: "Carbon Dioxide (CO₂)", group: "composition", sortOrder: 2, provenance: "Typical food waste digester gas composition" },
+      h2s: { value: "500-3,000", unit: "ppmv", displayName: "Hydrogen Sulfide (H₂S)", group: "contaminants", sortOrder: 3, provenance: "Variable; depends on protein content of food waste" },
+      siloxanes: { value: "< 1", unit: "mg/m³", displayName: "Siloxanes", group: "contaminants", sortOrder: 4, provenance: "Food waste biogas typically has negligible siloxanes" },
+      o2: { value: "0.1-0.5", unit: "%", displayName: "Oxygen (O₂)", group: "composition", sortOrder: 5, provenance: "Minimal air ingress in well-sealed digesters" },
+      n2: { value: "1-3", unit: "%", displayName: "Nitrogen (N₂)", group: "composition", sortOrder: 6, provenance: "Trace N₂" },
+      moisture: { value: "Saturated", unit: "at gas temp", displayName: "Moisture", group: "physical", sortOrder: 7, provenance: "Biogas exits digester water-saturated" },
+      heatingValue: { value: "580-680", unit: "BTU/scf", displayName: "Heating Value (LHV)", group: "physical", sortOrder: 8, provenance: "Based on 58-68% CH₄ content" },
+    },
+  },
+];
+
+function matchBiogasProfile(sourceType: string): BiogasProfile | null {
+  const lower = sourceType.toLowerCase();
+  for (const profile of BIOGAS_PROFILES) {
+    if (lower.includes(profile.name.toLowerCase())) return profile;
+    for (const alias of profile.aliases) {
+      if (lower.includes(alias)) return profile;
+    }
+  }
+  return BIOGAS_PROFILES[0];
+}
+
+export function enrichBiogasSpecs(
+  biogasSourceType: string,
+  userProvidedParams: Record<string, { value: string; unit?: string; extractionSource?: string }>,
+): Record<string, EnrichedFeedstockSpec> {
+  const profile = matchBiogasProfile(biogasSourceType);
+  const specs: Record<string, EnrichedFeedstockSpec> = {};
+
+  if (profile) {
+    for (const [key, prop] of Object.entries(profile.properties)) {
+      specs[key] = {
+        value: prop.value,
+        unit: prop.unit,
+        source: "estimated_default",
+        confidence: "medium",
+        provenance: prop.provenance,
+        group: prop.group as EnrichedFeedstockSpec["group"],
+        displayName: prop.displayName,
+        sortOrder: prop.sortOrder,
+      };
+    }
+  }
+
+  const biogasParamMap: Record<string, string> = {
+    "ch4": "ch4",
+    "methane": "ch4",
+    "ch₄": "ch4",
+    "methane content": "ch4",
+    "co2": "co2",
+    "carbon dioxide": "co2",
+    "co₂": "co2",
+    "h2s": "h2s",
+    "hydrogen sulfide": "h2s",
+    "h₂s": "h2s",
+    "siloxanes": "siloxanes",
+    "siloxane": "siloxanes",
+    "o2": "o2",
+    "oxygen": "o2",
+    "o₂": "o2",
+    "n2": "n2",
+    "nitrogen": "n2",
+    "moisture": "moisture",
+    "water content": "moisture",
+    "heating value": "heatingValue",
+    "btu": "heatingValue",
+    "hhv": "heatingValue",
+    "lhv": "heatingValue",
+    "current disposition": "currentDisposition",
+    "disposition": "currentDisposition",
+    "variability": "variability",
+    "flow variability": "variability",
+    "nmoc": "nmoc",
+    "nmocs": "nmoc",
+  };
+
+  for (const [paramName, paramData] of Object.entries(userProvidedParams)) {
+    const normalizedName = paramName.toLowerCase().trim();
+    let mappedKey = biogasParamMap[normalizedName];
+
+    if (!mappedKey) {
+      for (const [alias, key] of Object.entries(biogasParamMap)) {
+        if (normalizedName.includes(alias) || alias.includes(normalizedName)) {
+          mappedKey = key;
+          break;
+        }
+      }
+    }
+
+    const resolvedSource: EnrichedFeedstockSpec["source"] =
+      paramData.extractionSource === "ai_extraction" ? "ai_inferred" : "user_provided";
+    const resolvedProvenance = resolvedSource === "ai_inferred"
+      ? "AI-inferred value from project input"
+      : "User-provided value from project input";
+    const resolvedConfidence: EnrichedFeedstockSpec["confidence"] =
+      resolvedSource === "ai_inferred" ? "medium" : "high";
+
+    if (mappedKey && specs[mappedKey]) {
+      specs[mappedKey] = {
+        ...specs[mappedKey],
+        value: paramData.value,
+        unit: paramData.unit || specs[mappedKey].unit,
+        source: resolvedSource,
+        confidence: resolvedConfidence,
+        provenance: resolvedProvenance,
+      };
+    } else if (mappedKey) {
+      const displayNames: Record<string, string> = {
+        currentDisposition: "Current Disposition",
+        variability: "Flow Variability",
+      };
+      specs[mappedKey] = {
+        value: paramData.value,
+        unit: paramData.unit || "",
+        source: resolvedSource,
+        confidence: resolvedConfidence,
+        provenance: resolvedProvenance,
+        group: "physical",
+        displayName: displayNames[mappedKey] || paramName,
         sortOrder: 50,
       };
     }

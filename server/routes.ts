@@ -16,7 +16,7 @@ import fs from "fs";
 import { storage } from "./storage";
 import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema, type FeedstockEntry, type ConfirmedFields } from "@shared/schema";
 import { z } from "zod";
-import { enrichFeedstockSpecs, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
+import { enrichFeedstockSpecs, enrichBiogasSpecs, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { enrichOutputSpecs, matchOutputType, type EnrichedOutputSpec } from "@shared/output-criteria-library";
 import * as XLSX from "xlsx";
 import mammoth from "mammoth";
@@ -1332,8 +1332,23 @@ export async function registerRoutes(
         feedstockGroups.get(index)!.push({ cleanName, value: param.value || "", unit: param.unit || undefined, extractionSource: param.source });
       }
       
-      function mapTechnicalParamName(rawName: string): string | null {
+      function mapTechnicalParamName(rawName: string, isTypeC: boolean = false): string | null {
         const n = rawName.toLowerCase().trim();
+        
+        if (isTypeC) {
+          if (n === "ch4" || n.includes("methane") || n.includes("ch₄")) return "CH4";
+          if (n === "co2" || n.includes("carbon dioxide") || n.includes("co₂")) return "CO2";
+          if (n === "h2s" || n.includes("hydrogen sulfide") || n.includes("h₂s")) return "H2S";
+          if (n === "siloxanes" || n.includes("siloxane")) return "Siloxanes";
+          if (n === "o2" || n.includes("oxygen") || n.includes("o₂")) return "O2";
+          if (n === "n2" || (n === "nitrogen" && !n.includes("c:n"))) return "N2";
+          if (n.includes("moisture") || n.includes("water content")) return "Moisture";
+          if (n.includes("current disposition") || n.includes("disposition")) return "Current Disposition";
+          if (n.includes("variability") || n.includes("flow variability") || n.includes("seasonal")) return "Variability";
+          if (n.includes("heating value") || n.includes("btu") || n.includes("hhv") || n.includes("lhv")) return "Heating Value";
+          return null;
+        }
+        
         const isVolumeMetric = n.includes("annual") || n.includes("quantity") || n.includes("daily") || n.includes("average") || n.includes("generation") || n.includes("onsite") || n.includes("number of") || n.includes("facility type") || n.includes("source") || n.includes("herd");
         if (isVolumeMetric) return null;
         if (n.includes("vs/ts") || n.includes("vs:ts") || n.includes("volatile solids to total solids")) return "VS/TS";
@@ -1357,6 +1372,7 @@ export async function registerRoutes(
       
       const feedstockEntries: FeedstockEntry[] = [];
       const sortedKeys = Array.from(feedstockGroups.keys()).sort((a, b) => a - b);
+      const isTypeC = projectType === "C";
       
       for (const idx of sortedKeys) {
         const group = feedstockGroups.get(idx)!;
@@ -1366,32 +1382,45 @@ export async function registerRoutes(
         });
         const volumeParam = group.find(p => {
           const l = p.cleanName.toLowerCase();
-          return l.includes("volume") || l.includes("quantity") || l.includes("capacity");
+          return l.includes("volume") || l.includes("quantity") || l.includes("capacity") || l.includes("flow rate") || l.includes("flow");
         });
         
-        const feedstockType = typeParam?.value || `Unknown Feedstock ${idx}`;
+        const feedstockType = typeParam?.value || (isTypeC ? `Biogas Source ${idx}` : `Unknown Feedstock ${idx}`);
         const userParams: Record<string, { value: string; unit?: string; extractionSource?: string }> = {};
         const rawParams: Record<string, { value: string; unit: string }> = {};
         
         for (const p of group) {
           if (p === typeParam || p === volumeParam) continue;
-          const mapped = mapTechnicalParamName(p.cleanName);
+          const mapped = mapTechnicalParamName(p.cleanName, isTypeC);
           if (mapped) {
             userParams[mapped] = { value: p.value, unit: p.unit, extractionSource: p.extractionSource };
           }
           rawParams[p.cleanName] = { value: p.value, unit: p.unit || "" };
         }
         
-        const specs = enrichFeedstockSpecs(feedstockType, userParams, projectType);
-        console.log(`Enrichment: Feedstock ${idx} "${feedstockType}" - ${Object.keys(specs).length} specs`);
-        
-        feedstockEntries.push({
-          feedstockType,
-          feedstockVolume: volumeParam?.value,
-          feedstockUnit: volumeParam?.unit,
-          feedstockParameters: Object.keys(rawParams).length > 0 ? rawParams : undefined,
-          feedstockSpecs: Object.keys(specs).length > 0 ? specs : undefined,
-        });
+        if (isTypeC) {
+          const specs = enrichBiogasSpecs(feedstockType, userParams);
+          console.log(`Enrichment (Type C biogas): Feedstock ${idx} "${feedstockType}" - ${Object.keys(specs).length} specs`);
+          
+          feedstockEntries.push({
+            feedstockType,
+            feedstockVolume: volumeParam?.value,
+            feedstockUnit: volumeParam?.unit || "SCFM",
+            feedstockParameters: Object.keys(rawParams).length > 0 ? rawParams : undefined,
+            feedstockSpecs: Object.keys(specs).length > 0 ? specs : undefined,
+          });
+        } else {
+          const specs = enrichFeedstockSpecs(feedstockType, userParams, projectType);
+          console.log(`Enrichment: Feedstock ${idx} "${feedstockType}" - ${Object.keys(specs).length} specs`);
+          
+          feedstockEntries.push({
+            feedstockType,
+            feedstockVolume: volumeParam?.value,
+            feedstockUnit: volumeParam?.unit,
+            feedstockParameters: Object.keys(rawParams).length > 0 ? rawParams : undefined,
+            feedstockSpecs: Object.keys(specs).length > 0 ? specs : undefined,
+          });
+        }
       }
       
       console.log("Enrichment: Total feedstock entries:", feedstockEntries.length);

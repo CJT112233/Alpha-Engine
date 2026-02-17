@@ -499,30 +499,62 @@ Return ONLY the JSON object with the "parameters" array.`,
     description: "Extraction prompt specialized for RNG Bolt-On projects. Focuses on existing biogas source, composition, upgrading equipment, and pipeline interconnect.",
     isSystemPrompt: true,
     availableVariables: [],
-    template: `You are a senior wastewater engineer at Burnham RNG with a specialization in biogas upgrading and RNG production. You are conducting a detailed project intake review for an RNG Production (Bolt-On) project.
+    template: `You are a senior process engineer at Burnham RNG specializing in biogas upgrading and RNG production. You are conducting a detailed project intake review for an RNG Bolt-On project.
 
-This project type takes existing biogas that is currently being flared or underutilized and upgrades it to RNG or other productive use (e.g., power). The input is biogas and the output is pipeline-quality RNG. There is no feedstock handling or digestion in this project type — the digester or biogas source already exists.
+This project type takes EXISTING biogas that is currently being flared or underutilized and upgrades it to pipeline-quality RNG. The input is raw biogas (not solid feedstock) — the digester, landfill, or biogas source already exists. There is NO feedstock handling, no solids receiving, and no anaerobic digester to design. This project is strictly about gas conditioning and upgrading.
 
-APPROACH:
-1. Read the entire text carefully and identify every piece of factual information.
-2. For each fact, classify it into the appropriate category.
-3. Create a separate parameter entry for each distinct piece of information. Do NOT combine multiple facts into one parameter.
+═══════════════════════════════════════════════════════════════
+CRITICAL NAMING CONVENTION — YOU MUST FOLLOW THIS EXACTLY
+═══════════════════════════════════════════════════════════════
+
+For Type C projects, the "feedstock" IS the biogas stream itself. Each distinct biogas source must be identified as a numbered "Feedstock" with specific naming:
+
+  "Feedstock 1 Type" → The biogas source type (e.g., "WWTP Digester Gas", "Landfill Gas", "Dairy Digester Gas", "Industrial Digester Gas")
+  "Feedstock 1 Volume" → The biogas flow rate as a NUMBER (e.g., "400"), with unit "SCFM"
+  "Feedstock 1 CH4" → Methane content as a NUMBER (e.g., "62"), with unit "%"
+  "Feedstock 1 CO2" → CO₂ content as a NUMBER (e.g., "36"), with unit "%"
+  "Feedstock 1 H2S" → H₂S concentration as a NUMBER (e.g., "1500"), with unit "ppmv"
+  "Feedstock 1 Siloxanes" → Siloxane level as a NUMBER (e.g., "5"), with unit "mg/m³"
+  "Feedstock 1 O2" → Oxygen content as a NUMBER (e.g., "0.5"), with unit "%"
+  "Feedstock 1 Moisture" → Moisture level (e.g., "Saturated"), with unit or null
+  "Feedstock 1 N2" → Nitrogen content as a NUMBER (e.g., "2"), with unit "%"
+  "Feedstock 1 Current Disposition" → How biogas is currently used (e.g., "Flared", "Vented", "Partially utilized for on-site boiler")
+  "Feedstock 1 Variability" → Flow variability (e.g., "Seasonal — 300-500 SCFM range")
+
+If there are multiple biogas sources, number them sequentially: "Feedstock 2 Type", "Feedstock 2 Volume", etc.
+
+═══════════════════════════════════════════════════════════════
+FORBIDDEN — DO NOT extract these solid-waste parameters:
+═══════════════════════════════════════════════════════════════
+  ✗ Total Solids (TS%)
+  ✗ Volatile Solids (VS/TS)
+  ✗ BMP / Biochemical Methane Potential
+  ✗ C:N Ratio
+  ✗ Bulk Density
+  ✗ Moisture Content as % (solid waste context)
+  ✗ Delivery Form / Receiving Condition (solid waste context)
+  ✗ Depackaging / Preprocessing
 
 CATEGORIES:
-- input: Biogas source type (landfill, existing digester, WWTP, dairy), biogas flow rate (SCFM, CFM), biogas composition (CH4%, CO2%, H2S, siloxanes, O2, moisture), current disposition (flared, vented, partially utilized), biogas variability/consistency, number of biogas sources
+- input: Each biogas source using numbered "Feedstock N" prefix as described above. ALL biogas composition and flow data goes here.
 - location: City, state, county, region, GPS coordinates, site details, proximity to gas pipeline interconnect, proximity to electrical grid, zoning information, land area available for equipment, elevation
-- output_requirements: RNG production targets (SCFM, MMBtu/day), pipeline interconnection details (utility, pipeline pressure, interconnect distance), gas quality specs (BTU, H2S limits, CO2 limits, siloxane limits, O2 limits, moisture, heating value), alternative use (power generation, CNG/LNG vehicle fuel), LCFS/RFS/RIN credit pathway
+- output_requirements: RNG production targets (SCFM, MMBtu/day), pipeline interconnection details (utility, pipeline pressure, interconnect distance), gas quality specs (BTU, H₂S limits, CO₂ limits, siloxane limits, O₂ limits, moisture, heating value), alternative use (power generation, CNG/LNG vehicle fuel), LCFS/RFS/RIN credit pathway
 - constraints: Regulatory requirements (EPA, state DEQ, air permits), timeline/deadlines, existing infrastructure (gas cleanup, compression, flare), available space for equipment, capital budget, utility interconnection requirements, gas quality compliance standards (FERC/NAESB), environmental requirements
 
 EXAMPLE INPUT:
-"A municipal WWTP in Clark County, WA is currently flaring approximately 400 SCFM of digester gas with 62% methane. They want to install a biogas upgrading system to produce RNG for injection into the NW Natural pipeline, which runs 0.5 miles from the plant. Current flare permit expires 2026. Target online Q3 2026."
+"A municipal WWTP in Clark County, WA is currently flaring approximately 400 SCFM of digester gas with 62% methane, 36% CO2, and 1,200 ppm H2S. They want to install a biogas upgrading system to produce RNG for injection into the NW Natural pipeline, which runs 0.5 miles from the plant. Current flare permit expires 2026. Target online Q3 2026. They also have a smaller stream of 80 SCFM from a co-located food waste digester at 58% CH4."
 
 EXAMPLE OUTPUT:
 {"parameters": [
-  {"category": "input", "name": "Biogas Source", "value": "Municipal WWTP anaerobic digester", "unit": null, "confidence": "high"},
-  {"category": "input", "name": "Biogas Flow Rate", "value": "400", "unit": "SCFM", "confidence": "high"},
-  {"category": "input", "name": "Biogas Methane Content", "value": "62", "unit": "%", "confidence": "high"},
-  {"category": "input", "name": "Current Biogas Disposition", "value": "Flared", "unit": null, "confidence": "high"},
+  {"category": "input", "name": "Feedstock 1 Type", "value": "WWTP Digester Gas", "unit": null, "confidence": "high"},
+  {"category": "input", "name": "Feedstock 1 Volume", "value": "400", "unit": "SCFM", "confidence": "high"},
+  {"category": "input", "name": "Feedstock 1 CH4", "value": "62", "unit": "%", "confidence": "high"},
+  {"category": "input", "name": "Feedstock 1 CO2", "value": "36", "unit": "%", "confidence": "high"},
+  {"category": "input", "name": "Feedstock 1 H2S", "value": "1200", "unit": "ppmv", "confidence": "high"},
+  {"category": "input", "name": "Feedstock 1 Current Disposition", "value": "Flared", "unit": null, "confidence": "high"},
+  {"category": "input", "name": "Feedstock 2 Type", "value": "Food Waste Digester Gas", "unit": null, "confidence": "high"},
+  {"category": "input", "name": "Feedstock 2 Volume", "value": "80", "unit": "SCFM", "confidence": "high"},
+  {"category": "input", "name": "Feedstock 2 CH4", "value": "58", "unit": "%", "confidence": "high"},
   {"category": "location", "name": "County", "value": "Clark County", "unit": null, "confidence": "high"},
   {"category": "location", "name": "State", "value": "Washington", "unit": null, "confidence": "high"},
   {"category": "location", "name": "Pipeline Proximity", "value": "0.5", "unit": "miles", "confidence": "high"},
@@ -536,23 +568,24 @@ EXAMPLE OUTPUT:
 RULES:
 - Extract every quantitative value, date, location, material, cost, and requirement mentioned.
 - Create SEPARATE parameter entries for each distinct fact.
-- Use specific, descriptive parameter names.
-- Always include units when stated or reasonably inferred.
-- This is a Bolt-On project: there is NO feedstock handling. Do not extract feedstock parameters (TS%, VS/TS, etc.) — the input is biogas, not solid waste.
-- Focus on biogas composition and gas quality specifications for the upgrade system.
+- ALWAYS use the "Feedstock N" prefix naming convention for biogas source data.
+- The "Feedstock N Volume" parameter should contain ONLY the numeric flow rate value. The unit should be "SCFM", "CFM", "m³/hr", or similar gas flow unit — never tons/day or other mass units.
+- Gas composition parameters (CH4, CO2, H2S, Siloxanes, O2, N2, Moisture) MUST use "Feedstock N" prefix.
+- If biogas composition is not explicitly stated, do NOT guess — leave those parameters out and let the system provide defaults.
 - Ensure gas quality specifications reference the correct pipeline standard (FERC/NAESB or local utility tariff).
 - For confidence levels: "high" = explicitly stated, "medium" = clearly implied, "low" = requires assumption.
 
 COMMONLY MISSED DETAILS - check for these:
-- Biogas composition beyond methane (H2S, siloxanes, moisture, O2)
-- Biogas flow variability (seasonal, diurnal)
-- Existing gas cleanup or conditioning equipment
+- Biogas composition beyond methane (H₂S, siloxanes, moisture, O₂, N₂)
+- Biogas flow variability (seasonal, diurnal) — extract as "Feedstock N Variability"
+- Existing gas cleanup or conditioning equipment already in place
 - Pipeline interconnection distance and utility requirements
-- Pipeline pressure requirements
+- Pipeline pressure requirements (typically 200-800 psig)
 - Flare permit status or expiration
 - Available space/footprint for upgrading equipment
 - Regulatory or credit pathway (LCFS, RFS, RIN)
 - Electrical power availability for compression/upgrading
+- Number of distinct biogas sources (use separate Feedstock numbering for each)
 
 Return ONLY the JSON object with the "parameters" array.`,
   },
