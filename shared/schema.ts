@@ -279,6 +279,93 @@ export type InsertPromptTemplate = z.infer<typeof insertPromptTemplateSchema>;
 export type PromptTemplate = typeof promptTemplates.$inferSelect;
 
 /**
+ * Shared types for mass balance stream data at each treatment stage.
+ */
+export type StreamData = {
+  flow: number;
+  bod: number;
+  cod: number;
+  tss: number;
+  tkn: number;
+  tp: number;
+  fog: number;
+  nh3?: number;
+  no3?: number;
+  unit: string;
+};
+
+export type TreatmentStage = {
+  name: string;
+  type: string;
+  influent: StreamData;
+  effluent: StreamData;
+  removalEfficiencies: Record<string, number>;
+  designCriteria: Record<string, { value: number; unit: string; source: string }>;
+  notes: string[];
+};
+
+export type RecycleStream = {
+  name: string;
+  source: string;
+  destination: string;
+  flow: number;
+  loads: Record<string, number>;
+};
+
+export type EquipmentItem = {
+  id: string;
+  process: string;
+  equipmentType: string;
+  description: string;
+  quantity: number;
+  specs: Record<string, { value: string; unit: string }>;
+  designBasis: string;
+  notes: string;
+  isOverridden: boolean;
+  isLocked: boolean;
+};
+
+export type MassBalanceResults = {
+  stages: TreatmentStage[];
+  recycleStreams: RecycleStream[];
+  equipment: EquipmentItem[];
+  convergenceIterations: number;
+  convergenceAchieved: boolean;
+  assumptions: Array<{ parameter: string; value: string; source: string }>;
+  warnings: Array<{ field: string; message: string; severity: "error" | "warning" | "info" }>;
+};
+
+export type MassBalanceOverrides = Record<string, {
+  value: string;
+  unit: string;
+  overriddenBy: string;
+  reason: string;
+  originalValue: string;
+}>;
+
+export type MassBalanceLocks = Record<string, boolean>;
+
+/**
+ * Mass Balance Runs table: Versioned mass balance & equipment list results for scenarios.
+ */
+export const massBalanceRuns = pgTable("mass_balance_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  scenarioId: varchar("scenario_id").notNull().references(() => scenarios.id, { onDelete: "cascade" }),
+  version: text("version").notNull().default("1"),
+  status: text("status").notNull().default("draft"),
+  inputSnapshot: jsonb("input_snapshot"),
+  results: jsonb("results").$type<MassBalanceResults>(),
+  overrides: jsonb("overrides").$type<MassBalanceOverrides>(),
+  locks: jsonb("locks").$type<MassBalanceLocks>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertMassBalanceRunSchema = createInsertSchema(massBalanceRuns).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertMassBalanceRun = z.infer<typeof insertMassBalanceRunSchema>;
+export type MassBalanceRun = typeof massBalanceRuns.$inferSelect;
+
+/**
  * Users table: Basic auth user accounts for application access.
  * Stores user credentials used for authentication and session management.
  */

@@ -17,6 +17,7 @@ import {
   upifRecords,
   upifChatMessages,
   promptTemplates,
+  massBalanceRuns,
   type Project,
   type InsertProject,
   type Scenario,
@@ -33,6 +34,8 @@ import {
   type InsertChatMessage,
   type PromptTemplate,
   type InsertPromptTemplate,
+  type MassBalanceRun,
+  type InsertMassBalanceRun,
 } from "@shared/schema";
 
 // Initialize PostgreSQL connection pool from environment DATABASE_URL
@@ -97,6 +100,12 @@ export interface IStorage {
   getPromptTemplateByKey(key: string): Promise<PromptTemplate | undefined>;
   upsertPromptTemplate(data: InsertPromptTemplate): Promise<PromptTemplate>;
   deletePromptTemplate(key: string): Promise<void>;
+
+  // Mass Balance Runs
+  getMassBalanceRunsByScenario(scenarioId: string): Promise<MassBalanceRun[]>;
+  getMassBalanceRun(id: string): Promise<MassBalanceRun | undefined>;
+  createMassBalanceRun(run: InsertMassBalanceRun): Promise<MassBalanceRun>;
+  updateMassBalanceRun(id: string, updates: Partial<InsertMassBalanceRun>): Promise<MassBalanceRun | undefined>;
 }
 
 /**
@@ -385,6 +394,37 @@ export class DatabaseStorage implements IStorage {
 
   async deletePromptTemplate(key: string): Promise<void> {
     await db.delete(promptTemplates).where(eq(promptTemplates.key, key));
+  }
+
+  // ============================================================================
+  // MASS BALANCE RUNS
+  // ============================================================================
+
+  async getMassBalanceRunsByScenario(scenarioId: string): Promise<MassBalanceRun[]> {
+    return db
+      .select()
+      .from(massBalanceRuns)
+      .where(eq(massBalanceRuns.scenarioId, scenarioId))
+      .orderBy(desc(massBalanceRuns.createdAt));
+  }
+
+  async getMassBalanceRun(id: string): Promise<MassBalanceRun | undefined> {
+    const result = await db.select().from(massBalanceRuns).where(eq(massBalanceRuns.id, id));
+    return result[0];
+  }
+
+  async createMassBalanceRun(run: InsertMassBalanceRun): Promise<MassBalanceRun> {
+    const result = await db.insert(massBalanceRuns).values(run).returning();
+    return result[0];
+  }
+
+  async updateMassBalanceRun(id: string, updates: Partial<InsertMassBalanceRun>): Promise<MassBalanceRun | undefined> {
+    const result = await db
+      .update(massBalanceRuns)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(massBalanceRuns.id, id))
+      .returning();
+    return result[0];
   }
 }
 

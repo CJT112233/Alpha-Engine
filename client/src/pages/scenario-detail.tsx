@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
-import { ArrowLeft, MessageSquare, FileUp, FileText, Check, Trash2, AlertCircle, Bot, Cog } from "lucide-react";
+import { ArrowLeft, MessageSquare, FileUp, FileText, Check, Trash2, AlertCircle, Bot, Cog, Droplets, RefreshCw } from "lucide-react";
 import type { Scenario, Project, TextEntry, Document, UpifRecord } from "@shared/schema";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -21,7 +21,23 @@ export default function ScenarioDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [massBalanceState, setMassBalanceState] = useState<"idle" | "confirm" | "done">("idle");
+  const [massBalanceState, setMassBalanceState] = useState<"idle" | "confirm" | "generating" | "done">("idle");
+
+  const generateMassBalance = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/scenarios/${id}/mass-balance/generate`);
+      return res.json();
+    },
+    onSuccess: () => {
+      setMassBalanceState("done");
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", id, "mass-balance"] });
+      toast({ title: "Mass Balance Generated", description: "Treatment train calculation complete." });
+    },
+    onError: (err: Error) => {
+      setMassBalanceState("confirm");
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
 
   const { data: scenario, isLoading: scenarioLoading } = useQuery<Scenario & { project: Project }>({
     queryKey: ["/api/scenarios", id],
@@ -210,10 +226,18 @@ export default function ScenarioDetail() {
                     <div className="flex items-center gap-2">
                       <Button
                         size="sm"
-                        onClick={() => setMassBalanceState("done")}
+                        onClick={() => {
+                          setMassBalanceState("generating");
+                          generateMassBalance.mutate();
+                        }}
+                        disabled={generateMassBalance.isPending}
                         data-testid="button-confirm-mass-balance"
                       >
-                        Yes, Generate
+                        {generateMassBalance.isPending ? (
+                          <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Calculating...</>
+                        ) : (
+                          "Yes, Generate"
+                        )}
                       </Button>
                       <Button
                         size="sm"
@@ -228,11 +252,22 @@ export default function ScenarioDetail() {
                 </Card>
               </CardContent>
             )}
-            {massBalanceState === "done" && (
+            {(massBalanceState === "done" || massBalanceState === "generating") && (
               <CardContent className="pt-0">
-                <div className="flex items-center justify-center py-8" data-testid="mass-balance-placeholder">
-                  <span className="text-6xl">😏</span>
-                </div>
+                <Card>
+                  <CardContent className="flex items-center gap-3 pt-4">
+                    <Droplets className="h-5 w-5 text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium" data-testid="text-mass-balance-ready">Mass Balance Ready</p>
+                      <p className="text-xs text-muted-foreground">View the treatment train, equipment list, and design calculations.</p>
+                    </div>
+                    <Link href={`/scenarios/${id}/mass-balance`}>
+                      <Button size="sm" data-testid="button-view-mass-balance">
+                        <Droplets className="h-4 w-4 mr-2" /> View Mass Balance
+                      </Button>
+                    </Link>
+                  </CardContent>
+                </Card>
               </CardContent>
             )}
           </Card>

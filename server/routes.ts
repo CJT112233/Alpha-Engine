@@ -2403,5 +2403,176 @@ export async function registerRoutes(
     }
   });
 
+  // =========================================================================
+  // MASS BALANCE ROUTES
+  // =========================================================================
+
+  app.get("/api/scenarios/:scenarioId/mass-balance", async (req: Request, res: Response) => {
+    try {
+      const runs = await storage.getMassBalanceRunsByScenario(req.params.scenarioId);
+      res.json(runs);
+    } catch (error) {
+      console.error("Error fetching mass balance runs:", error);
+      res.status(500).json({ error: "Failed to fetch mass balance runs" });
+    }
+  });
+
+  app.get("/api/mass-balance/:id", async (req: Request, res: Response) => {
+    try {
+      const run = await storage.getMassBalanceRun(req.params.id);
+      if (!run) return res.status(404).json({ error: "Mass balance run not found" });
+      res.json(run);
+    } catch (error) {
+      console.error("Error fetching mass balance run:", error);
+      res.status(500).json({ error: "Failed to fetch mass balance run" });
+    }
+  });
+
+  app.post("/api/scenarios/:scenarioId/mass-balance/generate", async (req: Request, res: Response) => {
+    try {
+      const { scenarioId } = req.params;
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+
+      if (scenario.status !== "confirmed") {
+        return res.status(400).json({ error: "Scenario must be confirmed before generating a mass balance. Confirm the UPIF first." });
+      }
+
+      const upif = await storage.getUpifByScenario(scenarioId);
+      if (!upif) return res.status(400).json({ error: "No UPIF found for this scenario. Generate and confirm a UPIF first." });
+
+      const projectType = (scenario as any).projectType || upif.projectType || "";
+      if (!projectType.toLowerCase().includes("wastewater") && !projectType.toLowerCase().includes("type a")) {
+        return res.status(400).json({ error: "Mass balance is only available for Type A (Wastewater Treatment) projects." });
+      }
+
+      const { calculateMassBalance } = await import("./services/massBalance");
+      const results = calculateMassBalance(upif);
+
+      const existingRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const nextVersion = String(existingRuns.length + 1);
+
+      const run = await storage.createMassBalanceRun({
+        scenarioId,
+        version: nextVersion,
+        status: "draft",
+        inputSnapshot: {
+          upifId: upif.id,
+          feedstocks: upif.feedstocks,
+          outputSpecs: upif.outputSpecs,
+          projectType,
+        },
+        results,
+        overrides: {},
+        locks: {},
+      });
+
+      res.json(run);
+    } catch (error) {
+      console.error("Error generating mass balance:", error);
+      res.status(500).json({ error: "Failed to generate mass balance" });
+    }
+  });
+
+  const overridesSchema = z.object({
+    overrides: z.record(z.string(), z.object({
+      value: z.string(),
+      unit: z.string(),
+      overriddenBy: z.string(),
+      reason: z.string(),
+      originalValue: z.string(),
+    })),
+  });
+
+  const locksSchema = z.object({
+    locks: z.record(z.string(), z.boolean()),
+  });
+
+  const statusSchema = z.object({
+    status: z.enum(["draft", "reviewed", "finalized"]),
+  });
+
+  app.patch("/api/mass-balance/:id/overrides", async (req: Request, res: Response) => {
+    try {
+      const run = await storage.getMassBalanceRun(req.params.id);
+      if (!run) return res.status(404).json({ error: "Mass balance run not found" });
+
+      const parsed = overridesSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid overrides format", details: parsed.error.issues });
+      }
+
+      const mergedOverrides = { ...(run.overrides || {}), ...parsed.data.overrides };
+      const updated = await storage.updateMassBalanceRun(req.params.id, {
+        overrides: mergedOverrides,
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating overrides:", error);
+      res.status(500).json({ error: "Failed to update overrides" });
+    }
+  });
+
+  app.patch("/api/mass-balance/:id/locks", async (req: Request, res: Response) => {
+    try {
+      const run = await storage.getMassBalanceRun(req.params.id);
+      if (!run) return res.status(404).json({ error: "Mass balance run not found" });
+
+      const parsed = locksSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid locks format", details: parsed.error.issues });
+      }
+
+      const mergedLocks = { ...(run.locks || {}), ...parsed.data.locks };
+      const updated = await storage.updateMassBalanceRun(req.params.id, {
+        locks: mergedLocks,
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating locks:", error);
+      res.status(500).json({ error: "Failed to update locks" });
+    }
+  });
+
+  app.post("/api/mass-balance/:id/recompute", async (req: Request, res: Response) => {
+    try {
+      const run = await storage.getMassBalanceRun(req.params.id);
+      if (!run) return res.status(404).json({ error: "Mass balance run not found" });
+
+      const upif = await storage.getUpifByScenario(run.scenarioId);
+      if (!upif) return res.status(400).json({ error: "Source UPIF no longer exists" });
+
+      const { calculateMassBalance } = await import("./services/massBalance");
+      const results = calculateMassBalance(upif);
+
+      const updated = await storage.updateMassBalanceRun(run.id, {
+        results,
+        status: "draft",
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error recomputing mass balance:", error);
+      res.status(500).json({ error: "Failed to recompute mass balance" });
+    }
+  });
+
+  app.patch("/api/mass-balance/:id/status", async (req: Request, res: Response) => {
+    try {
+      const run = await storage.getMassBalanceRun(req.params.id);
+      if (!run) return res.status(404).json({ error: "Mass balance run not found" });
+
+      const parsed = statusSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid status. Must be: draft, reviewed, or finalized", details: parsed.error.issues });
+      }
+
+      const updated = await storage.updateMassBalanceRun(req.params.id, { status: parsed.data.status });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating status:", error);
+      res.status(500).json({ error: "Failed to update status" });
+    }
+  });
+
   return httpServer;
 }

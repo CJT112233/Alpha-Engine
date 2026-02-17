@@ -21,6 +21,7 @@ import ProjectsList from "@/pages/projects-list";
 import ScenariosList from "@/pages/scenarios-list";
 import Documentation from "@/pages/documentation";
 import SettingsPage from "@/pages/settings";
+import MassBalancePage from "@/pages/mass-balance";
 
 function Router() {
   return (
@@ -33,6 +34,7 @@ function Router() {
       <Route path="/scenarios/:id" component={ScenarioDetail} />
       <Route path="/documentation" component={Documentation} />
       <Route path="/settings" component={SettingsPage} />
+      <Route path="/scenarios/:scenarioId/mass-balance" component={MassBalancePage} />
       <Route component={NotFound} />
     </Switch>
   );

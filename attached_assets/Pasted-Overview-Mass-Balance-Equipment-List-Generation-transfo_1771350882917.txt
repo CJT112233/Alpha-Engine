@@ -1,0 +1,131 @@
+Overview
+
+Mass Balance & Equipment List Generation transforms a finalized UPIF into engineering deliverables required for wastewater treatment project conceptual design. Once users have confirmed their scenario parameters, this feature calculates mass balances (flow rates, pollutant loads, treatment requirements) and generates equipment lists (focused on all primary process equipment) sized appropriately for the project. These outputs are essential for detailed engineering design, cost estimation, and regulatory submissions. By automating these calculations from the UPIF, the feature eliminates manual spreadsheet work and ensures consistency between project parameters and engineering deliverables. All outputs on the Mass Balance & Equipment List must be able to be manually edited and locked in the same way as the UPIF.
+
+Terminology
+
+Mass Balance: A calculation showing the flow and composition of wastewater streams through each treatment process, ensuring inputs equal outputs plus accumulation.
+
+Equipment List: An inventory of all physical equipment required for the treatment system, including specifications, quantities, and sizing parameters.
+
+Design Criteria: Engineering parameters (detention times, loading rates, safety factors) used to size equipment and processes based on industry standards and regulations.
+
+Treatment Train: The sequence of treatment processes (preliminary, primary, secondary, tertiary, disinfection) through which wastewater flows.
+
+Requirements
+
+REQ-MBEQ-001: Mass Balance Calculation
+
+User Story: As an engineer, I want the system to calculate mass balances for my treatment system, so that I can verify flow and pollutant removal through each process.
+
+Acceptance Criteria:
+
+AC-MBEQ-001.1: When a scenario is finalized, the system will prompt a user if the user would like to generate a Mass Balance and Equipment List based on UPIF parameters.
+
+AC-MBEQ-001.2: When calculating mass balances, the system shall determine flow and pollutant loads through each treatment process in the treatment train.
+
+AC-MBEQ-001.3: When calculating mass balances, the system shall apply removal efficiencies for each pollutant at each treatment stage based on design criteria and industry standards.
+
+AC-MBEQ-001.4: When calculating mass balances, the system shall account for recycle streams (return activated sludge, filtrate, reject water) that affect influent characteristics.
+
+AC-MBEQ-001.5: When mass balance calculations are complete, the system shall verify that mass is conserved (inputs = outputs + accumulation) within acceptable tolerance.
+
+REQ-MBEQ-002: Equipment Sizing
+
+User Story: As an engineer, I want the system to size equipment based on calculated flows and loads, so that I have properly sized components for my design.
+
+Acceptance Criteria:
+
+AC-MBEQ-002.1: When mass balances are calculated, the system shall size tanks and basins (equalization, primary clarifiers, aeration basins, secondary clarifiers) based on design criteria (detention time, surface overflow rate, solids loading rate).
+
+AC-MBEQ-002.2: When mass balances are calculated, the system shall size pumps based on required flow rates and total dynamic head.
+
+AC-MBEQ-002.3: When mass balances are calculated, the system shall size blowers and aeration equipment based on oxygen demand and transfer efficiency.
+
+AC-MBEQ-002.4: When mass balances are calculated, the system shall size chemical feed systems based on dosing requirements.
+
+AC-MBEQ-002.5: When sizing equipment, the system shall apply appropriate safety factors and design margins per industry standards.
+
+REQ-MBEQ-003: Equipment List Generation
+
+User Story: As an engineer, I want a comprehensive equipment list with specifications, so that I can use it for procurement, cost estimation, and detailed design.
+
+Acceptance Criteria:
+
+AC-MBEQ-003.1: When equipment is sized, the system shall generate an equipment list containing all major equipment items.
+
+AC-MBEQ-003.2: When generating the equipment list, the system shall include for each item: equipment type, quantity, key specifications (capacity, power, dimensions), and design basis.
+
+AC-MBEQ-003.3: When generating the equipment list, the system shall organize equipment by treatment process or system area.
+
+AC-MBEQ-003.4: When generating the equipment list, the system shall only include primary process equipment; ancillary equipment (instrumentation, valves, piping, pumps, blowers) should not be included.
+
+REQ-MBEQ-004: Design Criteria Application
+
+User Story: As an engineer, I want the system to apply appropriate design criteria, so that equipment is sized according to industry standards and regulatory requirements.
+
+Acceptance Criteria:
+
+AC-MBEQ-004.1: When sizing equipment, the system shall use design criteria appropriate for the treatment process type (e.g., activated sludge, membrane bioreactor, trickling filter, etc.).
+
+AC-MBEQ-004.2: When sizing equipment, the system shall apply design criteria that meet or exceed regulatory requirements for the project jurisdiction.
+
+AC-MBEQ-004.3: When design criteria vary by project characteristics (climate, influent strength, effluent requirements), the system shall select appropriate values based on UPIF parameters.
+
+AC-MBEQ-004.4: When design criteria are applied, the system shall document which criteria were used and their source (regulation, industry standard, best practice).
+
+REQ-MBEQ-005: Output Format and Export
+
+User Story: As an engineer, I want to export mass balances and equipment lists in usable formats, so that I can incorporate them into design documents and reports.
+
+Acceptance Criteria:
+
+AC-MBEQ-005.1: When mass balances and equipment lists are generated, the system shall provide them in a viewable format within the application.
+
+AC-MBEQ-005.2: When a user requests export, the system shall allow export of mass balances and equipment lists to common formats (PDF, Excel, CSV).
+
+AC-MBEQ-005.3: When exporting, the system shall include all calculation details, assumptions, and design criteria used.
+
+AC-MBEQ-005.4: When exporting, the system shall format outputs professionally suitable for inclusion in engineering reports and permit applications.
+
+REQ-MBEQ-006: Calculation Transparency
+
+User Story: As an engineer, I want to see how calculations were performed, so that I can verify results and explain them to reviewers. Please make all of the following backup information available as links but not directly in the document. 
+
+Acceptance Criteria:
+
+AC-MBEQ-006.1: When viewing mass balances, the system shall provide access to detailed calculation steps showing how each value was derived.
+
+AC-MBEQ-006.2: When viewing equipment sizing, the system shall show the formulas, inputs, and design criteria used for each equipment item.
+
+AC-MBEQ-006.3: When calculations reference UPIF parameters, the system shall clearly indicate which parameters were used and their values.
+
+AC-MBEQ-006.4: When calculations use assumptions or default values not in the UPIF, the system shall clearly document those assumptions.
+
+REQ-MBEQ-007: Editing before finalization
+
+User Story: I want to ensure that all Users of this tool can edit any value that is generated, lock that value (just like in the UPIF) before finalizing. 
+
+
+
+Feature Behavior & Rules
+
+Calculation Sequence: Mass balance calculations follow a logical sequence through the treatment train: influent characterization → preliminary treatment → primary treatment → secondary treatment → tertiary treatment → disinfection → effluent. Each stage uses outputs from the previous stage as inputs. Recycle streams (RAS, WAS, filtrate) are calculated iteratively until the system converges to a stable solution. Equipment sizing occurs after mass balances are finalized, using the calculated flows and loads as design basis.
+
+Design Criteria Selection: The system maintains a library of design criteria organized by treatment process type, regulatory jurisdiction, and project characteristics. When sizing equipment, the system selects appropriate criteria based on UPIF parameters such as treatment technology, location, climate zone, and effluent requirements. If multiple criteria sources conflict (e.g., state regulation vs. industry standard), the system applies the more conservative (stringent) value and documents the rationale.
+
+Safety Factors and Margins: All equipment sizing includes appropriate safety factors to account for uncertainty, future growth, and operational flexibility. Typical factors include: peak flow multipliers (2.0-3.0x average flow), design margin on tank volumes (10-20%), pump redundancy (N+1 or N+2), and blower capacity margin (15-25%). The specific factors applied depend on equipment type, criticality, and project risk tolerance as indicated in the UPIF.
+
+Recycle Stream Handling: Wastewater treatment systems include multiple recycle streams that affect influent characteristics. The system calculates these iteratively: initial mass balance assumes no recycles → equipment sized → recycle flows calculated → mass balance recalculated with recycles → equipment re-sized if necessary → repeat until convergence. Convergence is achieved when recycle flows change by less than 1% between iterations or after a maximum of 10 iterations.
+
+Equipment Redundancy: Critical equipment (pumps, blowers, disinfection systems) is sized with redundancy to ensure continuous operation during maintenance or failures. The system applies redundancy rules based on equipment criticality: critical equipment (N+1 minimum, often N+2), important equipment (N+1), non-critical equipment (single unit acceptable). The UPIF may specify redundancy requirements, or the system applies defaults based on industry practice.
+
+Modular vs. Continuous Sizing: Some equipment (tanks, clarifiers) is sized as continuous volumes, while other equipment (pumps, blowers) is sized as discrete units. When discrete units are required, the system selects standard equipment sizes from manufacturer catalogs rather than specifying exact calculated values. For example, if a calculated pump capacity is 127 GPM, the system specifies a standard 150 GPM pump. This ensures equipment lists reflect commercially available products.
+
+User Overrides: Engineers may override calculated equipment sizes or mass balance values if they have project-specific knowledge that justifies deviation from standard calculations. When a user applies an override, the system documents the override, preserves it during recalculations (unless underlying parameters change significantly), and flags it in outputs so reviewers know which values are calculated vs. user-specified.
+
+Incomplete UPIF Handling: If the UPIF is missing parameters required for mass balance or equipment sizing calculations, the system cannot generate complete outputs. The system should estimate missing parameters, notifies the user, and generates results based on those estimates. 
+
+Multiple Treatment Trains: Some projects include parallel treatment trains (e.g., two identical activated sludge systems) or alternative treatment paths (e.g., bypass for peak flows). The system calculates mass balances and equipment for each train separately, then aggregates results into a comprehensive equipment list. Equipment shared between trains (influent pumps, effluent discharge) is sized for combined capacity.
+
+Output Versioning: Each time mass balances and equipment lists are generated, the system creates a versioned output tied to the specific UPIF version. This allows engineers to compare results across scenario iterations, understand how design changes affect outputs, and maintain a record of design evolution for project documentation.
