@@ -21,13 +21,15 @@ Number formatting: Always display numbers with comma separators for thousands (e
 - **Reviewer Chat**: AI-powered chat allows users to suggest UPIF changes, with the system applying structured updates while respecting confirmed fields.
 - **Configurable Prompt Templates**: AI prompts are stored in the database and can be customized via a settings interface.
 - **Generation Stats**: Tracks timing and metadata for every AI-generated document (Classification, UPIF, Mass Balance). Stats page at `/stats` shows date, document type, model used, project/scenario, generation time, and success/error status. Data stored in `generation_logs` table.
-- **Mass Balance & Equipment List**: Deterministic calculation engine for Type A (Wastewater Treatment) projects. Parses confirmed UPIF influent data, determines treatment train (preliminary → equalization → primary → secondary → tertiary → disinfection), applies removal efficiencies from WEF MOP 8 / Ten States Standards, iterates recycle streams to convergence, and sizes equipment (screens, clarifiers, aeration basins, MBR, filters, UV). Results stored in `mass_balance_runs` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/mass-balance`.
-- **Multi-Type Mass Balance**: Supports all four project types:
-  - **Type A**: Wastewater treatment train with recycle streams (server/services/massBalance.ts)
-  - **Type B**: RNG Greenfield — full AD pipeline: feedstock receiving → pretreatment → digestion → biogas conditioning → gas upgrading → RNG (server/services/massBalanceTypeB.ts)
-  - **Type C**: RNG Bolt-On — biogas-only inputs (CH₄%, CO₂%, H₂S, siloxanes, flow scfm) through gas conditioning to RNG specs, no digester sizing (server/services/massBalanceTypeC.ts)
-  - **Type D**: Hybrid — combines WW treatment (Type A) with sludge → AD → biogas → RNG, optional co-digestion with trucked feedstocks (server/services/massBalanceTypeD.ts)
-  - Route dispatcher in server/routes.ts auto-selects calculator based on project type
+- **AI-Powered Mass Balance & Equipment List**: Mass balances are generated using one of the three LLMs (GPT-5, Claude Sonnet 4.5, Claude Opus 4.6) via type-specific prompts. The system uses the scenario's preferred model selection. Deterministic calculators serve as fallback if AI generation fails. Results stored in `mass_balance_runs` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/mass-balance`.
+- **Multi-Type Mass Balance**: Supports all four project types with both AI and deterministic calculators:
+  - **Type A**: Wastewater treatment train with recycle streams (deterministic: server/services/massBalance.ts, AI prompt: mass_balance_type_a)
+  - **Type B**: RNG Greenfield — full AD pipeline: feedstock receiving → pretreatment → digestion → biogas conditioning → gas upgrading → RNG (deterministic: server/services/massBalanceTypeB.ts, AI prompt: mass_balance_type_b)
+  - **Type C**: RNG Bolt-On — biogas-only inputs (CH₄%, CO₂%, H₂S, siloxanes, flow scfm) through gas conditioning to RNG specs, no digester sizing (deterministic: server/services/massBalanceTypeC.ts, AI prompt: mass_balance_type_c)
+  - **Type D**: Hybrid — combines WW treatment (Type A) with sludge → AD → biogas → RNG, optional co-digestion with trucked feedstocks (deterministic: server/services/massBalanceTypeD.ts, AI prompt: mass_balance_type_d)
+  - AI generation service in server/services/massBalanceAI.ts handles prompt building, LLM calls, and JSON validation
+  - Route dispatcher in server/routes.ts attempts AI generation first, falls back to deterministic calculators on failure
+  - Generation stats log records which model was used (or "deterministic (AI fallback)" if fallback occurred)
   - Frontend mass balance page renders project-type-specific views with AD process stages, summary cards, and equipment lists
 
 ### Technical Implementation

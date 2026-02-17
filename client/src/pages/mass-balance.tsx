@@ -554,7 +554,7 @@ export default function MassBalancePage() {
               data-testid="button-generate"
             >
               {generateMutation.isPending ? (
-                <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Calculating...</>
+                <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Generating with AI...</>
               ) : (
                 <><Gauge className="h-4 w-4 mr-2" /> Generate Mass Balance</>
               )}

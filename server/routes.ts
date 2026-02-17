@@ -2512,6 +2512,7 @@ export async function registerRoutes(
 
   app.post("/api/scenarios/:scenarioId/mass-balance/generate", async (req: Request, res: Response) => {
     const startTime = Date.now();
+    let modelUsed = "deterministic";
     try {
       const { scenarioId } = req.params;
       const scenario = await storage.getScenario(scenarioId);
@@ -2525,21 +2526,33 @@ export async function registerRoutes(
       if (!upif) return res.status(400).json({ error: "No UPIF found for this scenario. Generate and confirm a UPIF first." });
 
       const projectType = (scenario as any).projectType || upif.projectType || "";
-      const ptLower = projectType.toLowerCase();
+      const preferredModel = (scenario.preferredModel || "gpt5") as LLMProvider;
 
       let results;
-      if (ptLower.includes("type b") || ptLower.includes("rng greenfield") || ptLower.includes("greenfield")) {
-        const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
-        results = calculateMassBalanceTypeB(upif);
-      } else if (ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
-        const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
-        results = calculateMassBalanceTypeC(upif);
-      } else if (ptLower.includes("type d") || ptLower.includes("hybrid")) {
-        const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
-        results = calculateMassBalanceTypeD(upif);
-      } else {
-        const { calculateMassBalance } = await import("./services/massBalance");
-        results = calculateMassBalance(upif);
+      try {
+        const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
+        const aiResult = await generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
+        results = aiResult.results;
+        modelUsed = aiResult.providerLabel;
+        console.log(`Mass Balance: AI generation succeeded using ${modelUsed}`);
+      } catch (aiError) {
+        console.warn(`Mass Balance: AI generation failed, falling back to deterministic calculator:`, (aiError as Error).message);
+        modelUsed = "deterministic (AI fallback)";
+
+        const ptLower = projectType.toLowerCase();
+        if (ptLower.includes("type b") || ptLower.includes("rng greenfield") || ptLower.includes("greenfield")) {
+          const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
+          results = calculateMassBalanceTypeB(upif);
+        } else if (ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
+          const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
+          results = calculateMassBalanceTypeC(upif);
+        } else if (ptLower.includes("type d") || ptLower.includes("hybrid")) {
+          const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
+          results = calculateMassBalanceTypeD(upif);
+        } else {
+          const { calculateMassBalance } = await import("./services/massBalance");
+          results = calculateMassBalance(upif);
+        }
       }
 
       const existingRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
@@ -2563,7 +2576,7 @@ export async function registerRoutes(
       const durationMs = Date.now() - startTime;
       storage.createGenerationLog({
         documentType: "Mass Balance",
-        modelUsed: "deterministic",
+        modelUsed,
         projectId: scenario.projectId,
         projectName: scenario.project?.name || null,
         scenarioId,
@@ -2577,7 +2590,7 @@ export async function registerRoutes(
       const durationMs = Date.now() - startTime;
       storage.createGenerationLog({
         documentType: "Mass Balance",
-        modelUsed: "deterministic",
+        modelUsed,
         durationMs,
         status: "error",
         errorMessage: (error as any)?.message || "Unknown error",
@@ -2656,21 +2669,31 @@ export async function registerRoutes(
       if (!upif) return res.status(400).json({ error: "Source UPIF no longer exists" });
 
       const scenario = await storage.getScenario(run.scenarioId);
-      const projectType = ((scenario as any)?.projectType || upif.projectType || "").toLowerCase();
+      const projectType = (scenario as any)?.projectType || upif.projectType || "";
+      const preferredModel = (scenario?.preferredModel || "gpt5") as LLMProvider;
 
       let results;
-      if (projectType.includes("type b") || projectType.includes("greenfield")) {
-        const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
-        results = calculateMassBalanceTypeB(upif);
-      } else if (projectType.includes("type c") || projectType.includes("bolt-on") || projectType.includes("bolt on")) {
-        const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
-        results = calculateMassBalanceTypeC(upif);
-      } else if (projectType.includes("type d") || projectType.includes("hybrid")) {
-        const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
-        results = calculateMassBalanceTypeD(upif);
-      } else {
-        const { calculateMassBalance } = await import("./services/massBalance");
-        results = calculateMassBalance(upif);
+      try {
+        const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
+        const aiResult = await generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
+        results = aiResult.results;
+        console.log(`Mass Balance Recompute: AI succeeded using ${aiResult.providerLabel}`);
+      } catch (aiError) {
+        console.warn(`Mass Balance Recompute: AI failed, falling back to deterministic:`, (aiError as Error).message);
+        const ptLower = projectType.toLowerCase();
+        if (ptLower.includes("type b") || ptLower.includes("greenfield")) {
+          const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
+          results = calculateMassBalanceTypeB(upif);
+        } else if (ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
+          const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
+          results = calculateMassBalanceTypeC(upif);
+        } else if (ptLower.includes("type d") || ptLower.includes("hybrid")) {
+          const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
+          results = calculateMassBalanceTypeD(upif);
+        } else {
+          const { calculateMassBalance } = await import("./services/massBalance");
+          results = calculateMassBalance(upif);
+        }
       }
 
       const updated = await storage.updateMassBalanceRun(run.id, {
