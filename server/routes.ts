@@ -759,6 +759,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/scenarios/:id/classify", async (req: Request, res: Response) => {
+    const startTime = Date.now();
     try {
       const scenarioId = req.params.id;
       const scenario = await storage.getScenario(scenarioId);
@@ -806,14 +807,50 @@ export async function registerRoutes(
         parsed = JSON.parse(rawResponse);
       } catch {
         console.error("Classification: Failed to parse JSON response:", rawResponse.substring(0, 300));
+        const durationMs = Date.now() - startTime;
+        storage.createGenerationLog({
+          documentType: "Classification",
+          modelUsed: response.provider,
+          projectId: scenario.projectId,
+          projectName: scenario.project?.name || null,
+          scenarioId,
+          scenarioName: scenario.name,
+          durationMs,
+          status: "error",
+          errorMessage: "Failed to parse classification response",
+        }).catch(e => console.error("Failed to log generation:", e));
         return res.status(500).json({ error: "Failed to parse classification response from AI." });
       }
 
       if (!parsed.projectType || !["A", "B", "C", "D"].includes(parsed.projectType)) {
+        const durationMs = Date.now() - startTime;
+        storage.createGenerationLog({
+          documentType: "Classification",
+          modelUsed: response.provider,
+          projectId: scenario.projectId,
+          projectName: scenario.project?.name || null,
+          scenarioId,
+          scenarioName: scenario.name,
+          durationMs,
+          status: "error",
+          errorMessage: "AI returned invalid project type",
+        }).catch(e => console.error("Failed to log generation:", e));
         return res.status(500).json({ error: "AI returned an invalid project type." });
       }
 
       await storage.updateScenarioProjectType(scenarioId, parsed.projectType, false);
+
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "Classification",
+        modelUsed: response.provider,
+        projectId: scenario.projectId,
+        projectName: scenario.project?.name || null,
+        scenarioId,
+        scenarioName: scenario.name,
+        durationMs,
+        status: "success",
+      }).catch(e => console.error("Failed to log generation:", e));
 
       res.json({
         projectType: parsed.projectType,
@@ -823,6 +860,14 @@ export async function registerRoutes(
         provider: response.provider,
       });
     } catch (error: any) {
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "Classification",
+        modelUsed: "unknown",
+        durationMs,
+        status: "error",
+        errorMessage: error?.message || "Unknown error",
+      }).catch(e => console.error("Failed to log generation:", e));
       console.error("Error classifying project type:", error?.message || error);
       res.status(500).json({ error: `Failed to classify project type: ${error?.message || "Unknown error"}` });
     }
@@ -1192,6 +1237,7 @@ export async function registerRoutes(
   // =========================================================================
 
   app.post("/api/scenarios/:scenarioId/extract", async (req: Request, res: Response) => {
+    const startTime = Date.now();
     try {
       const scenarioId = req.params.scenarioId;
       
@@ -1625,9 +1671,30 @@ export async function registerRoutes(
       // Update scenario status
       await storage.updateScenarioStatus(scenarioId, "in_review");
       
+      const extractScenarioFull = await storage.getScenario(scenarioId);
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "UPIF",
+        modelUsed: extractModel,
+        projectId: extractScenarioFull?.projectId || null,
+        projectName: extractScenarioFull?.project?.name || null,
+        scenarioId,
+        scenarioName: extractScenarioFull?.name || null,
+        durationMs,
+        status: "success",
+      }).catch(e => console.error("Failed to log generation:", e));
+
       const params = await storage.getParametersByScenario(scenarioId);
       res.json(params);
     } catch (error) {
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "UPIF",
+        modelUsed: "unknown",
+        durationMs,
+        status: "error",
+        errorMessage: (error as any)?.message || "Unknown error",
+      }).catch(e => console.error("Failed to log generation:", e));
       console.error("Error extracting parameters:", error);
       res.status(500).json({ error: "Failed to extract parameters" });
     }
@@ -2429,6 +2496,7 @@ export async function registerRoutes(
   });
 
   app.post("/api/scenarios/:scenarioId/mass-balance/generate", async (req: Request, res: Response) => {
+    const startTime = Date.now();
     try {
       const { scenarioId } = req.params;
       const scenario = await storage.getScenario(scenarioId);
@@ -2467,8 +2535,28 @@ export async function registerRoutes(
         locks: {},
       });
 
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "Mass Balance",
+        modelUsed: "deterministic",
+        projectId: scenario.projectId,
+        projectName: scenario.project?.name || null,
+        scenarioId,
+        scenarioName: scenario.name,
+        durationMs,
+        status: "success",
+      }).catch(e => console.error("Failed to log generation:", e));
+
       res.json(run);
     } catch (error) {
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "Mass Balance",
+        modelUsed: "deterministic",
+        durationMs,
+        status: "error",
+        errorMessage: (error as any)?.message || "Unknown error",
+      }).catch(e => console.error("Failed to log generation:", e));
       console.error("Error generating mass balance:", error);
       res.status(500).json({ error: "Failed to generate mass balance" });
     }
@@ -2571,6 +2659,20 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating status:", error);
       res.status(500).json({ error: "Failed to update status" });
+    }
+  });
+
+  // =========================================================================
+  // Generation Stats
+  // =========================================================================
+
+  app.get("/api/generation-stats", async (_req: Request, res: Response) => {
+    try {
+      const logs = await storage.getAllGenerationLogs();
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching generation stats:", error);
+      res.status(500).json({ error: "Failed to fetch generation stats" });
     }
   });
 

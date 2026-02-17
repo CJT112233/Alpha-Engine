@@ -18,6 +18,7 @@ import {
   upifChatMessages,
   promptTemplates,
   massBalanceRuns,
+  generationLogs,
   type Project,
   type InsertProject,
   type Scenario,
@@ -36,6 +37,8 @@ import {
   type InsertPromptTemplate,
   type MassBalanceRun,
   type InsertMassBalanceRun,
+  type GenerationLog,
+  type InsertGenerationLog,
 } from "@shared/schema";
 
 // Initialize PostgreSQL connection pool from environment DATABASE_URL
@@ -106,6 +109,10 @@ export interface IStorage {
   getMassBalanceRun(id: string): Promise<MassBalanceRun | undefined>;
   createMassBalanceRun(run: InsertMassBalanceRun): Promise<MassBalanceRun>;
   updateMassBalanceRun(id: string, updates: Partial<InsertMassBalanceRun>): Promise<MassBalanceRun | undefined>;
+
+  // Generation Logs
+  getAllGenerationLogs(): Promise<GenerationLog[]>;
+  createGenerationLog(log: InsertGenerationLog): Promise<GenerationLog>;
 }
 
 /**
@@ -424,6 +431,19 @@ export class DatabaseStorage implements IStorage {
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(massBalanceRuns.id, id))
       .returning();
+    return result[0];
+  }
+
+  // ============================================================================
+  // GENERATION LOGS
+  // ============================================================================
+
+  async getAllGenerationLogs(): Promise<GenerationLog[]> {
+    return db.select().from(generationLogs).orderBy(desc(generationLogs.createdAt));
+  }
+
+  async createGenerationLog(log: InsertGenerationLog): Promise<GenerationLog> {
+    const result = await db.insert(generationLogs).values(log).returning();
     return result[0];
   }
 }

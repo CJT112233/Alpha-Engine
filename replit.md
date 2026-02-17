@@ -20,6 +20,7 @@ Number formatting: Always display numbers with comma separators for thousands (e
 - **2-Step Project Type Classification**: AI classifies projects into types (Wastewater Treatment, RNG Greenfield, RNG Bolt-On, Hybrid) before extraction, using type-specific prompts for improved relevance.
 - **Reviewer Chat**: AI-powered chat allows users to suggest UPIF changes, with the system applying structured updates while respecting confirmed fields.
 - **Configurable Prompt Templates**: AI prompts are stored in the database and can be customized via a settings interface.
+- **Generation Stats**: Tracks timing and metadata for every AI-generated document (Classification, UPIF, Mass Balance). Stats page at `/stats` shows date, document type, model used, project/scenario, generation time, and success/error status. Data stored in `generation_logs` table.
 - **Mass Balance & Equipment List**: Deterministic calculation engine for Type A (Wastewater Treatment) projects. Parses confirmed UPIF influent data, determines treatment train (preliminary → equalization → primary → secondary → tertiary → disinfection), applies removal efficiencies from WEF MOP 8 / Ten States Standards, iterates recycle streams to convergence, and sizes equipment (screens, clarifiers, aeration basins, MBR, filters, UV). Results stored in `mass_balance_runs` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/mass-balance`.
 
 ### Technical Implementation

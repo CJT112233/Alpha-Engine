@@ -6,7 +6,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, jsonb, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -364,6 +364,28 @@ export const massBalanceRuns = pgTable("mass_balance_runs", {
 export const insertMassBalanceRunSchema = createInsertSchema(massBalanceRuns).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertMassBalanceRun = z.infer<typeof insertMassBalanceRunSchema>;
 export type MassBalanceRun = typeof massBalanceRuns.$inferSelect;
+
+/**
+ * Generation Logs table: Tracks timing and metadata for AI-generated documents.
+ * Records how long each generation takes, which model was used, and links to the project/scenario.
+ */
+export const generationLogs = pgTable("generation_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentType: text("document_type").notNull(),
+  modelUsed: text("model_used").notNull(),
+  projectId: varchar("project_id"),
+  projectName: text("project_name"),
+  scenarioId: varchar("scenario_id"),
+  scenarioName: text("scenario_name"),
+  durationMs: integer("duration_ms").notNull(),
+  status: text("status").notNull().default("success"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertGenerationLogSchema = createInsertSchema(generationLogs).omit({ id: true, createdAt: true });
+export type InsertGenerationLog = z.infer<typeof insertGenerationLogSchema>;
+export type GenerationLog = typeof generationLogs.$inferSelect;
 
 /**
  * Users table: Basic auth user accounts for application access.
