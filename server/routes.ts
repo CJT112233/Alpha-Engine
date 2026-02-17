@@ -2636,6 +2636,40 @@ export async function registerRoutes(
     }
   });
 
+  function applyOverrideToResults(obj: any, path: string[], value: string) {
+    if (path.length === 0 || !obj) return;
+    let current = obj;
+    for (let i = 0; i < path.length - 1; i++) {
+      const segment = path[i];
+      const idx = Number(segment);
+      if (!isNaN(idx) && Array.isArray(current)) {
+        current = current[idx];
+      } else if (Array.isArray(current)) {
+        const match = current.find((item: any) => item && item.id === segment);
+        if (match) {
+          current = match;
+        } else {
+          return;
+        }
+      } else if (current && typeof current === "object") {
+        current = current[segment];
+      } else {
+        return;
+      }
+      if (!current) return;
+    }
+    const lastKey = path[path.length - 1];
+    if (current && typeof current === "object") {
+      if (current[lastKey] !== undefined && typeof current[lastKey] === "object" && current[lastKey] !== null && "value" in current[lastKey]) {
+        const numVal = Number(value.replace(/,/g, ""));
+        current[lastKey].value = isNaN(numVal) ? value : numVal;
+      } else {
+        const numVal = Number(value.replace(/,/g, ""));
+        current[lastKey] = isNaN(numVal) ? value : numVal;
+      }
+    }
+  }
+
   const overridesSchema = z.object({
     overrides: z.record(z.string(), z.object({
       value: z.string(),
@@ -2729,6 +2763,18 @@ export async function registerRoutes(
         } else {
           const { calculateMassBalance } = await import("./services/massBalance");
           results = calculateMassBalance(upif);
+        }
+      }
+
+      const lockedKeys = Object.entries(run.locks || {}).filter(([_, v]) => v).map(([k]) => k);
+      const existingOverrides = (run.overrides || {}) as Record<string, any>;
+
+      if (lockedKeys.length > 0) {
+        for (const key of lockedKeys) {
+          const override = existingOverrides[key];
+          if (!override) continue;
+          const parts = key.split(".");
+          applyOverrideToResults(results, parts, override.value);
         }
       }
 

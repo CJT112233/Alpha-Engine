@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -15,6 +16,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   ArrowLeft,
   Droplets,
@@ -35,16 +41,244 @@ import {
   Beaker,
   Filter,
   Wind,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
-import { useState } from "react";
-import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData, ADProcessStage } from "@shared/schema";
+import { useState, useRef, useEffect } from "react";
+import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData, ADProcessStage, MassBalanceOverrides } from "@shared/schema";
 
 function formatNum(val: number | undefined, decimals: number = 1): string {
-  if (val === undefined || val === null) return "—";
+  if (val === undefined || val === null) return "\u2014";
   return val.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
-function StreamTable({ stages }: { stages: TreatmentStage[] }) {
+function EditableValue({
+  fieldKey,
+  displayValue,
+  unit,
+  isLocked,
+  isOverridden,
+  onSaveOverride,
+  onToggleLock,
+  compact = false,
+}: {
+  fieldKey: string;
+  displayValue: string;
+  unit?: string;
+  isLocked: boolean;
+  isOverridden: boolean;
+  onSaveOverride: (key: string, value: string, originalValue: string) => void;
+  onToggleLock: (key: string, currentValue?: string) => void;
+  compact?: boolean;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(displayValue);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleSave = () => {
+    if (editValue.trim() && editValue !== displayValue) {
+      onSaveOverride(fieldKey, editValue.trim(), displayValue);
+    }
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditValue(displayValue);
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleSave();
+    if (e.key === "Escape") handleCancel();
+  };
+
+  if (isEditing) {
+    return (
+      <div className="flex items-center gap-1">
+        <Input
+          ref={inputRef}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className={compact ? "h-7 text-xs w-20" : "h-8 text-sm w-24"}
+          data-testid={`input-edit-${fieldKey}`}
+        />
+        {unit && <span className={compact ? "text-xs text-muted-foreground" : "text-xs text-muted-foreground"}>{unit}</span>}
+        <Button size="icon" variant="ghost" onClick={handleSave} className="h-6 w-6" data-testid={`button-save-${fieldKey}`}>
+          <Check className="h-3 w-3" />
+        </Button>
+        <Button size="icon" variant="ghost" onClick={handleCancel} className="h-6 w-6" data-testid={`button-cancel-${fieldKey}`}>
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 group">
+      <span
+        className={`cursor-pointer ${isOverridden ? "text-blue-600 dark:text-blue-400 font-semibold" : compact ? "" : "font-semibold"} ${compact ? "text-sm" : "text-lg"}`}
+        onClick={() => { setEditValue(displayValue); setIsEditing(true); }}
+        data-testid={`value-${fieldKey}`}
+      >
+        {displayValue}
+      </span>
+      {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-5 w-5 invisible group-hover:visible"
+            onClick={() => { setEditValue(displayValue); setIsEditing(true); }}
+            data-testid={`button-edit-${fieldKey}`}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Edit value</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-5 w-5"
+            onClick={() => onToggleLock(fieldKey, displayValue)}
+            data-testid={`button-lock-${fieldKey}`}
+          >
+            {isLocked ? <Lock className="h-3 w-3 text-amber-500" /> : <Unlock className="h-3 w-3 text-muted-foreground invisible group-hover:visible" />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{isLocked ? "Unlock (will be overwritten on recompute)" : "Lock (preserves value on recompute)"}</TooltipContent>
+      </Tooltip>
+      {isOverridden && (
+        <Badge variant="secondary" className="text-[10px] px-1 py-0 no-default-hover-elevate no-default-active-elevate">edited</Badge>
+      )}
+    </div>
+  );
+}
+
+function EditableTableCell({
+  fieldKey,
+  displayValue,
+  decimals,
+  isLocked,
+  isOverridden,
+  onSaveOverride,
+  onToggleLock,
+}: {
+  fieldKey: string;
+  displayValue: number | undefined;
+  decimals?: number;
+  isLocked: boolean;
+  isOverridden: boolean;
+  onSaveOverride: (key: string, value: string, originalValue: string) => void;
+  onToggleLock: (key: string, currentValue?: string) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const formatted = formatNum(displayValue, decimals);
+  const [editValue, setEditValue] = useState(formatted);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleSave = () => {
+    if (editValue.trim() && editValue !== formatted) {
+      onSaveOverride(fieldKey, editValue.trim(), formatted);
+    }
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditValue(formatted);
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleSave();
+    if (e.key === "Escape") handleCancel();
+  };
+
+  if (isEditing) {
+    return (
+      <TableCell className="text-center p-1">
+        <div className="flex items-center justify-center gap-0.5">
+          <Input
+            ref={inputRef}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="h-6 text-xs w-16 text-center"
+            data-testid={`input-edit-${fieldKey}`}
+          />
+          <Button size="icon" variant="ghost" onClick={handleSave} className="h-5 w-5" data-testid={`button-save-${fieldKey}`}>
+            <Check className="h-3 w-3" />
+          </Button>
+          <Button size="icon" variant="ghost" onClick={handleCancel} className="h-5 w-5" data-testid={`button-cancel-${fieldKey}`}>
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      </TableCell>
+    );
+  }
+
+  return (
+    <TableCell
+      className={`text-center cursor-pointer group/cell relative ${isOverridden ? "text-blue-600 dark:text-blue-400 font-medium" : ""}`}
+      data-testid={`cell-${fieldKey}`}
+    >
+      <div className="flex items-center justify-center gap-0.5">
+        <span onClick={() => { setEditValue(formatted); setIsEditing(true); }}>{formatted}</span>
+        <div className="flex items-center gap-0">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-4 w-4 invisible group-hover/cell:visible"
+            onClick={() => { setEditValue(formatted); setIsEditing(true); }}
+          >
+            <Pencil className="h-2.5 w-2.5" />
+          </Button>
+          {isLocked ? (
+            <Button size="icon" variant="ghost" className="h-4 w-4" onClick={() => onToggleLock(fieldKey, formatted)}>
+              <Lock className="h-2.5 w-2.5 text-amber-500" />
+            </Button>
+          ) : (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-4 w-4 invisible group-hover/cell:visible"
+              onClick={() => onToggleLock(fieldKey, formatted)}
+            >
+              <Unlock className="h-2.5 w-2.5 text-muted-foreground" />
+            </Button>
+          )}
+        </div>
+      </div>
+    </TableCell>
+  );
+}
+
+function StreamTable({ stages, overrides, locks, onSaveOverride, onToggleLock }: {
+  stages: TreatmentStage[];
+  overrides: MassBalanceOverrides;
+  locks: Record<string, boolean>;
+  onSaveOverride: (key: string, value: string, originalValue: string) => void;
+  onToggleLock: (key: string, currentValue?: string) => void;
+}) {
   const params = ["bod", "cod", "tss", "tkn", "tp", "fog"] as const;
   const paramLabels: Record<string, string> = {
     bod: "BOD (mg/L)",
@@ -80,16 +314,34 @@ function StreamTable({ stages }: { stages: TreatmentStage[] }) {
         <TableBody>
           <TableRow>
             <TableCell className="font-medium">Flow (MGD)</TableCell>
-            {stages.map((stage, i) => (
-              <>
-                <TableCell key={`f-in-${i}`} className="text-center" data-testid={`cell-flow-in-${i}`}>
-                  {formatNum(stage.influent.flow, 4)}
-                </TableCell>
-                <TableCell key={`f-out-${i}`} className="text-center" data-testid={`cell-flow-out-${i}`}>
-                  {formatNum(stage.effluent.flow, 4)}
-                </TableCell>
-              </>
-            ))}
+            {stages.map((stage, i) => {
+              const inKey = `stages.${i}.influent.flow`;
+              const outKey = `stages.${i}.effluent.flow`;
+              return (
+                <>
+                  <EditableTableCell
+                    key={`f-in-${i}`}
+                    fieldKey={inKey}
+                    displayValue={stage.influent.flow}
+                    decimals={4}
+                    isLocked={!!locks[inKey]}
+                    isOverridden={!!overrides[inKey]}
+                    onSaveOverride={onSaveOverride}
+                    onToggleLock={onToggleLock}
+                  />
+                  <EditableTableCell
+                    key={`f-out-${i}`}
+                    fieldKey={outKey}
+                    displayValue={stage.effluent.flow}
+                    decimals={4}
+                    isLocked={!!locks[outKey]}
+                    isOverridden={!!overrides[outKey]}
+                    onSaveOverride={onSaveOverride}
+                    onToggleLock={onToggleLock}
+                  />
+                </>
+              );
+            })}
           </TableRow>
           {params.map(p => (
             <TableRow key={p}>
@@ -97,14 +349,28 @@ function StreamTable({ stages }: { stages: TreatmentStage[] }) {
               {stages.map((stage, i) => {
                 const inVal = stage.influent[p as keyof StreamData] as number;
                 const outVal = stage.effluent[p as keyof StreamData] as number;
+                const inKey = `stages.${i}.influent.${p}`;
+                const outKey = `stages.${i}.effluent.${p}`;
                 return (
                   <>
-                    <TableCell key={`${p}-in-${i}`} className="text-center">
-                      {formatNum(inVal)}
-                    </TableCell>
-                    <TableCell key={`${p}-out-${i}`} className="text-center">
-                      {formatNum(outVal)}
-                    </TableCell>
+                    <EditableTableCell
+                      key={`${p}-in-${i}`}
+                      fieldKey={inKey}
+                      displayValue={inVal}
+                      isLocked={!!locks[inKey]}
+                      isOverridden={!!overrides[inKey]}
+                      onSaveOverride={onSaveOverride}
+                      onToggleLock={onToggleLock}
+                    />
+                    <EditableTableCell
+                      key={`${p}-out-${i}`}
+                      fieldKey={outKey}
+                      displayValue={outVal}
+                      isLocked={!!locks[outKey]}
+                      isOverridden={!!overrides[outKey]}
+                      onSaveOverride={onSaveOverride}
+                      onToggleLock={onToggleLock}
+                    />
                   </>
                 );
               })}
@@ -116,7 +382,13 @@ function StreamTable({ stages }: { stages: TreatmentStage[] }) {
   );
 }
 
-function ADStagesTable({ adStages }: { adStages: ADProcessStage[] }) {
+function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLock }: {
+  adStages: ADProcessStage[];
+  overrides: MassBalanceOverrides;
+  locks: Record<string, boolean>;
+  onSaveOverride: (key: string, value: string, originalValue: string) => void;
+  onToggleLock: (key: string, currentValue?: string) => void;
+}) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
   if (!adStages || adStages.length === 0) return null;
@@ -165,12 +437,25 @@ function ADStagesTable({ adStages }: { adStages: ADProcessStage[] }) {
                     <div>
                       <h4 className="text-xs font-medium text-muted-foreground mb-2">Input Stream</h4>
                       <div className="space-y-1">
-                        {Object.entries(inputStream).map(([key, val]) => (
-                          <div key={key} className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-2 py-1">
-                            <span className="text-muted-foreground">{formatLabel(key)}</span>
-                            <span className="font-medium">{typeof val?.value === 'number' ? val.value.toLocaleString() : val?.value} {val?.unit}</span>
-                          </div>
-                        ))}
+                        {Object.entries(inputStream).map(([key, val]) => {
+                          const fieldKey = `adStages.${idx}.inputStream.${key}`;
+                          const valStr = typeof val?.value === 'number' ? val.value.toLocaleString() : String(val?.value ?? "");
+                          return (
+                            <div key={key} className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-2 py-1">
+                              <span className="text-muted-foreground">{formatLabel(key)}</span>
+                              <EditableValue
+                                fieldKey={fieldKey}
+                                displayValue={valStr}
+                                unit={val?.unit}
+                                isLocked={!!locks[fieldKey]}
+                                isOverridden={!!overrides[fieldKey]}
+                                onSaveOverride={onSaveOverride}
+                                onToggleLock={onToggleLock}
+                                compact
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -178,12 +463,25 @@ function ADStagesTable({ adStages }: { adStages: ADProcessStage[] }) {
                     <div>
                       <h4 className="text-xs font-medium text-muted-foreground mb-2">Output Stream</h4>
                       <div className="space-y-1">
-                        {Object.entries(outputStream).map(([key, val]) => (
-                          <div key={key} className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-2 py-1">
-                            <span className="text-muted-foreground">{formatLabel(key)}</span>
-                            <span className="font-medium">{typeof val?.value === 'number' ? val.value.toLocaleString() : val?.value} {val?.unit}</span>
-                          </div>
-                        ))}
+                        {Object.entries(outputStream).map(([key, val]) => {
+                          const fieldKey = `adStages.${idx}.outputStream.${key}`;
+                          const valStr = typeof val?.value === 'number' ? val.value.toLocaleString() : String(val?.value ?? "");
+                          return (
+                            <div key={key} className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-2 py-1">
+                              <span className="text-muted-foreground">{formatLabel(key)}</span>
+                              <EditableValue
+                                fieldKey={fieldKey}
+                                displayValue={valStr}
+                                unit={val?.unit}
+                                isLocked={!!locks[fieldKey]}
+                                isOverridden={!!overrides[fieldKey]}
+                                onSaveOverride={onSaveOverride}
+                                onToggleLock={onToggleLock}
+                                compact
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -193,13 +491,28 @@ function ADStagesTable({ adStages }: { adStages: ADProcessStage[] }) {
                   <div className="mt-3">
                     <h4 className="text-xs font-medium text-muted-foreground mb-2">Design Criteria</h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {Object.entries(designCriteria).map(([key, val]) => (
-                        <div key={key} className="rounded-md bg-muted/40 p-2">
-                          <div className="text-xs text-muted-foreground">{formatLabel(key)}</div>
-                          <div className="text-sm font-medium">{val?.value} {val?.unit}</div>
-                          <div className="text-xs text-muted-foreground">{val?.source}</div>
-                        </div>
-                      ))}
+                      {Object.entries(designCriteria).map(([key, val]) => {
+                        const fieldKey = `adStages.${idx}.designCriteria.${key}`;
+                        const valStr = String(val?.value ?? "");
+                        return (
+                          <div key={key} className="rounded-md bg-muted/40 p-2">
+                            <div className="text-xs text-muted-foreground">{formatLabel(key)}</div>
+                            <EditableValue
+                              fieldKey={fieldKey}
+                              displayValue={valStr}
+                              unit={val?.unit}
+                              isLocked={!!locks[fieldKey]}
+                              isOverridden={!!overrides[fieldKey]}
+                              onSaveOverride={onSaveOverride}
+                              onToggleLock={onToggleLock}
+                              compact
+                            />
+                            {val?.source && !overrides[fieldKey] && (
+                              <div className="text-xs text-muted-foreground">{val.source}</div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -223,7 +536,13 @@ function ADStagesTable({ adStages }: { adStages: ADProcessStage[] }) {
   );
 }
 
-function SummaryCard({ summary }: { summary: Record<string, { value: string; unit: string }> | undefined }) {
+function SummaryCard({ summary, overrides, locks, onSaveOverride, onToggleLock }: {
+  summary: Record<string, { value: string; unit: string }> | undefined;
+  overrides: MassBalanceOverrides;
+  locks: Record<string, boolean>;
+  onSaveOverride: (key: string, value: string, originalValue: string) => void;
+  onToggleLock: (key: string, currentValue?: string) => void;
+}) {
   if (!summary || Object.keys(summary).length === 0) return null;
   const summaryLabels: Record<string, string> = {
     totalFeedRate: "Total Feed Rate",
@@ -239,10 +558,10 @@ function SummaryCard({ summary }: { summary: Record<string, { value: string; uni
     solidDigestate: "Solid Digestate",
     liquidFiltrate: "Liquid Filtrate",
     biogasInletFlow: "Biogas Inlet Flow",
-    biogasInletCH4: "Inlet CH₄",
-    biogasInletH2S: "Inlet H₂S",
+    biogasInletCH4: "Inlet CH\u2084",
+    biogasInletH2S: "Inlet H\u2082S",
     rngProductionDaily: "RNG Production (daily)",
-    rngCH4Purity: "RNG CH₄ Purity",
+    rngCH4Purity: "RNG CH\u2084 Purity",
     methaneRecovery: "Methane Recovery",
     tailgasFlow: "Tail Gas Flow",
     wastewaterFlow: "Wastewater Flow",
@@ -259,13 +578,25 @@ function SummaryCard({ summary }: { summary: Record<string, { value: string; uni
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {Object.entries(summary).map(([key, val]) => (
-            <div key={key} className="rounded-md bg-muted/40 p-3">
-              <div className="text-xs text-muted-foreground">{summaryLabels[key] || formatLabel(key)}</div>
-              <div className="text-lg font-semibold mt-1">{val.value}</div>
-              <div className="text-xs text-muted-foreground">{val.unit}</div>
-            </div>
-          ))}
+          {Object.entries(summary).map(([key, val]) => {
+            const fieldKey = `summary.${key}`;
+            return (
+              <div key={key} className="rounded-md bg-muted/40 p-3">
+                <div className="text-xs text-muted-foreground">{summaryLabels[key] || formatLabel(key)}</div>
+                <div className="mt-1">
+                  <EditableValue
+                    fieldKey={fieldKey}
+                    displayValue={val.value}
+                    unit={val.unit}
+                    isLocked={!!locks[fieldKey]}
+                    isOverridden={!!overrides[fieldKey]}
+                    onSaveOverride={onSaveOverride}
+                    onToggleLock={onToggleLock}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </CardContent>
     </Card>
@@ -277,9 +608,9 @@ function formatLabel(camelCase: string): string {
     .replace(/([A-Z])/g, " $1")
     .replace(/^./, s => s.toUpperCase())
     .replace(/\bScfm\b/gi, "SCFM")
-    .replace(/\bCh4\b/gi, "CH₄")
-    .replace(/\bCo2\b/gi, "CO₂")
-    .replace(/\bH2s\b/gi, "H₂S")
+    .replace(/\bCh4\b/gi, "CH\u2084")
+    .replace(/\bCo2\b/gi, "CO\u2082")
+    .replace(/\bH2s\b/gi, "H\u2082S")
     .replace(/\bTs\b/gi, "TS")
     .replace(/\bVs\b/gi, "VS")
     .replace(/\bRng\b/gi, "RNG")
@@ -290,10 +621,12 @@ function formatLabel(camelCase: string): string {
     .trim();
 }
 
-function EquipmentTable({ equipment, locks, onToggleLock }: {
+function EquipmentTable({ equipment, locks, overrides, onToggleLock, onSaveOverride }: {
   equipment: EquipmentItem[];
   locks: Record<string, boolean>;
-  onToggleLock: (id: string) => void;
+  overrides: MassBalanceOverrides;
+  onToggleLock: (key: string, currentValue?: string) => void;
+  onSaveOverride: (key: string, value: string, originalValue: string) => void;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -301,7 +634,8 @@ function EquipmentTable({ equipment, locks, onToggleLock }: {
     <div className="space-y-2">
       {equipment.map((eq) => {
         const isExpanded = expandedId === eq.id;
-        const isLocked = locks[eq.id] || eq.isLocked;
+        const eqLockKey = `equipment.${eq.id}`;
+        const isLocked = locks[eqLockKey] || locks[eq.id] || eq.isLocked;
 
         return (
           <Card key={eq.id} data-testid={`card-equipment-${eq.id}`}>
@@ -331,12 +665,24 @@ function EquipmentTable({ equipment, locks, onToggleLock }: {
             {isExpanded && (
               <CardContent className="pt-0 pb-3 px-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                  {Object.entries(eq.specs).map(([key, spec]) => (
-                    <div key={key} className="rounded-md bg-muted/40 p-2">
-                      <div className="text-xs text-muted-foreground">{formatLabel(key)}</div>
-                      <div className="text-sm font-medium">{spec.value} {spec.unit}</div>
-                    </div>
-                  ))}
+                  {Object.entries(eq.specs).map(([key, spec]) => {
+                    const fieldKey = `equipment.${eq.id}.specs.${key}`;
+                    return (
+                      <div key={key} className="rounded-md bg-muted/40 p-2">
+                        <div className="text-xs text-muted-foreground">{formatLabel(key)}</div>
+                        <EditableValue
+                          fieldKey={fieldKey}
+                          displayValue={String(spec.value)}
+                          unit={spec.unit}
+                          isLocked={!!locks[fieldKey]}
+                          isOverridden={!!overrides[fieldKey]}
+                          onSaveOverride={onSaveOverride}
+                          onToggleLock={onToggleLock}
+                          compact
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="mt-3 text-xs text-muted-foreground">
                   <span className="font-medium">Design basis:</span> {eq.designBasis}
@@ -406,10 +752,10 @@ function AssumptionsList({ assumptions }: { assumptions: MassBalanceResults["ass
 function getProjectTypeLabel(pt: string | undefined): string {
   if (!pt) return "Wastewater Treatment";
   switch (pt) {
-    case "A": return "Type A — Wastewater Treatment";
-    case "B": return "Type B — RNG Greenfield";
-    case "C": return "Type C — RNG Bolt-On";
-    case "D": return "Type D — Hybrid (WW + RNG)";
+    case "A": return "Type A \u2014 Wastewater Treatment";
+    case "B": return "Type B \u2014 RNG Greenfield";
+    case "C": return "Type C \u2014 RNG Bolt-On";
+    case "D": return "Type D \u2014 Hybrid (WW + RNG)";
     default: return pt;
   }
 }
@@ -417,9 +763,9 @@ function getProjectTypeLabel(pt: string | undefined): string {
 function getProjectTypeDescription(pt: string | undefined): string {
   if (!pt) return "Deterministic treatment train calculation";
   switch (pt) {
-    case "B": return "Feedstock → Anaerobic Digestion → Biogas → Gas Conditioning → RNG";
-    case "C": return "Existing Biogas → Gas Conditioning → RNG Upgrading → Pipeline";
-    case "D": return "Wastewater Treatment + Sludge → AD → Biogas → RNG";
+    case "B": return "Feedstock \u2192 Anaerobic Digestion \u2192 Biogas \u2192 Gas Conditioning \u2192 RNG";
+    case "C": return "Existing Biogas \u2192 Gas Conditioning \u2192 RNG Upgrading \u2192 Pipeline";
+    case "D": return "Wastewater Treatment + Sludge \u2192 AD \u2192 Biogas \u2192 RNG";
     default: return "Deterministic treatment train calculation";
   }
 }
@@ -435,6 +781,7 @@ export default function MassBalancePage() {
   const latestRun = runs?.[0];
   const results = latestRun?.results as MassBalanceResults | undefined;
   const locks = (latestRun?.locks || {}) as Record<string, boolean>;
+  const overrides = (latestRun?.overrides || {}) as MassBalanceOverrides;
   const projectType = results?.projectType;
   const hasWWStages = (results?.stages?.length ?? 0) > 0;
   const hasADStages = (results?.adStages?.length ?? 0) > 0;
@@ -461,7 +808,7 @@ export default function MassBalancePage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "mass-balance"] });
-      toast({ title: "Recomputed", description: "Mass balance recalculated with latest UPIF data." });
+      toast({ title: "Recomputed", description: "Mass balance recalculated. Locked values preserved." });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -478,6 +825,20 @@ export default function MassBalancePage() {
     },
   });
 
+  const overrideMutation = useMutation({
+    mutationFn: async (overrideData: { overrides: MassBalanceOverrides }) => {
+      const res = await apiRequest("PATCH", `/api/mass-balance/${latestRun!.id}/overrides`, overrideData);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "mass-balance"] });
+      toast({ title: "Value Updated", description: "Override saved. Lock the field to preserve it on recompute." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const statusMutation = useMutation({
     mutationFn: async (status: string) => {
       const res = await apiRequest("PATCH", `/api/mass-balance/${latestRun!.id}/status`, { status });
@@ -489,9 +850,36 @@ export default function MassBalancePage() {
     },
   });
 
-  const handleToggleLock = (equipmentId: string) => {
-    const newLocks = { [equipmentId]: !locks[equipmentId] };
+  const handleToggleLock = (fieldKey: string, currentValue?: string) => {
+    const isLocking = !locks[fieldKey];
+    const newLocks = { [fieldKey]: isLocking };
     lockMutation.mutate(newLocks);
+
+    if (isLocking && currentValue && !overrides[fieldKey]) {
+      const overrideEntry: MassBalanceOverrides = {
+        [fieldKey]: {
+          value: currentValue,
+          unit: "",
+          overriddenBy: "user",
+          reason: "Locked at current value",
+          originalValue: currentValue,
+        },
+      };
+      overrideMutation.mutate({ overrides: overrideEntry });
+    }
+  };
+
+  const handleSaveOverride = (fieldKey: string, newValue: string, originalValue: string) => {
+    const overrideEntry: MassBalanceOverrides = {
+      [fieldKey]: {
+        value: newValue,
+        unit: "",
+        overriddenBy: "user",
+        reason: "Manual edit",
+        originalValue,
+      },
+    };
+    overrideMutation.mutate({ overrides: overrideEntry });
   };
 
   if (isLoading) {
@@ -602,6 +990,17 @@ export default function MassBalancePage() {
             >
               New Version
             </Button>
+            {Object.keys(overrides).length > 0 && (
+              <Badge variant="secondary" data-testid="badge-overrides-count">
+                {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}
+              </Badge>
+            )}
+            {Object.values(locks).filter(Boolean).length > 0 && (
+              <Badge variant="outline" data-testid="badge-locks-count">
+                <Lock className="h-3 w-3 mr-1" />
+                {Object.values(locks).filter(Boolean).length} locked
+              </Badge>
+            )}
           </div>
 
           {results && (
@@ -619,7 +1018,13 @@ export default function MassBalancePage() {
 
                 {hasSummary && results.summary && (
                   <TabsContent value="summary" className="mt-4">
-                    <SummaryCard summary={results.summary} />
+                    <SummaryCard
+                      summary={results.summary}
+                      overrides={overrides}
+                      locks={locks}
+                      onSaveOverride={handleSaveOverride}
+                      onToggleLock={handleToggleLock}
+                    />
                   </TabsContent>
                 )}
 
@@ -643,7 +1048,13 @@ export default function MassBalancePage() {
                         </div>
                       </CardHeader>
                       <CardContent>
-                        <StreamTable stages={results.stages} />
+                        <StreamTable
+                          stages={results.stages}
+                          overrides={overrides}
+                          locks={locks}
+                          onSaveOverride={handleSaveOverride}
+                          onToggleLock={handleToggleLock}
+                        />
                       </CardContent>
                     </Card>
 
@@ -704,7 +1115,7 @@ export default function MassBalancePage() {
                                     <TableCell key={p} className="text-center">
                                       {stage.removalEfficiencies[p] !== undefined
                                         ? `${(stage.removalEfficiencies[p] * 100).toFixed(0)}%`
-                                        : "—"}
+                                        : "\u2014"}
                                     </TableCell>
                                   ))}
                                 </TableRow>
@@ -718,7 +1129,13 @@ export default function MassBalancePage() {
 
                 {hasADStages && results.adStages && (
                   <TabsContent value="ad-process" className="mt-4 space-y-4">
-                    <ADStagesTable adStages={results.adStages} />
+                    <ADStagesTable
+                      adStages={results.adStages}
+                      overrides={overrides}
+                      locks={locks}
+                      onSaveOverride={handleSaveOverride}
+                      onToggleLock={handleToggleLock}
+                    />
                   </TabsContent>
                 )}
 
@@ -726,7 +1143,9 @@ export default function MassBalancePage() {
                   <EquipmentTable
                     equipment={results.equipment}
                     locks={locks}
+                    overrides={overrides}
                     onToggleLock={handleToggleLock}
+                    onSaveOverride={handleSaveOverride}
                   />
                 </TabsContent>
 
