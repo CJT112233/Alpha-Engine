@@ -48,9 +48,102 @@ const RNG_GAS_MOISTURE_KEYS = new Set([
   "waterContent", "moistureContent", "waterDewpoint",
 ]);
 
+const WASTEWATER_FLOW_INDICATORS = [
+  "flow", "gpd", "mgd", "gpm", "m³/d", "m3/d", "gallons per day",
+  "million gallons", "liters per day", "l/d", "cubic meters",
+];
+
+const WASTEWATER_ANALYTE_PATTERNS = [
+  /\bbod\b/i, /\bcod\b/i, /\btss\b/i, /\bfog\b/i, /\btkn\b/i, /\btp\b/i,
+  /\btotal suspended/i, /\bbiochemical oxygen/i, /\bchemical oxygen/i,
+];
+
+const WASTEWATER_UNIT_INDICATORS = [/mg\/l/i, /mg\/L/i, /gpd/i, /mgd/i, /gpm/i, /m³\/d/i, /m3\/d/i];
+
+const SLUDGE_EXPLICIT_TERMS = [
+  "primary sludge", "was ", "waste activated", "sludge blend",
+  "sludge thickening", "thickened sludge", "biosolids",
+  "primary/was", "was/primary", "dewatered sludge", "digested sludge",
+  "waste activated sludge",
+];
+
+const SLUDGE_ONLY_SPEC_KEYS = new Set([
+  "deliveryForm", "receivingCondition", "preprocessingRequirement",
+]);
+
+const SLUDGE_ASSUMPTION_KEYS = new Set([
+  "totalSolids", "volatileSolids", "vsTs", "moistureContent",
+  "bulkDensity", "cnRatio", "methanePotential", "biodegradableFraction", "inertFraction",
+]);
+
+const FEEDSTOCK_SOLID_SPEC_KEYS = new Set([
+  "totalSolids", "volatileSolids", "vsTs", "cnRatio",
+  "methanePotential", "biodegradableFraction", "inertFraction",
+  "bulkDensity", "moistureContent",
+]);
+
+function detectWastewaterContext(
+  extractedParams: Array<{ name: string; value?: string | null; unit?: string | null }>,
+): { hasFlowRate: boolean; hasAnalytes: boolean; detectedAnalytes: string[] } {
+  const allText = extractedParams
+    .map(p => `${p.name} ${p.value || ""} ${p.unit || ""}`.toLowerCase())
+    .join(" ");
+
+  const hasFlowRate = WASTEWATER_FLOW_INDICATORS.some(ind => allText.includes(ind));
+
+  const detectedAnalytes: string[] = [];
+  for (const pattern of WASTEWATER_ANALYTE_PATTERNS) {
+    if (pattern.test(allText)) {
+      detectedAnalytes.push(pattern.source.replace(/\\b/g, "").replace(/\(/g, "").replace(/\)/g, ""));
+    }
+  }
+
+  const hasUnitMatch = WASTEWATER_UNIT_INDICATORS.some(p => p.test(allText));
+  const hasAnalytes = detectedAnalytes.length > 0 || hasUnitMatch;
+
+  return { hasFlowRate, hasAnalytes, detectedAnalytes };
+}
+
+function detectSludgeContext(
+  extractedParams: Array<{ name: string; value?: string | null }>,
+): boolean {
+  const allText = extractedParams.map(p => `${p.name} ${p.value || ""}`).join(" ").toLowerCase();
+  return SLUDGE_EXPLICIT_TERMS.some(s => allText.includes(s));
+}
+
+export function rejectBiosolidsOutputProfile(
+  outputSpecs: Record<string, Record<string, EnrichedOutputSpec>>,
+): { sanitized: Record<string, Record<string, EnrichedOutputSpec>>; unmapped: Record<string, EnrichedOutputSpec>; warnings: ValidationWarning[] } {
+  const digestateProfile = "Solid Digestate - Land Application";
+  const warnings: ValidationWarning[] = [];
+  const unmapped: Record<string, EnrichedOutputSpec> = {};
+
+  if (!outputSpecs[digestateProfile]) {
+    return { sanitized: outputSpecs, unmapped, warnings };
+  }
+
+  const specs = outputSpecs[digestateProfile];
+  for (const [key, spec] of Object.entries(specs)) {
+    unmapped[`biosolids_rejected_${key}`] = { ...spec, group: "unmapped" };
+  }
+
+  warnings.push({
+    field: "Solid Digestate - Land Application",
+    section: "Output Profiles",
+    message: `Biosolids/land application output profile rejected — this system produces RNG and/or treated effluent, not land-applied biosolids. All ${Object.keys(specs).length} criteria moved to Unmapped.`,
+    severity: "error",
+  });
+
+  const sanitized = { ...outputSpecs };
+  delete sanitized[digestateProfile];
+
+  return { sanitized, unmapped, warnings };
+}
+
 export function validateAndSanitizeOutputSpecs(
   outputSpecs: Record<string, Record<string, EnrichedOutputSpec>>,
   projectType: string | null,
+  extractedParams?: Array<{ name: string; value?: string | null; unit?: string | null }>,
 ): {
   sanitized: Record<string, Record<string, EnrichedOutputSpec>>;
   unmapped: Record<string, EnrichedOutputSpec>;
@@ -63,7 +156,6 @@ export function validateAndSanitizeOutputSpecs(
   const warnings: ValidationWarning[] = [];
 
   const rngProfile = "Renewable Natural Gas (RNG) - Pipeline Injection";
-  const digestateProfile = "Solid Digestate - Land Application";
   const effluentProfile = "Liquid Effluent - Discharge to WWTP";
 
   for (const [profileName, specs] of Object.entries(outputSpecs)) {
@@ -106,6 +198,52 @@ export function validateAndSanitizeOutputSpecs(
             continue;
           }
         }
+
+        if (key === "methaneFraction" || key === "methane" || combinedText.includes("methane")) {
+          const numericValue = parseFloat(spec.value.replace(/[^0-9.]/g, ""));
+          if (!isNaN(numericValue) && numericValue < 90 && spec.source !== "user_provided") {
+            warnings.push({
+              field: spec.displayName,
+              section: "RNG Gas Quality",
+              message: `Methane value ${spec.value} appears to be raw biogas (<90%), not pipeline-quality RNG (≥96%) — moved to Unmapped`,
+              severity: "error",
+              originalValue: spec.value,
+              originalUnit: spec.unit,
+            });
+            unmapped[`rng_biogas_${key}`] = { ...spec, group: "unmapped" };
+            continue;
+          }
+        }
+
+        const displayLower = spec.displayName.toLowerCase();
+        const isCompositionField = displayLower.includes("content") ||
+          displayLower.includes("fraction") ||
+          displayLower.includes("composition") ||
+          displayLower.includes("concentration");
+        if (isCompositionField && spec.unit === "%") {
+          // ok
+        } else if (isCompositionField && !spec.unit.includes("%") &&
+          !GAS_ONLY_UNITS.has(spec.unit.toLowerCase()) &&
+          spec.source !== "user_provided") {
+          const unitLower = spec.unit.toLowerCase();
+          const isAcceptableGasUnit = unitLower.includes("ppmv") ||
+            unitLower.includes("lb/mmscf") ||
+            unitLower.includes("mg/m") ||
+            unitLower.includes("grain") ||
+            unitLower.includes("btu");
+          if (!isAcceptableGasUnit) {
+            warnings.push({
+              field: spec.displayName,
+              section: "RNG Gas Quality",
+              message: `Composition field "${spec.displayName}" has non-percentage/non-gas unit "${spec.unit}" — expected % or gas-phase unit`,
+              severity: "warning",
+              originalValue: spec.value,
+              originalUnit: spec.unit,
+            });
+            unmapped[`rng_unit_mismatch_${key}`] = { ...spec, group: "unmapped" };
+            continue;
+          }
+        }
       }
 
       if (profileName === effluentProfile) {
@@ -126,21 +264,6 @@ export function validateAndSanitizeOutputSpecs(
             section: "Effluent Limits",
             message: `Removal efficiency separated from concentration limits — moved to Performance Targets`,
             severity: "info",
-          });
-          continue;
-        }
-      }
-
-      if (profileName === digestateProfile) {
-        const valLower = `${spec.value} ${spec.unit}`.toLowerCase();
-        if (REMOVAL_EFFICIENCY_PATTERNS.some(p => p.test(valLower))) {
-          performanceTargets.push({
-            displayName: spec.displayName,
-            value: spec.value,
-            unit: spec.unit,
-            source: spec.source,
-            provenance: spec.provenance,
-            group: "performance_targets",
           });
           continue;
         }
@@ -174,26 +297,17 @@ export function validateFeedstocksForTypeA(
     return { feedstocks, warnings, missingRequired };
   }
 
+  const hasSludgeContext = detectSludgeContext(extractedParams);
+  const { hasFlowRate, hasAnalytes } = detectWastewaterContext(extractedParams);
+  const isWastewaterInfluent = hasFlowRate || hasAnalytes;
+
   const sanitizedFeedstocks = feedstocks.map((fs, idx) => {
     if (!fs.feedstockSpecs) return fs;
 
     const cleanSpecs: EnrichedFeedstockSpecRecord = {};
-    const sludgeIndicators = ["primary sludge", "was ", "waste activated", "sludge blend",
-      "sludge thickening", "thickened sludge", "biosolids"];
-
-    const allInputText = extractedParams.map(p => `${p.name} ${p.value || ""}`).join(" ").toLowerCase();
-    const hasSludgeContext = sludgeIndicators.some(s => allInputText.includes(s));
 
     for (const [key, spec] of Object.entries(fs.feedstockSpecs)) {
-      const sludgeSpecKeys = new Set([
-        "deliveryForm", "receivingCondition", "preprocessingRequirement",
-      ]);
-      const sludgeAssumptionKeys = new Set([
-        "totalSolids", "volatileSolids", "vsTs", "moistureContent",
-        "bulkDensity", "cnRatio", "methanePotential", "biodegradableFraction", "inertFraction",
-      ]);
-
-      if (sludgeSpecKeys.has(key) && !hasSludgeContext && spec.source === "estimated_default") {
+      if (SLUDGE_ONLY_SPEC_KEYS.has(key) && !hasSludgeContext && spec.source === "estimated_default") {
         warnings.push({
           field: spec.displayName,
           section: `Feedstock ${idx + 1}`,
@@ -203,7 +317,7 @@ export function validateFeedstocksForTypeA(
         continue;
       }
 
-      if (sludgeAssumptionKeys.has(key) && !hasSludgeContext && spec.source === "estimated_default") {
+      if (isWastewaterInfluent && !hasSludgeContext && SLUDGE_ASSUMPTION_KEYS.has(key) && spec.source === "estimated_default") {
         const unitLower = spec.unit.toLowerCase();
         if (unitLower.includes("%") && !unitLower.includes("mg/l")) {
           warnings.push({
@@ -216,31 +330,241 @@ export function validateFeedstocksForTypeA(
         }
       }
 
+      if (isWastewaterInfluent && !hasSludgeContext && key === "totalSolids" && spec.source === "estimated_default") {
+        warnings.push({
+          field: spec.displayName,
+          section: `Feedstock ${idx + 1}`,
+          message: `TS% removed — wastewater influent detected (mg/L analytes present), TS% only valid for sludge streams`,
+          severity: "warning",
+        });
+        continue;
+      }
+
       cleanSpecs[key] = spec;
     }
 
     return { ...fs, feedstockSpecs: cleanSpecs };
   });
 
-  const allParamNames = extractedParams.map(p => p.name.toLowerCase());
-  const allParamValues = extractedParams.map(p => `${p.name} ${p.value || ""} ${p.unit || ""}`.toLowerCase());
-  const allText = allParamValues.join(" ");
-
-  const hasFlowRate = allText.includes("flow") || allText.includes("gpd") || allText.includes("mgd") ||
-    allText.includes("gpm") || allText.includes("m³/d") || allText.includes("m3/d") ||
-    allText.includes("gallons") || allText.includes("liters");
-  const hasBOD = allParamNames.some(n => n.includes("bod"));
-  const hasCOD = allParamNames.some(n => n.includes("cod"));
-  const hasTSS = allParamNames.some(n => n.includes("tss") || n.includes("total suspended"));
-
   if (!hasFlowRate) {
-    missingRequired.push("Flow rate (GPD, MGD, m³/d, or similar)");
+    missingRequired.push("Influent flow rate (GPD, MGD, m³/d, or similar)");
   }
-  if (!hasBOD && !hasCOD && !hasTSS) {
-    missingRequired.push("At least one wastewater concentration driver (BOD, COD, or TSS)");
+  if (!hasAnalytes) {
+    missingRequired.push("At least one influent concentration (BOD, COD, or TSS in mg/L)");
+  }
+
+  if (missingRequired.length > 0) {
+    warnings.push({
+      field: "Type A Required Inputs",
+      section: "Completeness Check",
+      message: `Missing required influent flow and/or influent concentrations: ${missingRequired.join("; ")}`,
+      severity: "error",
+    });
   }
 
   return { feedstocks: sanitizedFeedstocks, warnings, missingRequired };
+}
+
+export function validateFeedstocksForTypeD(
+  feedstocks: FeedstockEntry[],
+  extractedParams: Array<{ name: string; value?: string | null; category: string; unit?: string | null }>,
+  projectType: string | null,
+): {
+  feedstocks: FeedstockEntry[];
+  warnings: ValidationWarning[];
+  missingRequired: string[];
+} {
+  const warnings: ValidationWarning[] = [];
+  const missingRequired: string[] = [];
+
+  if (projectType !== "D") {
+    return { feedstocks, warnings, missingRequired };
+  }
+
+  const hasSludgeContext = detectSludgeContext(extractedParams);
+  const { hasFlowRate, hasAnalytes, detectedAnalytes } = detectWastewaterContext(extractedParams);
+
+  if (!hasFlowRate) {
+    missingRequired.push("At least one wastewater flow value (GPD, MGD, m³/d, or similar)");
+  }
+  if (!hasAnalytes) {
+    missingRequired.push("At least one wastewater analyte (BOD, COD, or TSS in mg/L)");
+  }
+
+  let hasTruckedFeedstock = false;
+  for (const fs of feedstocks) {
+    const typeLower = (fs.feedstockType || "").toLowerCase();
+    const isWastewaterStream = typeLower.includes("wastewater") ||
+      typeLower.includes("influent") ||
+      typeLower.includes("sewage") ||
+      typeLower.includes("municipal");
+    if (!isWastewaterStream && fs.feedstockType && fs.feedstockVolume) {
+      hasTruckedFeedstock = true;
+    }
+  }
+
+  if (!hasTruckedFeedstock) {
+    missingRequired.push("At least one trucked-in feedstock identity + quantity");
+  }
+
+  if (missingRequired.length > 0) {
+    warnings.push({
+      field: "Type D Required Inputs",
+      section: "Completeness Check",
+      message: `Missing required items for hybrid project: ${missingRequired.join("; ")}`,
+      severity: "error",
+    });
+  }
+
+  const sanitizedFeedstocks = feedstocks.map((fs, idx) => {
+    if (!fs.feedstockSpecs) return fs;
+
+    const typeLower = (fs.feedstockType || "").toLowerCase();
+    const isWastewaterStream = typeLower.includes("wastewater") ||
+      typeLower.includes("influent") ||
+      typeLower.includes("sewage") ||
+      typeLower.includes("municipal");
+
+    if (!isWastewaterStream) return fs;
+
+    const cleanSpecs: EnrichedFeedstockSpecRecord = {};
+    let hasSwapIndicator = false;
+    const swappedKeys: string[] = [];
+
+    for (const [key, spec] of Object.entries(fs.feedstockSpecs)) {
+      if (!hasSludgeContext && FEEDSTOCK_SOLID_SPEC_KEYS.has(key) && spec.source === "estimated_default") {
+        hasSwapIndicator = true;
+        swappedKeys.push(spec.displayName);
+        warnings.push({
+          field: spec.displayName,
+          section: `Feedstock ${idx + 1} (Wastewater)`,
+          message: `Solids parameter "${spec.displayName}" removed from wastewater stream — TS%/VS/BMP only valid for trucked feedstocks, not wastewater influent`,
+          severity: "warning",
+        });
+        continue;
+      }
+
+      cleanSpecs[key] = spec;
+    }
+
+    if (hasSwapIndicator && !hasFlowRate && !hasAnalytes) {
+      warnings.push({
+        field: `Feedstock ${idx + 1}`,
+        section: "Swap Detection",
+        message: `Stream labeled as wastewater contains solids parameters (${swappedKeys.join(", ")}) but no flow/analytes detected — likely mis-assigned feedstock. Parameters re-routed to Unmapped.`,
+        severity: "error",
+      });
+    }
+
+    return { ...fs, feedstockSpecs: cleanSpecs };
+  });
+
+  return { feedstocks: sanitizedFeedstocks, warnings, missingRequired };
+}
+
+export function applySwapDetection(
+  feedstocks: FeedstockEntry[],
+  extractedParams: Array<{ name: string; value?: string | null; unit?: string | null }>,
+): { feedstocks: FeedstockEntry[]; warnings: ValidationWarning[]; swappedSpecs: Record<string, any> } {
+  const warnings: ValidationWarning[] = [];
+  const swappedSpecs: Record<string, any> = {};
+  const { hasFlowRate, hasAnalytes } = detectWastewaterContext(extractedParams);
+
+  const sanitized = feedstocks.map((fs, idx) => {
+    if (!fs.feedstockSpecs) return fs;
+
+    const typeLower = (fs.feedstockType || "").toLowerCase();
+    const isWastewaterStream = typeLower.includes("wastewater") ||
+      typeLower.includes("influent") ||
+      typeLower.includes("sewage") ||
+      typeLower.includes("municipal");
+
+    if (!isWastewaterStream) return fs;
+
+    const hasSolidSpecs = Object.keys(fs.feedstockSpecs).some(k => FEEDSTOCK_SOLID_SPEC_KEYS.has(k));
+
+    if (hasSolidSpecs && !hasFlowRate && !hasAnalytes) {
+      const cleanSpecs: EnrichedFeedstockSpecRecord = {};
+
+      for (const [key, spec] of Object.entries(fs.feedstockSpecs)) {
+        if (FEEDSTOCK_SOLID_SPEC_KEYS.has(key)) {
+          swappedSpecs[`swap_${idx}_${key}`] = {
+            value: spec.value,
+            unit: spec.unit,
+            source: spec.source,
+            confidence: spec.confidence,
+            provenance: `Swap detection: moved from wastewater stream "${fs.feedstockType}" — likely mis-assigned feedstock parameter`,
+            group: "unmapped",
+            displayName: spec.displayName,
+            sortOrder: 99,
+          };
+        } else {
+          cleanSpecs[key] = spec;
+        }
+      }
+
+      warnings.push({
+        field: `Feedstock ${idx + 1}: ${fs.feedstockType}`,
+        section: "Swap Detection",
+        message: `Wastewater-labeled stream contains TS%/moisture/BMP but no flow or mg/L analytes exist — parameters re-routed to Unmapped as likely mis-assigned feedstock data`,
+        severity: "error",
+      });
+
+      return { ...fs, feedstockSpecs: cleanSpecs };
+    }
+
+    return fs;
+  });
+
+  return { feedstocks: sanitized, warnings, swappedSpecs };
+}
+
+export function validateBiogasVsRng(
+  outputSpecs: Record<string, Record<string, EnrichedOutputSpec>>,
+): { sanitized: Record<string, Record<string, EnrichedOutputSpec>>; unmapped: Record<string, EnrichedOutputSpec>; warnings: ValidationWarning[] } {
+  const rngProfile = "Renewable Natural Gas (RNG) - Pipeline Injection";
+  const warnings: ValidationWarning[] = [];
+  const unmapped: Record<string, EnrichedOutputSpec> = {};
+
+  if (!outputSpecs[rngProfile]) {
+    return { sanitized: outputSpecs, unmapped, warnings };
+  }
+
+  const sanitized = { ...outputSpecs };
+  const rngSpecs = { ...sanitized[rngProfile] };
+
+  for (const [key, spec] of Object.entries(rngSpecs)) {
+    const displayLower = spec.displayName.toLowerCase();
+    const isMethaneField = displayLower.includes("methane") ||
+      displayLower.includes("ch4") ||
+      displayLower.includes("ch₄") ||
+      key === "methaneFraction" || key === "methane";
+
+    if (!isMethaneField) continue;
+
+    const numericValue = parseFloat(spec.value.replace(/[^0-9.]/g, ""));
+    if (isNaN(numericValue)) continue;
+
+    if (numericValue < 90) {
+      warnings.push({
+        field: spec.displayName,
+        section: "RNG Gas Quality",
+        message: `Methane ${spec.value}${spec.unit} is raw biogas (<90%), not pipeline-quality RNG (≥96%). Biogas methane values must not appear in RNG gas-quality table.`,
+        severity: "error",
+        originalValue: spec.value,
+        originalUnit: spec.unit,
+      });
+      unmapped[`biogas_methane_${key}`] = { ...spec, group: "unmapped" };
+      delete rngSpecs[key];
+    }
+  }
+
+  sanitized[rngProfile] = rngSpecs;
+  if (Object.keys(rngSpecs).length === 0) {
+    delete sanitized[rngProfile];
+  }
+
+  return { sanitized, unmapped, warnings };
 }
 
 export function applyTsTssGuardrail(
@@ -314,7 +638,6 @@ export function validateSectionAssignment(
 
     if (param.category === "output_requirements" || param.category === "output requirements") {
       const isGas = gasUnitPatterns.some(p => p.test(valUnit));
-      const isLiquid = liquidUnitPatterns.some(p => p.test(valUnit));
       const isSolid = solidsUnitPatterns.some(p => p.test(valUnit));
 
       if (isGas && (nameLower.includes("tss") || nameLower.includes("total suspended") || nameLower.includes("sludge"))) {

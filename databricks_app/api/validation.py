@@ -61,10 +61,106 @@ RNG_PROFILE = "Renewable Natural Gas (RNG) - Pipeline Injection"
 DIGESTATE_PROFILE = "Solid Digestate - Land Application"
 EFFLUENT_PROFILE = "Liquid Effluent - Discharge to WWTP"
 
+WASTEWATER_FLOW_INDICATORS = [
+    "flow", "gpd", "mgd", "gpm", "m³/d", "m3/d", "gallons per day",
+    "million gallons", "liters per day", "l/d", "cubic meters",
+]
+
+WASTEWATER_ANALYTE_PATTERNS = [
+    re.compile(r"\bbod\b", re.IGNORECASE),
+    re.compile(r"\bcod\b", re.IGNORECASE),
+    re.compile(r"\btss\b", re.IGNORECASE),
+    re.compile(r"\bfog\b", re.IGNORECASE),
+    re.compile(r"\btkn\b", re.IGNORECASE),
+    re.compile(r"\btp\b", re.IGNORECASE),
+    re.compile(r"\btotal suspended", re.IGNORECASE),
+    re.compile(r"\bbiochemical oxygen", re.IGNORECASE),
+    re.compile(r"\bchemical oxygen", re.IGNORECASE),
+]
+
+WASTEWATER_UNIT_INDICATORS = [
+    re.compile(r"mg/l", re.IGNORECASE),
+    re.compile(r"gpd", re.IGNORECASE),
+    re.compile(r"mgd", re.IGNORECASE),
+    re.compile(r"gpm", re.IGNORECASE),
+    re.compile(r"m³/d", re.IGNORECASE),
+    re.compile(r"m3/d", re.IGNORECASE),
+]
+
+SLUDGE_EXPLICIT_TERMS = [
+    "primary sludge", "was ", "waste activated", "sludge blend",
+    "sludge thickening", "thickened sludge", "biosolids",
+    "primary/was", "was/primary", "dewatered sludge", "digested sludge",
+    "waste activated sludge",
+]
+
+SLUDGE_ONLY_SPEC_KEYS = {"deliveryForm", "receivingCondition", "preprocessingRequirement"}
+
+SLUDGE_ASSUMPTION_KEYS = {
+    "totalSolids", "volatileSolids", "vsTs", "moistureContent",
+    "bulkDensity", "cnRatio", "methanePotential", "biodegradableFraction", "inertFraction",
+}
+
+FEEDSTOCK_SOLID_SPEC_KEYS = {
+    "totalSolids", "volatileSolids", "vsTs", "cnRatio",
+    "methanePotential", "biodegradableFraction", "inertFraction",
+    "bulkDensity", "moistureContent",
+}
+
+
+def _detect_wastewater_context(extracted_params: list[dict]) -> dict[str, Any]:
+    all_text = " ".join(
+        f"{p.get('name', '')} {p.get('value', '')} {p.get('unit', '')}" for p in extracted_params
+    ).lower()
+
+    has_flow_rate = any(ind in all_text for ind in WASTEWATER_FLOW_INDICATORS)
+
+    detected_analytes = []
+    for pattern in WASTEWATER_ANALYTE_PATTERNS:
+        if pattern.search(all_text):
+            detected_analytes.append(pattern.pattern)
+
+    has_unit_match = any(p.search(all_text) for p in WASTEWATER_UNIT_INDICATORS)
+    has_analytes = len(detected_analytes) > 0 or has_unit_match
+
+    return {"hasFlowRate": has_flow_rate, "hasAnalytes": has_analytes, "detectedAnalytes": detected_analytes}
+
+
+def _detect_sludge_context(extracted_params: list[dict]) -> bool:
+    all_text = " ".join(
+        f"{p.get('name', '')} {p.get('value', '')}" for p in extracted_params
+    ).lower()
+    return any(s in all_text for s in SLUDGE_EXPLICIT_TERMS)
+
+
+def reject_biosolids_output_profile(
+    output_specs: dict[str, dict[str, dict]],
+) -> dict[str, Any]:
+    warnings: list[dict] = []
+    unmapped: dict[str, dict] = {}
+
+    if DIGESTATE_PROFILE not in output_specs:
+        return {"sanitized": output_specs, "unmapped": unmapped, "warnings": warnings}
+
+    specs = output_specs[DIGESTATE_PROFILE]
+    for key, spec in specs.items():
+        unmapped[f"biosolids_rejected_{key}"] = {**spec, "group": "unmapped"}
+
+    warnings.append({
+        "field": "Solid Digestate - Land Application",
+        "section": "Output Profiles",
+        "message": f"Biosolids/land application output profile rejected — this system produces RNG and/or treated effluent, not land-applied biosolids. All {len(specs)} criteria moved to Unmapped.",
+        "severity": "error",
+    })
+
+    sanitized = {k: v for k, v in output_specs.items() if k != DIGESTATE_PROFILE}
+    return {"sanitized": sanitized, "unmapped": unmapped, "warnings": warnings}
+
 
 def validate_and_sanitize_output_specs(
     output_specs: dict[str, dict[str, dict]],
     project_type: str | None,
+    extracted_params: list[dict] | None = None,
 ) -> dict[str, Any]:
     sanitized: dict[str, dict[str, dict]] = {}
     unmapped: dict[str, dict] = {}
@@ -108,6 +204,40 @@ def validate_and_sanitize_output_specs(
                         unmapped[f"rng_unit_{key}"] = {**spec, "group": "unmapped"}
                         continue
 
+                if key in ("methaneFraction", "methane") or "methane" in combined_text:
+                    try:
+                        numeric_value = float(re.sub(r"[^0-9.]", "", value))
+                        if numeric_value < 90 and spec.get("source") != "user_provided":
+                            warnings.append({
+                                "field": display_name,
+                                "section": "RNG Gas Quality",
+                                "message": f"Methane value {value} appears to be raw biogas (<90%), not pipeline-quality RNG (≥96%) — moved to Unmapped",
+                                "severity": "error",
+                                "originalValue": value,
+                                "originalUnit": unit,
+                            })
+                            unmapped[f"rng_biogas_{key}"] = {**spec, "group": "unmapped"}
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+                display_lower = display_name.lower()
+                is_composition_field = any(x in display_lower for x in ["content", "fraction", "composition", "concentration"])
+                if is_composition_field and unit != "%" and "%" not in unit:
+                    unit_lower = unit.lower()
+                    is_acceptable = any(x in unit_lower for x in ["ppmv", "lb/mmscf", "mg/m", "grain", "btu"])
+                    if not is_acceptable and unit_lower not in GAS_ONLY_UNITS and spec.get("source") != "user_provided":
+                        warnings.append({
+                            "field": display_name,
+                            "section": "RNG Gas Quality",
+                            "message": f'Composition field "{display_name}" has non-percentage/non-gas unit "{unit}" — expected % or gas-phase unit',
+                            "severity": "warning",
+                            "originalValue": value,
+                            "originalUnit": unit,
+                        })
+                        unmapped[f"rng_unit_mismatch_{key}"] = {**spec, "group": "unmapped"}
+                        continue
+
             if profile_name == EFFLUENT_PROFILE:
                 val_text = f"{value} {unit}".lower()
                 is_removal = any(p.search(val_text) for p in REMOVAL_EFFICIENCY_PATTERNS)
@@ -135,19 +265,6 @@ def validate_and_sanitize_output_specs(
                     })
                     continue
 
-            if profile_name == DIGESTATE_PROFILE:
-                val_lower = f"{value} {unit}".lower()
-                if any(p.search(val_lower) for p in REMOVAL_EFFICIENCY_PATTERNS):
-                    performance_targets.append({
-                        "displayName": display_name,
-                        "value": value,
-                        "unit": unit,
-                        "source": spec.get("source", ""),
-                        "provenance": spec.get("provenance", ""),
-                        "group": "performance_targets",
-                    })
-                    continue
-
             sanitized[profile_name][key] = spec
 
         if not sanitized[profile_name]:
@@ -159,6 +276,53 @@ def validate_and_sanitize_output_specs(
         "performanceTargets": performance_targets,
         "warnings": warnings,
     }
+
+
+def validate_biogas_vs_rng(
+    output_specs: dict[str, dict[str, dict]],
+) -> dict[str, Any]:
+    warnings: list[dict] = []
+    unmapped: dict[str, dict] = {}
+
+    if RNG_PROFILE not in output_specs:
+        return {"sanitized": output_specs, "unmapped": unmapped, "warnings": warnings}
+
+    sanitized = dict(output_specs)
+    rng_specs = dict(sanitized[RNG_PROFILE])
+    keys_to_remove = []
+
+    for key, spec in rng_specs.items():
+        display_lower = spec.get("displayName", "").lower()
+        is_methane = any(x in display_lower for x in ["methane", "ch4", "ch₄"]) or key in ("methaneFraction", "methane")
+
+        if not is_methane:
+            continue
+
+        try:
+            numeric_value = float(re.sub(r"[^0-9.]", "", str(spec.get("value", ""))))
+        except (ValueError, TypeError):
+            continue
+
+        if numeric_value < 90:
+            warnings.append({
+                "field": spec.get("displayName", ""),
+                "section": "RNG Gas Quality",
+                "message": f"Methane {spec.get('value', '')}{spec.get('unit', '')} is raw biogas (<90%), not pipeline-quality RNG (≥96%). Biogas methane values must not appear in RNG gas-quality table.",
+                "severity": "error",
+                "originalValue": str(spec.get("value", "")),
+                "originalUnit": str(spec.get("unit", "")),
+            })
+            unmapped[f"biogas_methane_{key}"] = {**spec, "group": "unmapped"}
+            keys_to_remove.append(key)
+
+    for key in keys_to_remove:
+        del rng_specs[key]
+
+    sanitized[RNG_PROFILE] = rng_specs
+    if not rng_specs:
+        del sanitized[RNG_PROFILE]
+
+    return {"sanitized": sanitized, "unmapped": unmapped, "warnings": warnings}
 
 
 def validate_feedstocks_for_type_a(
@@ -173,20 +337,11 @@ def validate_feedstocks_for_type_a(
     if not is_type_a:
         return {"feedstocks": feedstocks, "warnings": warnings, "missingRequired": missing_required}
 
-    all_input_text = " ".join(
-        f"{p.get('name', '')} {p.get('value', '')}" for p in extracted_params
-    ).lower()
-    sludge_indicators = [
-        "primary sludge", "was ", "waste activated", "sludge blend",
-        "sludge thickening", "thickened sludge", "biosolids",
-    ]
-    has_sludge_context = any(s in all_input_text for s in sludge_indicators)
-
-    sludge_spec_keys = {"deliveryForm", "receivingCondition", "preprocessingRequirement"}
-    sludge_assumption_keys = {
-        "totalSolids", "volatileSolids", "vsTs", "moistureContent",
-        "bulkDensity", "cnRatio", "methanePotential", "biodegradableFraction", "inertFraction",
-    }
+    has_sludge_context = _detect_sludge_context(extracted_params)
+    ww_context = _detect_wastewater_context(extracted_params)
+    has_flow_rate = ww_context["hasFlowRate"]
+    has_analytes = ww_context["hasAnalytes"]
+    is_wastewater_influent = has_flow_rate or has_analytes
 
     sanitized_feedstocks = []
     for idx, fs in enumerate(feedstocks):
@@ -199,7 +354,7 @@ def validate_feedstocks_for_type_a(
         for key, spec in specs.items():
             source = spec.get("source", "")
 
-            if key in sludge_spec_keys and not has_sludge_context and source == "estimated_default":
+            if key in SLUDGE_ONLY_SPEC_KEYS and not has_sludge_context and source == "estimated_default":
                 warnings.append({
                     "field": spec.get("displayName", key),
                     "section": f"Feedstock {idx + 1}",
@@ -208,7 +363,7 @@ def validate_feedstocks_for_type_a(
                 })
                 continue
 
-            if key in sludge_assumption_keys and not has_sludge_context and source == "estimated_default":
+            if is_wastewater_influent and not has_sludge_context and key in SLUDGE_ASSUMPTION_KEYS and source == "estimated_default":
                 unit_lower = spec.get("unit", "").lower()
                 if "%" in unit_lower and "mg/l" not in unit_lower:
                     warnings.append({
@@ -219,29 +374,172 @@ def validate_feedstocks_for_type_a(
                     })
                     continue
 
+            if is_wastewater_influent and not has_sludge_context and key == "totalSolids" and source == "estimated_default":
+                warnings.append({
+                    "field": spec.get("displayName", key),
+                    "section": f"Feedstock {idx + 1}",
+                    "message": "TS% removed — wastewater influent detected (mg/L analytes present), TS% only valid for sludge streams",
+                    "severity": "warning",
+                })
+                continue
+
             clean_specs[key] = spec
 
         sanitized_feedstocks.append({**fs, "feedstockSpecs": clean_specs})
 
-    all_text = " ".join(
-        f"{p.get('name', '')} {p.get('value', '')} {p.get('unit', '')}" for p in extracted_params
-    ).lower()
-
-    has_flow_rate = any(
-        x in all_text
-        for x in ["flow", "gpd", "mgd", "gpm", "m³/d", "m3/d", "gallons", "liters"]
-    )
-    param_names = [p.get("name", "").lower() for p in extracted_params]
-    has_bod = any("bod" in n for n in param_names)
-    has_cod = any("cod" in n for n in param_names)
-    has_tss = any("tss" in n or "total suspended" in n for n in param_names)
-
     if not has_flow_rate:
-        missing_required.append("Flow rate (GPD, MGD, m³/d, or similar)")
-    if not has_bod and not has_cod and not has_tss:
-        missing_required.append("At least one wastewater concentration driver (BOD, COD, or TSS)")
+        missing_required.append("Influent flow rate (GPD, MGD, m³/d, or similar)")
+    if not has_analytes:
+        missing_required.append("At least one influent concentration (BOD, COD, or TSS in mg/L)")
+
+    if missing_required:
+        warnings.append({
+            "field": "Type A Required Inputs",
+            "section": "Completeness Check",
+            "message": f"Missing required influent flow and/or influent concentrations: {'; '.join(missing_required)}",
+            "severity": "error",
+        })
 
     return {"feedstocks": sanitized_feedstocks, "warnings": warnings, "missingRequired": missing_required}
+
+
+def validate_feedstocks_for_type_d(
+    feedstocks: list[dict],
+    extracted_params: list[dict],
+    project_type: str | None,
+) -> dict[str, Any]:
+    warnings: list[dict] = []
+    missing_required: list[str] = []
+
+    if project_type != "D":
+        return {"feedstocks": feedstocks, "warnings": warnings, "missingRequired": missing_required}
+
+    has_sludge_context = _detect_sludge_context(extracted_params)
+    ww_context = _detect_wastewater_context(extracted_params)
+    has_flow_rate = ww_context["hasFlowRate"]
+    has_analytes = ww_context["hasAnalytes"]
+
+    if not has_flow_rate:
+        missing_required.append("At least one wastewater flow value (GPD, MGD, m³/d, or similar)")
+    if not has_analytes:
+        missing_required.append("At least one wastewater analyte (BOD, COD, or TSS in mg/L)")
+
+    has_trucked_feedstock = False
+    for fs in feedstocks:
+        type_lower = (fs.get("feedstockType") or "").lower()
+        is_ww = any(x in type_lower for x in ["wastewater", "influent", "sewage", "municipal"])
+        if not is_ww and fs.get("feedstockType") and fs.get("feedstockVolume"):
+            has_trucked_feedstock = True
+
+    if not has_trucked_feedstock:
+        missing_required.append("At least one trucked-in feedstock identity + quantity")
+
+    if missing_required:
+        warnings.append({
+            "field": "Type D Required Inputs",
+            "section": "Completeness Check",
+            "message": f"Missing required items for hybrid project: {'; '.join(missing_required)}",
+            "severity": "error",
+        })
+
+    sanitized_feedstocks = []
+    for idx, fs in enumerate(feedstocks):
+        specs = fs.get("feedstockSpecs")
+        if not specs:
+            sanitized_feedstocks.append(fs)
+            continue
+
+        type_lower = (fs.get("feedstockType") or "").lower()
+        is_ww = any(x in type_lower for x in ["wastewater", "influent", "sewage", "municipal"])
+
+        if not is_ww:
+            sanitized_feedstocks.append(fs)
+            continue
+
+        clean_specs = {}
+        has_swap_indicator = False
+        swapped_keys = []
+
+        for key, spec in specs.items():
+            if not has_sludge_context and key in FEEDSTOCK_SOLID_SPEC_KEYS and spec.get("source") == "estimated_default":
+                has_swap_indicator = True
+                swapped_keys.append(spec.get("displayName", key))
+                warnings.append({
+                    "field": spec.get("displayName", key),
+                    "section": f"Feedstock {idx + 1} (Wastewater)",
+                    "message": f'Solids parameter "{spec.get("displayName", key)}" removed from wastewater stream — TS%/VS/BMP only valid for trucked feedstocks, not wastewater influent',
+                    "severity": "warning",
+                })
+                continue
+            clean_specs[key] = spec
+
+        if has_swap_indicator and not has_flow_rate and not has_analytes:
+            warnings.append({
+                "field": f"Feedstock {idx + 1}",
+                "section": "Swap Detection",
+                "message": f"Stream labeled as wastewater contains solids parameters ({', '.join(swapped_keys)}) but no flow/analytes detected — likely mis-assigned feedstock. Parameters re-routed to Unmapped.",
+                "severity": "error",
+            })
+
+        sanitized_feedstocks.append({**fs, "feedstockSpecs": clean_specs})
+
+    return {"feedstocks": sanitized_feedstocks, "warnings": warnings, "missingRequired": missing_required}
+
+
+def apply_swap_detection(
+    feedstocks: list[dict],
+    extracted_params: list[dict],
+) -> dict[str, Any]:
+    warnings: list[dict] = []
+    swapped_specs: dict[str, dict] = {}
+    ww_context = _detect_wastewater_context(extracted_params)
+    has_flow_rate = ww_context["hasFlowRate"]
+    has_analytes = ww_context["hasAnalytes"]
+
+    sanitized = []
+    for idx, fs in enumerate(feedstocks):
+        specs = fs.get("feedstockSpecs")
+        if not specs:
+            sanitized.append(fs)
+            continue
+
+        type_lower = (fs.get("feedstockType") or "").lower()
+        is_ww = any(x in type_lower for x in ["wastewater", "influent", "sewage", "municipal"])
+
+        if not is_ww:
+            sanitized.append(fs)
+            continue
+
+        has_solid_specs = any(k in FEEDSTOCK_SOLID_SPEC_KEYS for k in specs)
+
+        if has_solid_specs and not has_flow_rate and not has_analytes:
+            clean_specs = {}
+            for key, spec in specs.items():
+                if key in FEEDSTOCK_SOLID_SPEC_KEYS:
+                    swapped_specs[f"swap_{idx}_{key}"] = {
+                        "value": spec.get("value", ""),
+                        "unit": spec.get("unit", ""),
+                        "source": spec.get("source", ""),
+                        "confidence": spec.get("confidence", ""),
+                        "provenance": f'Swap detection: moved from wastewater stream "{fs.get("feedstockType", "")}" — likely mis-assigned feedstock parameter',
+                        "group": "unmapped",
+                        "displayName": spec.get("displayName", key),
+                        "sortOrder": 99,
+                    }
+                else:
+                    clean_specs[key] = spec
+
+            warnings.append({
+                "field": f"Feedstock {idx + 1}: {fs.get('feedstockType', '')}",
+                "section": "Swap Detection",
+                "message": "Wastewater-labeled stream contains TS%/moisture/BMP but no flow or mg/L analytes exist — parameters re-routed to Unmapped as likely mis-assigned feedstock data",
+                "severity": "error",
+            })
+            sanitized.append({**fs, "feedstockSpecs": clean_specs})
+        else:
+            sanitized.append(fs)
+
+    return {"feedstocks": sanitized, "warnings": warnings, "swappedSpecs": swapped_specs}
 
 
 def apply_ts_tss_guardrail(

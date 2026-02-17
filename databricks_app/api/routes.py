@@ -15,9 +15,13 @@ from services.storage import storage
 from api.validation import (
     validate_and_sanitize_output_specs,
     validate_feedstocks_for_type_a,
+    validate_feedstocks_for_type_d,
     apply_ts_tss_guardrail,
+    apply_swap_detection,
     deduplicate_parameters,
     validate_section_assignment,
+    reject_biosolids_output_profile,
+    validate_biogas_vs_rng,
 )
 from services.llm import (
     llm_complete,
@@ -1204,20 +1208,33 @@ async def extract_parameters(scenario_id: str):
         logger.info("Enrichment: Total feedstock entries: %d", len(feedstock_entries))
 
         type_a_result = validate_feedstocks_for_type_a(feedstock_entries, valid_params, project_type)
-        feedstock_entries = type_a_result["feedstocks"]
+        type_a_feedstocks = type_a_result["feedstocks"]
         all_validation_warnings.extend(type_a_result["warnings"])
-        if type_a_result["missingRequired"]:
-            for req in type_a_result["missingRequired"]:
-                all_validation_warnings.append({
-                    "field": req,
-                    "section": "Type A Requirements",
-                    "message": f"Missing required parameter: {req}",
-                    "severity": "error",
-                })
+        missing_required = type_a_result.get("missingRequired", [])
 
-        ts_tss_result = apply_ts_tss_guardrail(feedstock_entries, valid_params)
+        type_d_result = validate_feedstocks_for_type_d(
+            type_a_feedstocks if project_type == "A" else feedstock_entries,
+            valid_params,
+            project_type,
+        )
+        all_validation_warnings.extend(type_d_result["warnings"])
+        type_d_missing = type_d_result.get("missingRequired", [])
+
+        post_type_validated = (
+            type_d_result["feedstocks"] if project_type == "D"
+            else type_a_feedstocks if project_type == "A"
+            else feedstock_entries
+        )
+
+        ts_tss_result = apply_ts_tss_guardrail(post_type_validated, valid_params)
         feedstock_entries = ts_tss_result["feedstocks"]
         all_validation_warnings.extend(ts_tss_result["warnings"])
+
+        swap_result = apply_swap_detection(feedstock_entries, valid_params)
+        feedstock_entries = swap_result["feedstocks"]
+        all_validation_warnings.extend(swap_result["warnings"])
+        for key, spec in swap_result["swappedSpecs"].items():
+            all_unmapped_specs[key] = spec
 
         location_params = [p for p in extracted_params if p.get("category") == "location"]
         location = ", ".join(p["value"] for p in location_params) if location_params else ""
@@ -1241,6 +1258,9 @@ async def extract_parameters(scenario_id: str):
             output_desc = f"{param['name']} {param.get('value', '')}".lower()
             matched = match_output_type(output_desc)
             if matched and matched["name"] not in output_specs:
+                if matched["name"] == digestate_profile:
+                    logger.info("Output enrichment: Blocking Solid Digestate profile from matchOutputType — biosolids output not supported")
+                    continue
                 enriched = enrich_output_specs(matched["name"], user_output_criteria, location or None)
                 output_specs[matched["name"]] = enriched
                 logger.info("Output enrichment: Generated %d criteria for %s", len(enriched), matched["name"])
@@ -1268,18 +1288,7 @@ async def extract_parameters(scenario_id: str):
             logger.info("Output enrichment (keyword fallback): Generated %d criteria for %s", len(enriched), rng_profile)
 
         if digestate_profile not in output_specs and any(k in search_text for k in digestate_keywords):
-            if is_type_a:
-                explicit_biosolids = any(kw in search_text for kw in ["biosolids", "municipal sludge", "class a", "class b", "part 503"])
-                if explicit_biosolids:
-                    enriched = enrich_output_specs(digestate_profile, user_output_criteria, location or None)
-                    output_specs[digestate_profile] = enriched
-                    logger.info("Output enrichment (keyword fallback, Type A explicit biosolids): Generated %d criteria for %s", len(enriched), digestate_profile)
-                else:
-                    logger.info("Output enrichment: Skipping digestate/biosolids profile for Type A (wastewater) project — not explicitly requested")
-            else:
-                enriched = enrich_output_specs(digestate_profile, user_output_criteria, location or None)
-                output_specs[digestate_profile] = enriched
-                logger.info("Output enrichment (keyword fallback): Generated %d criteria for %s", len(enriched), digestate_profile)
+            logger.info("Output enrichment: Skipping Solid Digestate / Land Application profile — biosolids output not supported (guardrail V0)")
         if effluent_profile not in output_specs and any(k in search_text for k in effluent_keywords):
             enriched = enrich_output_specs(effluent_profile, user_output_criteria, location or None)
             output_specs[effluent_profile] = enriched
@@ -1288,13 +1297,25 @@ async def extract_parameters(scenario_id: str):
         logger.info("Output enrichment: Total output profiles enriched: %d", len(output_specs))
 
         if output_specs:
-            os_result = validate_and_sanitize_output_specs(output_specs, project_type)
+            bio_result = reject_biosolids_output_profile(output_specs)
+            output_specs = bio_result["sanitized"]
+            all_unmapped_specs.update(bio_result["unmapped"])
+            all_validation_warnings.extend(bio_result["warnings"])
+            if bio_result["unmapped"]:
+                logger.info("Validation: Biosolids profile rejected — %d specs moved to unmapped", len(bio_result["unmapped"]))
+
+            os_result = validate_and_sanitize_output_specs(output_specs, project_type, valid_params)
             output_specs = os_result["sanitized"]
             all_unmapped_specs.update(os_result["unmapped"])
             all_performance_targets.extend(os_result["performanceTargets"])
             all_validation_warnings.extend(os_result["warnings"])
             logger.info("Validation: Output specs sanitized — %d unmapped, %d targets, %d warnings",
                         len(os_result["unmapped"]), len(os_result["performanceTargets"]), len(os_result["warnings"]))
+
+            biogas_result = validate_biogas_vs_rng(output_specs)
+            output_specs = biogas_result["sanitized"]
+            all_unmapped_specs.update(biogas_result["unmapped"])
+            all_validation_warnings.extend(biogas_result["warnings"])
 
         if rng_profile in output_specs:
             rng_specs = output_specs[rng_profile]

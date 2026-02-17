@@ -28,9 +28,13 @@ import { DEFAULT_PROMPTS, PROMPT_KEYS, type PromptKey } from "@shared/default-pr
 import {
   validateAndSanitizeOutputSpecs,
   validateFeedstocksForTypeA,
+  validateFeedstocksForTypeD,
   applyTsTssGuardrail,
+  applySwapDetection,
   deduplicateParameters,
   validateSectionAssignment,
+  rejectBiosolidsOutputProfile,
+  validateBiogasVsRng,
   type ValidationWarning,
   type PerformanceTarget,
 } from "./validation";
@@ -1369,10 +1373,15 @@ export async function registerRoutes(
         userOutputCriteria[param.name] = { value: param.value || "", unit: param.unit || undefined };
       }
       
+      const blockedDigestateProfile = "Solid Digestate - Land Application";
       for (const param of outputParams) {
         const outputDesc = `${param.name} ${param.value}`.toLowerCase();
         const matched = matchOutputType(outputDesc);
         if (matched && !outputSpecs[matched.name]) {
+          if (matched.name === blockedDigestateProfile) {
+            console.log("Output enrichment: Blocking Solid Digestate profile from matchOutputType — biosolids output not supported");
+            continue;
+          }
           const enriched = enrichOutputSpecs(matched.name, userOutputCriteria, location || undefined);
           outputSpecs[matched.name] = enriched;
           console.log("Output enrichment: Generated", Object.keys(enriched).length, "criteria for", matched.name);
@@ -1402,20 +1411,7 @@ export async function registerRoutes(
       }
       
       if (!outputSpecs[digestateProfile] && digestateKeywords.some(k => searchText.includes(k))) {
-        if (isTypeA) {
-          const explicitBiosolids = searchText.includes("biosolids") || searchText.includes("municipal sludge") || searchText.includes("class a") || searchText.includes("class b") || searchText.includes("part 503");
-          if (explicitBiosolids) {
-            const enriched = enrichOutputSpecs(digestateProfile, userOutputCriteria, location || undefined);
-            outputSpecs[digestateProfile] = enriched;
-            console.log("Output enrichment (keyword fallback, Type A explicit biosolids): Generated", Object.keys(enriched).length, "criteria for", digestateProfile);
-          } else {
-            console.log("Output enrichment: Skipping digestate/biosolids profile for Type A (wastewater) project — not explicitly requested");
-          }
-        } else {
-          const enriched = enrichOutputSpecs(digestateProfile, userOutputCriteria, location || undefined);
-          outputSpecs[digestateProfile] = enriched;
-          console.log("Output enrichment (keyword fallback): Generated", Object.keys(enriched).length, "criteria for", digestateProfile);
-        }
+        console.log("Output enrichment: Skipping Solid Digestate / Land Application profile — biosolids output not supported (guardrail V0)");
       }
       
       if (!outputSpecs[effluentProfile] && effluentKeywords.some(k => searchText.includes(k))) {
@@ -1428,13 +1424,24 @@ export async function registerRoutes(
       
       // ===== VALIDATION PIPELINE =====
       
-      // V1: Validate & sanitize output specs (gas/liquid/solids section checks, removal efficiency separation)
+      // V0: Universal biosolids rejection — strip Solid Digestate profile from ALL project types
       const {
-        sanitized: sanitizedOutputSpecs,
+        sanitized: noBiosolidsSpecs,
+        unmapped: biosolidsUnmapped,
+        warnings: biosolidsWarnings,
+      } = rejectBiosolidsOutputProfile(outputSpecs);
+      allValidationWarnings.push(...biosolidsWarnings);
+      if (Object.keys(biosolidsUnmapped).length > 0) {
+        console.log(`Validation: Biosolids profile rejected — ${Object.keys(biosolidsUnmapped).length} specs moved to unmapped`);
+      }
+      
+      // V1: Validate & sanitize output specs (gas/liquid/solids section checks, removal efficiency separation, unit locking)
+      const {
+        sanitized: v1Sanitized,
         unmapped: unmappedOutputSpecs,
         performanceTargets,
         warnings: outputWarnings,
-      } = validateAndSanitizeOutputSpecs(outputSpecs, projectType);
+      } = validateAndSanitizeOutputSpecs(noBiosolidsSpecs, projectType, extractedParams);
       allValidationWarnings.push(...outputWarnings);
       
       if (Object.keys(unmappedOutputSpecs).length > 0) {
@@ -1444,7 +1451,15 @@ export async function registerRoutes(
         console.log(`Validation: ${performanceTargets.length} removal efficiencies separated to performance targets`);
       }
       
-      // V2: Type A feedstock validation (sludge guard + fail-fast on missing minimums)
+      // V1b: Biogas vs RNG separation — reject biogas methane (<90%) from RNG table
+      const {
+        sanitized: sanitizedOutputSpecs,
+        unmapped: biogasUnmapped,
+        warnings: biogasWarnings,
+      } = validateBiogasVsRng(v1Sanitized);
+      allValidationWarnings.push(...biogasWarnings);
+      
+      // V2: Type A feedstock validation (wastewater detection gate, sludge hard block, fail-fast)
       const {
         feedstocks: typeAValidatedFeedstocks,
         warnings: typeAWarnings,
@@ -1452,46 +1467,59 @@ export async function registerRoutes(
       } = validateFeedstocksForTypeA(feedstockEntries, extractedParams, projectType);
       allValidationWarnings.push(...typeAWarnings);
       
-      if (missingRequired.length > 0) {
-        console.log(`Validation: Type A missing required inputs: ${missingRequired.join(", ")}`);
-        for (const missing of missingRequired) {
-          allValidationWarnings.push({
-            field: missing,
-            section: "Type A Required Inputs",
-            message: `Missing required input for wastewater project: ${missing}`,
-            severity: "error",
-          });
-        }
-      }
+      // V2b: Type D stream separation + completeness checks
+      const {
+        feedstocks: typeDValidatedFeedstocks,
+        warnings: typeDWarnings,
+        missingRequired: typeDMissing,
+      } = validateFeedstocksForTypeD(
+        projectType === "A" ? typeAValidatedFeedstocks : feedstockEntries,
+        extractedParams,
+        projectType,
+      );
+      allValidationWarnings.push(...typeDWarnings);
+      
+      const postTypeValidated = projectType === "D" ? typeDValidatedFeedstocks
+        : projectType === "A" ? typeAValidatedFeedstocks
+        : feedstockEntries;
       
       // V3: TS/TSS guardrail
-      const { feedstocks: tsTssValidated, warnings: tsTssWarnings } = applyTsTssGuardrail(typeAValidatedFeedstocks, extractedParams);
+      const { feedstocks: tsTssValidated, warnings: tsTssWarnings } = applyTsTssGuardrail(postTypeValidated, extractedParams);
       allValidationWarnings.push(...tsTssWarnings);
       
-      // Use validated feedstocks for the rest of the pipeline
-      const validatedFeedstockEntries = tsTssValidated;
+      // V4: Swap detection — wastewater streams with solids params but no flow/analytes
+      const { feedstocks: swapValidated, warnings: swapWarnings, swappedSpecs } = applySwapDetection(tsTssValidated, extractedParams);
+      allValidationWarnings.push(...swapWarnings);
       
-      // Build unmapped specs from section-rejected params + output unmapped
+      // Use validated feedstocks for the rest of the pipeline
+      const validatedFeedstockEntries = swapValidated;
+      
+      // Build unmapped specs from section-rejected params + output unmapped + biosolids + biogas + swapped
       const allUnmappedSpecs: Record<string, { value: string; unit: string; source: string; confidence: string; provenance: string; group: string; displayName: string; sortOrder: number }> = {};
-      for (const [key, spec] of Object.entries(unmappedOutputSpecs)) {
-        allUnmappedSpecs[key] = {
-          value: spec.value,
-          unit: spec.unit,
-          source: spec.source,
-          confidence: spec.confidence,
-          provenance: spec.provenance,
-          group: "unmapped",
-          displayName: spec.displayName,
-          sortOrder: spec.sortOrder,
-        };
+      for (const unmappedBucket of [unmappedOutputSpecs, biosolidsUnmapped, biogasUnmapped]) {
+        for (const [key, spec] of Object.entries(unmappedBucket)) {
+          allUnmappedSpecs[key] = {
+            value: spec.value,
+            unit: spec.unit,
+            source: spec.source,
+            confidence: spec.confidence,
+            provenance: spec.provenance,
+            group: "unmapped",
+            displayName: spec.displayName,
+            sortOrder: spec.sortOrder,
+          };
+        }
+      }
+      for (const [key, spec] of Object.entries(swappedSpecs)) {
+        allUnmappedSpecs[key] = spec;
       }
       for (const param of allUnmappedParams) {
         const safeKey = `param_${param.name.replace(/\s+/g, "_").toLowerCase()}`;
         allUnmappedSpecs[safeKey] = {
           value: param.value || "",
           unit: param.unit || "",
-          source: param.source || "predicted",
-          confidence: param.confidence || "low",
+          source: (param as any).source || "predicted",
+          confidence: (param as any).confidence || "low",
           provenance: "Moved to unmapped by validation — section/unit mismatch",
           group: "unmapped",
           displayName: param.name,
