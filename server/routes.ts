@@ -1495,6 +1495,50 @@ export async function registerRoutes(
         outputSpecs[effluentProfile] = enriched;
         console.log("Output enrichment (keyword fallback): Generated", Object.keys(enriched).length, "criteria for", effluentProfile);
       }
+
+      if (isTypeA && !outputSpecs[effluentProfile]) {
+        const enriched = enrichOutputSpecs(effluentProfile, userOutputCriteria, location || undefined);
+        outputSpecs[effluentProfile] = enriched;
+        console.log("Output enrichment (Type A guarantee): Auto-added effluent profile with", Object.keys(enriched).length, "criteria");
+      }
+
+      if (isTypeA && outputSpecs[effluentProfile]) {
+        const effluentSpecs = outputSpecs[effluentProfile];
+        const requiredEffluentKeys: Array<{
+          key: string;
+          displayName: string;
+          value: string;
+          unit: string;
+          provenance: string;
+          sortOrder: number;
+        }> = [
+          { key: "bod", displayName: "BOD (Biochemical Oxygen Demand)", value: "\u2264 250-500", unit: "mg/L", provenance: "Typical municipal industrial pretreatment limit; varies by WWTP", sortOrder: 2 },
+          { key: "cod", displayName: "COD (Chemical Oxygen Demand)", value: "\u2264 500-1000", unit: "mg/L", provenance: "Often 2x BOD limit; check local pretreatment ordinance", sortOrder: 3 },
+          { key: "tss", displayName: "TSS (Total Suspended Solids)", value: "\u2264 250-400", unit: "mg/L", provenance: "Typical municipal sewer discharge limit", sortOrder: 4 },
+          { key: "fog", displayName: "FOG (Fats, Oils, Grease)", value: "\u2264 100-150", unit: "mg/L", provenance: "Standard grease trap limit; FOG is primary surcharge trigger", sortOrder: 5 },
+          { key: "ph", displayName: "pH", value: "6.0-9.0", unit: "", provenance: "Standard municipal sewer pH range", sortOrder: 20 },
+        ];
+
+        let addedCount = 0;
+        for (const req of requiredEffluentKeys) {
+          if (!effluentSpecs[req.key]) {
+            effluentSpecs[req.key] = {
+              value: req.value,
+              unit: req.unit,
+              confidence: "medium" as const,
+              provenance: req.provenance,
+              group: "discharge",
+              displayName: req.displayName,
+              sortOrder: req.sortOrder,
+              source: "estimated_requirement",
+            };
+            addedCount++;
+          }
+        }
+        if (addedCount > 0) {
+          console.log(`Output enrichment (Type A guarantee): Added ${addedCount} missing required effluent parameter(s) — BOD, COD, TSS, FOG, pH`);
+        }
+      }
       
       console.log("Output enrichment: Total output profiles enriched:", Object.keys(outputSpecs).length);
       
@@ -1656,6 +1700,38 @@ export async function registerRoutes(
               if (isLocked && oldFs.feedstockSpecs[specKey]) {
                 newFs.feedstockSpecs[specKey] = oldFs.feedstockSpecs[specKey];
               }
+            }
+          }
+        }
+      }
+
+      if (isTypeA) {
+        if (!sanitizedOutputSpecs[effluentProfile]) {
+          const enriched = enrichOutputSpecs(effluentProfile, userOutputCriteria, location || undefined);
+          sanitizedOutputSpecs[effluentProfile] = enriched;
+          console.log("Post-validation (Type A guarantee): Re-added effluent profile stripped by validation");
+        }
+        const effluentFinal = sanitizedOutputSpecs[effluentProfile];
+        if (effluentFinal) {
+          const requiredKeys = [
+            { key: "bod", displayName: "BOD (Biochemical Oxygen Demand)", value: "\u2264 250-500", unit: "mg/L", provenance: "Typical municipal industrial pretreatment limit; varies by WWTP", sortOrder: 2 },
+            { key: "cod", displayName: "COD (Chemical Oxygen Demand)", value: "\u2264 500-1000", unit: "mg/L", provenance: "Often 2x BOD limit; check local pretreatment ordinance", sortOrder: 3 },
+            { key: "tss", displayName: "TSS (Total Suspended Solids)", value: "\u2264 250-400", unit: "mg/L", provenance: "Typical municipal sewer discharge limit", sortOrder: 4 },
+            { key: "fog", displayName: "FOG (Fats, Oils, Grease)", value: "\u2264 100-150", unit: "mg/L", provenance: "Standard grease trap limit; FOG is primary surcharge trigger", sortOrder: 5 },
+            { key: "ph", displayName: "pH", value: "6.0-9.0", unit: "", provenance: "Standard municipal sewer pH range", sortOrder: 20 },
+          ];
+          for (const req of requiredKeys) {
+            if (!effluentFinal[req.key]) {
+              effluentFinal[req.key] = {
+                value: req.value,
+                unit: req.unit,
+                confidence: "medium" as const,
+                provenance: req.provenance,
+                group: "discharge",
+                displayName: req.displayName,
+                sortOrder: req.sortOrder,
+                source: "estimated_requirement",
+              };
             }
           }
         }

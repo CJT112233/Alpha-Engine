@@ -844,23 +844,26 @@ function detectFlowInSpecs(
 }
 
 interface IndustryDefaults {
+  bod: string;
+  cod: string;
+  tss: string;
   fog: string;
   ph: string;
   peakFlowMultiplier: number;
 }
 
 const INDUSTRY_DEFAULTS: Record<string, IndustryDefaults> = {
-  dairy:    { fog: "200-800",  ph: "4.0-7.0",  peakFlowMultiplier: 2.0 },
-  meat:     { fog: "100-500",  ph: "6.0-7.5",  peakFlowMultiplier: 2.5 },
-  poultry:  { fog: "100-400",  ph: "6.0-7.5",  peakFlowMultiplier: 2.0 },
-  produce:  { fog: "50-200",   ph: "4.0-6.0",  peakFlowMultiplier: 2.0 },
-  potato:   { fog: "50-200",   ph: "5.0-7.0",  peakFlowMultiplier: 2.0 },
-  beverage: { fog: "20-100",   ph: "3.0-6.0",  peakFlowMultiplier: 1.5 },
-  brewery:  { fog: "20-80",    ph: "4.0-7.0",  peakFlowMultiplier: 1.5 },
-  winery:   { fog: "20-80",    ph: "3.5-5.5",  peakFlowMultiplier: 3.0 },
-  seafood:  { fog: "100-400",  ph: "6.0-7.5",  peakFlowMultiplier: 2.0 },
-  bakery:   { fog: "100-500",  ph: "4.0-7.0",  peakFlowMultiplier: 1.5 },
-  default:  { fog: "100-400",  ph: "5.0-7.0",  peakFlowMultiplier: 2.0 },
+  dairy:    { bod: "2,000-6,000", cod: "4,000-10,000", tss: "500-2,000",   fog: "200-800",  ph: "4.0-7.0",  peakFlowMultiplier: 2.0 },
+  meat:     { bod: "1,500-5,000", cod: "3,000-8,000",  tss: "800-3,000",   fog: "100-500",  ph: "6.0-7.5",  peakFlowMultiplier: 2.5 },
+  poultry:  { bod: "1,200-4,000", cod: "2,500-7,000",  tss: "600-2,500",   fog: "100-400",  ph: "6.0-7.5",  peakFlowMultiplier: 2.0 },
+  produce:  { bod: "500-3,000",   cod: "1,000-5,000",  tss: "200-1,500",   fog: "50-200",   ph: "4.0-6.0",  peakFlowMultiplier: 2.0 },
+  potato:   { bod: "2,000-5,000", cod: "3,500-8,000",  tss: "1,000-3,000", fog: "50-200",   ph: "5.0-7.0",  peakFlowMultiplier: 2.0 },
+  beverage: { bod: "500-2,000",   cod: "1,000-4,000",  tss: "200-800",     fog: "20-100",   ph: "3.0-6.0",  peakFlowMultiplier: 1.5 },
+  brewery:  { bod: "1,000-3,000", cod: "2,000-6,000",  tss: "300-1,000",   fog: "20-80",    ph: "4.0-7.0",  peakFlowMultiplier: 1.5 },
+  winery:   { bod: "1,500-5,000", cod: "3,000-10,000", tss: "300-1,500",   fog: "20-80",    ph: "3.5-5.5",  peakFlowMultiplier: 3.0 },
+  seafood:  { bod: "1,000-4,000", cod: "2,000-7,000",  tss: "500-2,000",   fog: "100-400",  ph: "6.0-7.5",  peakFlowMultiplier: 2.0 },
+  bakery:   { bod: "1,000-3,000", cod: "2,000-5,000",  tss: "400-1,500",   fog: "100-500",  ph: "4.0-7.0",  peakFlowMultiplier: 1.5 },
+  default:  { bod: "1,000-4,000", cod: "2,000-7,000",  tss: "500-2,000",   fog: "100-400",  ph: "5.0-7.0",  peakFlowMultiplier: 2.0 },
 };
 
 function detectIndustryType(feedstocks: FeedstockEntry[]): IndustryDefaults {
@@ -938,7 +941,7 @@ export function validateTypeADesignDrivers(
     const industry = detectIndustryType(feedstocks);
     const industryLabel = feedstocks.map(fs => fs.feedstockType || "").filter(Boolean).join(", ") || "food processing wastewater";
 
-    const AUTO_POPULATE_DRIVERS = new Set(["Peak Flow", "FOG", "pH"]);
+    const AUTO_POPULATE_DRIVERS = new Set(["Peak Flow", "BOD", "COD", "TSS", "FOG", "pH"]);
 
     updatedFeedstocks = feedstocks.map((fs, idx) => {
       if (idx !== 0) return fs;
@@ -966,6 +969,27 @@ export function validateTypeADesignDrivers(
             }
             key = "peakFlowRate";
             displayName = "Peak Flow Rate";
+            break;
+          }
+          case "BOD": {
+            key = "bod";
+            displayName = "BOD (Biochemical Oxygen Demand)";
+            value = industry.bod;
+            unit = "mg/L";
+            break;
+          }
+          case "COD": {
+            key = "cod";
+            displayName = "COD (Chemical Oxygen Demand)";
+            value = industry.cod;
+            unit = "mg/L";
+            break;
+          }
+          case "TSS": {
+            key = "tss";
+            displayName = "TSS (Total Suspended Solids)";
+            value = industry.tss;
+            unit = "mg/L";
             break;
           }
           case "FOG": {
