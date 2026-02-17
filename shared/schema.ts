@@ -378,6 +378,83 @@ export type InsertMassBalanceRun = z.infer<typeof insertMassBalanceRunSchema>;
 export type MassBalanceRun = typeof massBalanceRuns.$inferSelect;
 
 /**
+ * CapEx line item: Individual equipment cost estimate referencing mass balance equipment.
+ */
+export type CapexLineItem = {
+  id: string;
+  equipmentId: string;
+  process: string;
+  equipmentType: string;
+  description: string;
+  quantity: number;
+  baseCostPerUnit: number;
+  installationFactor: number;
+  installedCost: number;
+  contingencyPct: number;
+  contingencyCost: number;
+  totalCost: number;
+  costBasis: string;
+  source: string;
+  notes: string;
+  isOverridden: boolean;
+  isLocked: boolean;
+};
+
+export type CapexSummary = {
+  totalEquipmentCost: number;
+  totalInstalledCost: number;
+  totalContingency: number;
+  totalDirectCost: number;
+  engineeringPct: number;
+  engineeringCost: number;
+  totalProjectCost: number;
+  costPerUnit?: { value: number; unit: string; basis: string };
+};
+
+export type CapexResults = {
+  projectType?: string;
+  lineItems: CapexLineItem[];
+  summary: CapexSummary;
+  assumptions: Array<{ parameter: string; value: string; source: string }>;
+  warnings: Array<{ field: string; message: string; severity: "error" | "warning" | "info" }>;
+  costYear: string;
+  currency: string;
+  methodology: string;
+};
+
+export type CapexOverrides = Record<string, {
+  value: string;
+  unit: string;
+  overriddenBy: string;
+  reason: string;
+  originalValue: string;
+}>;
+
+export type CapexLocks = Record<string, boolean>;
+
+/**
+ * CapEx Estimates table: Versioned capital cost estimates for scenarios.
+ * Generated from confirmed mass balance equipment lists using AI.
+ */
+export const capexEstimates = pgTable("capex_estimates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  scenarioId: varchar("scenario_id").notNull().references(() => scenarios.id, { onDelete: "cascade" }),
+  massBalanceRunId: varchar("mass_balance_run_id").notNull().references(() => massBalanceRuns.id, { onDelete: "cascade" }),
+  version: text("version").notNull().default("1"),
+  status: text("status").notNull().default("draft"),
+  inputSnapshot: jsonb("input_snapshot"),
+  results: jsonb("results").$type<CapexResults>(),
+  overrides: jsonb("overrides").$type<CapexOverrides>(),
+  locks: jsonb("locks").$type<CapexLocks>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCapexEstimateSchema = createInsertSchema(capexEstimates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCapexEstimate = z.infer<typeof insertCapexEstimateSchema>;
+export type CapexEstimate = typeof capexEstimates.$inferSelect;
+
+/**
  * Generation Logs table: Tracks timing and metadata for AI-generated documents.
  * Records how long each generation takes, which model was used, and links to the project/scenario.
  */

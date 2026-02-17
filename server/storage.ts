@@ -18,6 +18,7 @@ import {
   upifChatMessages,
   promptTemplates,
   massBalanceRuns,
+  capexEstimates,
   generationLogs,
   type Project,
   type InsertProject,
@@ -37,6 +38,8 @@ import {
   type InsertPromptTemplate,
   type MassBalanceRun,
   type InsertMassBalanceRun,
+  type CapexEstimate,
+  type InsertCapexEstimate,
   type GenerationLog,
   type InsertGenerationLog,
 } from "@shared/schema";
@@ -109,6 +112,12 @@ export interface IStorage {
   getMassBalanceRun(id: string): Promise<MassBalanceRun | undefined>;
   createMassBalanceRun(run: InsertMassBalanceRun): Promise<MassBalanceRun>;
   updateMassBalanceRun(id: string, updates: Partial<InsertMassBalanceRun>): Promise<MassBalanceRun | undefined>;
+
+  // CapEx Estimates
+  getCapexEstimatesByScenario(scenarioId: string): Promise<CapexEstimate[]>;
+  getCapexEstimate(id: string): Promise<CapexEstimate | undefined>;
+  createCapexEstimate(estimate: InsertCapexEstimate): Promise<CapexEstimate>;
+  updateCapexEstimate(id: string, updates: Partial<InsertCapexEstimate>): Promise<CapexEstimate | undefined>;
 
   // Generation Logs
   getAllGenerationLogs(): Promise<GenerationLog[]>;
@@ -430,6 +439,37 @@ export class DatabaseStorage implements IStorage {
       .update(massBalanceRuns)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(massBalanceRuns.id, id))
+      .returning();
+    return result[0];
+  }
+
+  // ============================================================================
+  // CAPEX ESTIMATES
+  // ============================================================================
+
+  async getCapexEstimatesByScenario(scenarioId: string): Promise<CapexEstimate[]> {
+    return db
+      .select()
+      .from(capexEstimates)
+      .where(eq(capexEstimates.scenarioId, scenarioId))
+      .orderBy(desc(capexEstimates.createdAt));
+  }
+
+  async getCapexEstimate(id: string): Promise<CapexEstimate | undefined> {
+    const result = await db.select().from(capexEstimates).where(eq(capexEstimates.id, id));
+    return result[0];
+  }
+
+  async createCapexEstimate(estimate: InsertCapexEstimate): Promise<CapexEstimate> {
+    const result = await db.insert(capexEstimates).values(estimate).returning();
+    return result[0];
+  }
+
+  async updateCapexEstimate(id: string, updates: Partial<InsertCapexEstimate>): Promise<CapexEstimate | undefined> {
+    const result = await db
+      .update(capexEstimates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(capexEstimates.id, id))
       .returning();
     return result[0];
   }

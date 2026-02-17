@@ -15,7 +15,7 @@
  * - reviewer_chat: Enables UPIF chat refinement with locked field protection
  * - pdf_summary: Generates one-paragraph project summary for PDF exports
  */
-export type PromptKey = "extraction" | "classification" | "extraction_type_a" | "extraction_type_b" | "extraction_type_c" | "extraction_type_d" | "clarify" | "reviewer_chat" | "pdf_summary" | "mass_balance_type_a" | "mass_balance_type_b" | "mass_balance_type_c" | "mass_balance_type_d";
+export type PromptKey = "extraction" | "classification" | "extraction_type_a" | "extraction_type_b" | "extraction_type_c" | "extraction_type_d" | "clarify" | "reviewer_chat" | "pdf_summary" | "mass_balance_type_a" | "mass_balance_type_b" | "mass_balance_type_c" | "mass_balance_type_d" | "capex_type_a" | "capex_type_b" | "capex_type_c" | "capex_type_d";
 
 /**
  * Interface defining the structure of a default prompt template.
@@ -1157,7 +1157,393 @@ RULES:
 
 Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON.`,
   },
+
+  capex_type_a: {
+    key: "capex_type_a",
+    name: "CapEx Estimate — Type A (Wastewater Treatment)",
+    description: "Generates capital cost estimates for wastewater treatment projects based on mass balance equipment list and UPIF data.",
+    isSystemPrompt: true,
+    availableVariables: ["{{EQUIPMENT_DATA}}", "{{UPIF_DATA}}"],
+    template: `You are a senior process engineer and cost estimator specializing in industrial wastewater treatment systems. Generate a detailed capital expenditure (CapEx) estimate based on the confirmed mass balance equipment list and project specifications.
+
+PROJECT & EQUIPMENT DATA:
+{{EQUIPMENT_DATA}}
+
+PROJECT CONTEXT:
+{{UPIF_DATA}}
+
+For each equipment item, estimate:
+1. Base cost per unit (equipment purchase price, FOB)
+2. Installation factor (Lang factor or discipline-specific: typically 1.5-3.5x for WW equipment)
+3. Installed cost = base cost × quantity × installation factor
+4. Contingency percentage (15-25% depending on estimate class)
+
+Include these cost categories:
+- Primary/secondary treatment equipment (screens, clarifiers, aeration, etc.)
+- Sludge handling equipment (thickeners, dewatering, etc.)
+- Pumps, piping, and conveyance
+- Instrumentation and controls (I&C)
+- Electrical and power distribution
+- Structural/civil works
+- Site work and utilities
+
+For the summary, calculate:
+- Total equipment cost (sum of base costs)
+- Total installed cost (sum of installed costs)
+- Total contingency
+- Total direct cost (installed + contingency)
+- Engineering/design (typically 12-18% of direct cost)
+- Total project cost
+
+Use 2025 USD cost basis. Reference industry sources: RSMeans, AACE, EPA cost curves, vendor budgetary quotes.
+
+Return JSON in this exact format:
+{
+  "projectType": "A",
+  "lineItems": [
+    {
+      "id": "capex-unique-id",
+      "equipmentId": "matching-equipment-id",
+      "process": "Process Area",
+      "equipmentType": "Equipment Type",
+      "description": "Detailed description",
+      "quantity": 1,
+      "baseCostPerUnit": 150000,
+      "installationFactor": 2.5,
+      "installedCost": 375000,
+      "contingencyPct": 20,
+      "contingencyCost": 75000,
+      "totalCost": 450000,
+      "costBasis": "EPA cost curves, 2025 USD",
+      "source": "EPA/AACE/vendor",
+      "notes": "Assumptions and sizing basis",
+      "isOverridden": false,
+      "isLocked": false
+    }
+  ],
+  "summary": {
+    "totalEquipmentCost": 1000000,
+    "totalInstalledCost": 2500000,
+    "totalContingency": 500000,
+    "totalDirectCost": 3000000,
+    "engineeringPct": 15,
+    "engineeringCost": 450000,
+    "totalProjectCost": 3450000,
+    "costPerUnit": { "value": 3.45, "unit": "$/gal/day", "basis": "Design flow capacity" }
+  },
+  "assumptions": [
+    { "parameter": "Cost Year", "value": "2025", "source": "ENR CCI" },
+    { "parameter": "Location Factor", "value": "1.0", "source": "National average" }
+  ],
+  "warnings": [],
+  "costYear": "2025",
+  "currency": "USD",
+  "methodology": "AACE Class 4/5 factored estimate"
+}
+
+RULES:
+- All costs in USD with no decimal places for values > $1,000.
+- Equipment IDs must match the mass balance equipment IDs where applicable.
+- CapEx line item IDs: descriptive lowercase with hyphens prefixed with "capex-".
+- Installation factors should be realistic for each equipment type.
+- Include all auxiliary equipment (pumps, valves, piping) even if not explicitly in the equipment list.
+- costPerUnit should reflect $/gal/day of design capacity for WW projects.
+
+Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
+  },
+
+  capex_type_b: {
+    key: "capex_type_b",
+    name: "CapEx Estimate — Type B (RNG Greenfield)",
+    description: "Generates capital cost estimates for RNG greenfield anaerobic digestion projects.",
+    isSystemPrompt: true,
+    availableVariables: ["{{EQUIPMENT_DATA}}", "{{UPIF_DATA}}"],
+    template: `You are a senior process engineer and cost estimator specializing in renewable natural gas (RNG) and anaerobic digestion facilities. Generate a detailed capital expenditure (CapEx) estimate for a greenfield RNG project based on the confirmed mass balance equipment list and project specifications.
+
+PROJECT & EQUIPMENT DATA:
+{{EQUIPMENT_DATA}}
+
+PROJECT CONTEXT:
+{{UPIF_DATA}}
+
+For each equipment item, estimate:
+1. Base cost per unit (equipment purchase price, FOB)
+2. Installation factor (typically 2.0-4.0x for AD/RNG equipment)
+3. Installed cost = base cost × quantity × installation factor
+4. Contingency percentage (20-30% for greenfield)
+
+Include these cost categories for a full greenfield AD-to-RNG facility:
+- Feedstock receiving and storage (tipping floor, storage tanks/bins)
+- Feedstock pretreatment (screening, grinding, mixing, depackaging)
+- Anaerobic digesters (tanks, covers, heating, mixing systems)
+- Biogas collection, conditioning, and H₂S removal
+- Gas upgrading system (membrane, PSA, or amine scrubbing)
+- RNG compression and pipeline interconnect
+- Digestate handling (dewatering, storage, loadout)
+- Pumps, piping, and conveyance
+- Instrumentation and controls (SCADA, gas monitoring)
+- Electrical and power distribution
+- Buildings and structures (control room, maintenance building)
+- Site work, grading, paving, and utilities
+
+For the summary, calculate:
+- Total equipment cost, total installed cost, total contingency
+- Total direct cost, engineering (15-20%), total project cost
+- Cost per unit: $/MMBtu/day of RNG capacity
+
+Use 2025 USD cost basis. Reference: vendor budgetary quotes, BioCycle benchmarks, EPA AgSTAR data, AACE guidelines.
+
+Return JSON in this exact format:
+{
+  "projectType": "B",
+  "lineItems": [
+    {
+      "id": "capex-unique-id",
+      "equipmentId": "matching-equipment-id",
+      "process": "Process Area",
+      "equipmentType": "Equipment Type",
+      "description": "Description",
+      "quantity": 1,
+      "baseCostPerUnit": 500000,
+      "installationFactor": 2.8,
+      "installedCost": 1400000,
+      "contingencyPct": 25,
+      "contingencyCost": 350000,
+      "totalCost": 1750000,
+      "costBasis": "Vendor budgetary, 2025 USD",
+      "source": "vendor/AACE",
+      "notes": "Sizing and assumptions",
+      "isOverridden": false,
+      "isLocked": false
+    }
+  ],
+  "summary": {
+    "totalEquipmentCost": 5000000,
+    "totalInstalledCost": 14000000,
+    "totalContingency": 3500000,
+    "totalDirectCost": 17500000,
+    "engineeringPct": 18,
+    "engineeringCost": 3150000,
+    "totalProjectCost": 20650000,
+    "costPerUnit": { "value": 41300, "unit": "$/MMBtu/day", "basis": "RNG production capacity" }
+  },
+  "assumptions": [
+    { "parameter": "Cost Year", "value": "2025", "source": "ENR CCI" }
+  ],
+  "warnings": [],
+  "costYear": "2025",
+  "currency": "USD",
+  "methodology": "AACE Class 4/5 factored estimate"
+}
+
+RULES:
+- All costs in USD, no decimals for values > $1,000.
+- Equipment IDs must match mass balance equipment IDs where applicable.
+- CapEx IDs: "capex-" prefix, descriptive lowercase with hyphens.
+- Greenfield projects include site prep, buildings, and utility connections.
+- costPerUnit: $/MMBtu/day of RNG design capacity.
+
+Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
+  },
+
+  capex_type_c: {
+    key: "capex_type_c",
+    name: "CapEx Estimate — Type C (RNG Bolt-On)",
+    description: "Generates capital cost estimates for RNG bolt-on gas upgrading projects.",
+    isSystemPrompt: true,
+    availableVariables: ["{{EQUIPMENT_DATA}}", "{{UPIF_DATA}}"],
+    template: `You are a senior process engineer and cost estimator specializing in biogas upgrading and RNG injection systems. Generate a detailed capital expenditure (CapEx) estimate for an RNG bolt-on project that upgrades existing biogas to pipeline-quality RNG. This project does NOT include feedstock handling or digestion — only gas conditioning and upgrading.
+
+PROJECT & EQUIPMENT DATA:
+{{EQUIPMENT_DATA}}
+
+PROJECT CONTEXT:
+{{UPIF_DATA}}
+
+For each equipment item, estimate:
+1. Base cost per unit (equipment purchase price, FOB)
+2. Installation factor (typically 1.8-3.0x for gas upgrading equipment)
+3. Installed cost = base cost × quantity × installation factor
+4. Contingency percentage (15-25% for bolt-on)
+
+Include these cost categories for a bolt-on gas upgrading facility:
+- Biogas conditioning (moisture removal, chilling, filtration)
+- H₂S removal system (iron sponge, activated carbon, biological)
+- Siloxane removal (activated carbon beds)
+- Gas upgrading system (membrane, PSA, or amine scrubbing to ≥96% CH₄)
+- RNG compression and metering
+- Pipeline interconnect and custody transfer
+- Flare system (backup/safety)
+- Instrumentation and controls (gas analyzers, SCADA)
+- Electrical and power distribution
+- Piping and valves
+- Concrete pad and minor civil works
+
+For the summary:
+- Total equipment cost, total installed cost, total contingency
+- Total direct cost, engineering (12-15%), total project cost
+- Cost per unit: $/scfm of raw biogas capacity
+
+Use 2025 USD cost basis. Reference: vendor budgets, EPA LMOP data, gas upgrading supplier quotes.
+
+Return JSON in this exact format:
+{
+  "projectType": "C",
+  "lineItems": [
+    {
+      "id": "capex-unique-id",
+      "equipmentId": "matching-equipment-id",
+      "process": "Process Area",
+      "equipmentType": "Equipment Type",
+      "description": "Description",
+      "quantity": 1,
+      "baseCostPerUnit": 200000,
+      "installationFactor": 2.2,
+      "installedCost": 440000,
+      "contingencyPct": 20,
+      "contingencyCost": 88000,
+      "totalCost": 528000,
+      "costBasis": "Vendor budgetary, 2025 USD",
+      "source": "vendor/EPA LMOP",
+      "notes": "Notes",
+      "isOverridden": false,
+      "isLocked": false
+    }
+  ],
+  "summary": {
+    "totalEquipmentCost": 1500000,
+    "totalInstalledCost": 3300000,
+    "totalContingency": 660000,
+    "totalDirectCost": 3960000,
+    "engineeringPct": 13,
+    "engineeringCost": 514800,
+    "totalProjectCost": 4474800,
+    "costPerUnit": { "value": 8950, "unit": "$/scfm", "basis": "Raw biogas inlet capacity" }
+  },
+  "assumptions": [
+    { "parameter": "Cost Year", "value": "2025", "source": "ENR CCI" }
+  ],
+  "warnings": [],
+  "costYear": "2025",
+  "currency": "USD",
+  "methodology": "AACE Class 4 factored estimate"
+}
+
+RULES:
+- Type C does NOT include digesters, feedstock handling, or sludge processing.
+- All costs in USD, no decimals for values > $1,000.
+- Equipment IDs must match mass balance equipment IDs.
+- CapEx IDs: "capex-" prefix.
+- costPerUnit: $/scfm of raw biogas inlet capacity.
+
+Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
+  },
+
+  capex_type_d: {
+    key: "capex_type_d",
+    name: "CapEx Estimate — Type D (Hybrid WW + RNG)",
+    description: "Generates capital cost estimates for hybrid projects combining wastewater treatment with AD and RNG production.",
+    isSystemPrompt: true,
+    availableVariables: ["{{EQUIPMENT_DATA}}", "{{UPIF_DATA}}"],
+    template: `You are a senior process engineer and cost estimator specializing in combined wastewater treatment and renewable natural gas facilities. Generate a detailed capital expenditure (CapEx) estimate for a hybrid Type D project that combines wastewater treatment (Type A) with sludge digestion and optional co-digestion for RNG production.
+
+PROJECT & EQUIPMENT DATA:
+{{EQUIPMENT_DATA}}
+
+PROJECT CONTEXT:
+{{UPIF_DATA}}
+
+For each equipment item, estimate:
+1. Base cost per unit (equipment purchase price, FOB)
+2. Installation factor (typically 2.0-3.5x depending on equipment type)
+3. Installed cost = base cost × quantity × installation factor
+4. Contingency percentage (20-30% for hybrid projects)
+
+Include cost categories for BOTH trains:
+
+WASTEWATER TREATMENT TRAIN:
+- Screening and grit removal
+- Primary clarification
+- Biological treatment (activated sludge, MBR, etc.)
+- Secondary clarification
+- Disinfection
+- Sludge thickening
+
+AD / RNG TRAIN:
+- Sludge blending and feed preparation
+- Co-digestion receiving (if applicable)
+- Anaerobic digesters with heating and mixing
+- Biogas collection and conditioning
+- Gas upgrading to RNG quality
+- RNG compression and pipeline interconnect
+- Digestate dewatering and handling
+
+SHARED:
+- Pumps, piping, and conveyance
+- Instrumentation and controls
+- Electrical and power distribution
+- Buildings, site work, and utilities
+
+For the summary:
+- Total equipment cost, total installed cost, total contingency
+- Total direct cost, engineering (15-18%), total project cost
+- Cost per unit: $/gal/day for WW capacity AND $/MMBtu/day for RNG capacity
+
+Use 2025 USD cost basis.
+
+Return JSON in this exact format:
+{
+  "projectType": "D",
+  "lineItems": [
+    {
+      "id": "capex-unique-id",
+      "equipmentId": "matching-equipment-id",
+      "process": "Process Area",
+      "equipmentType": "Equipment Type",
+      "description": "Description",
+      "quantity": 1,
+      "baseCostPerUnit": 300000,
+      "installationFactor": 2.8,
+      "installedCost": 840000,
+      "contingencyPct": 25,
+      "contingencyCost": 210000,
+      "totalCost": 1050000,
+      "costBasis": "EPA cost curves + vendor, 2025 USD",
+      "source": "EPA/vendor",
+      "notes": "Notes",
+      "isOverridden": false,
+      "isLocked": false
+    }
+  ],
+  "summary": {
+    "totalEquipmentCost": 8000000,
+    "totalInstalledCost": 22400000,
+    "totalContingency": 5600000,
+    "totalDirectCost": 28000000,
+    "engineeringPct": 16,
+    "engineeringCost": 4480000,
+    "totalProjectCost": 32480000,
+    "costPerUnit": { "value": 32.48, "unit": "$/gal/day + $/MMBtu/day", "basis": "Combined WW + RNG capacity" }
+  },
+  "assumptions": [
+    { "parameter": "Cost Year", "value": "2025", "source": "ENR CCI" }
+  ],
+  "warnings": [],
+  "costYear": "2025",
+  "currency": "USD",
+  "methodology": "AACE Class 4/5 factored estimate"
+}
+
+RULES:
+- Include equipment for BOTH wastewater and AD/RNG trains.
+- Equipment IDs must match mass balance equipment IDs where applicable.
+- CapEx IDs: "capex-" prefix.
+- All costs in USD, no decimals for values > $1,000.
+- Hybrid projects are typically more expensive due to integration complexity.
+
+Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
+  },
 };
 
 // Ordered list of all prompt keys for iteration and reference throughout the system.
-export const PROMPT_KEYS: PromptKey[] = ["extraction", "classification", "extraction_type_a", "extraction_type_b", "extraction_type_c", "extraction_type_d", "clarify", "reviewer_chat", "pdf_summary", "mass_balance_type_a", "mass_balance_type_b", "mass_balance_type_c", "mass_balance_type_d"];
+export const PROMPT_KEYS: PromptKey[] = ["extraction", "classification", "extraction_type_a", "extraction_type_b", "extraction_type_c", "extraction_type_d", "clarify", "reviewer_chat", "pdf_summary", "mass_balance_type_a", "mass_balance_type_b", "mass_balance_type_c", "mass_balance_type_d", "capex_type_a", "capex_type_b", "capex_type_c", "capex_type_d"];

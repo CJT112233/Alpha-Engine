@@ -2885,6 +2885,233 @@ export async function registerRoutes(
   });
 
   // =========================================================================
+  // CapEx Estimates
+  // =========================================================================
+
+  app.get("/api/scenarios/:scenarioId/capex", async (req: Request, res: Response) => {
+    try {
+      const estimates = await storage.getCapexEstimatesByScenario(req.params.scenarioId);
+      res.json(estimates);
+    } catch (error) {
+      console.error("Error fetching capex estimates:", error);
+      res.status(500).json({ error: "Failed to fetch capex estimates" });
+    }
+  });
+
+  app.post("/api/scenarios/:scenarioId/capex/generate", async (req: Request, res: Response) => {
+    const startTime = Date.now();
+    let modelUsed = "unknown";
+    const scenarioId = req.params.scenarioId;
+
+    try {
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+
+      const mbRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const latestMB = mbRuns[0];
+      if (!latestMB) {
+        return res.status(400).json({ error: "No mass balance found. Generate and finalize a mass balance first." });
+      }
+      if (latestMB.status !== "finalized") {
+        return res.status(400).json({ error: "Mass balance must be finalized before generating CapEx. Please finalize the mass balance first." });
+      }
+
+      const mbResults = latestMB.results as import("@shared/schema").MassBalanceResults;
+      if (!mbResults || !mbResults.equipment || mbResults.equipment.length === 0) {
+        return res.status(400).json({ error: "Mass balance has no equipment list. Cannot generate CapEx." });
+      }
+
+      const upif = await storage.getUpifByScenario(scenarioId);
+      const upifData = upif ? {
+        projectType: upif.projectType,
+        location: upif.location,
+        feedstocks: upif.feedstocks,
+        outputRequirements: upif.outputRequirements,
+        constraints: upif.constraints,
+      } : {};
+
+      const projectType = mbResults.projectType || upifData.projectType || scenario.projectType || "A";
+      const preferredModel = (scenario.preferredModel || "gpt5") as import("./llm").LLMProvider;
+
+      const { generateCapexWithAI } = await import("./services/capexAI");
+      const aiResult = await generateCapexWithAI(upifData, mbResults, projectType, preferredModel, storage);
+      modelUsed = aiResult.providerLabel;
+
+      const existingEstimates = await storage.getCapexEstimatesByScenario(scenarioId);
+      const version = String(existingEstimates.length + 1);
+
+      const estimate = await storage.createCapexEstimate({
+        scenarioId,
+        massBalanceRunId: latestMB.id,
+        version,
+        status: "draft",
+        inputSnapshot: {
+          massBalanceId: latestMB.id,
+          massBalanceVersion: latestMB.version,
+          projectType,
+          equipmentCount: mbResults.equipment.length,
+          model: modelUsed,
+        },
+        results: aiResult.results,
+        overrides: {},
+        locks: {},
+      });
+
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "CapEx",
+        modelUsed,
+        projectId: scenario.projectId,
+        projectName: scenario.project?.name || null,
+        scenarioId,
+        scenarioName: scenario.name,
+        durationMs,
+        status: "success",
+      }).catch(e => console.error("Failed to log generation:", e));
+
+      res.json(estimate);
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "CapEx",
+        modelUsed,
+        durationMs,
+        status: "error",
+        errorMessage: (error as any)?.message || "Unknown error",
+      }).catch(e => console.error("Failed to log generation:", e));
+
+      console.error("Error generating capex:", error);
+      res.status(500).json({ error: `Failed to generate CapEx estimate: ${(error as Error).message}` });
+    }
+  });
+
+  app.post("/api/capex/:id/recompute", async (req: Request, res: Response) => {
+    const startTime = Date.now();
+    let modelUsed = "unknown";
+
+    try {
+      const existing = await storage.getCapexEstimate(req.params.id);
+      if (!existing) return res.status(404).json({ error: "CapEx estimate not found" });
+
+      const scenario = await storage.getScenario(existing.scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+
+      const mbRun = await storage.getMassBalanceRun(existing.massBalanceRunId);
+      if (!mbRun) return res.status(400).json({ error: "Associated mass balance run not found" });
+
+      const mbResults = mbRun.results as import("@shared/schema").MassBalanceResults;
+      const upif = await storage.getUpifByScenario(existing.scenarioId);
+      const upifData = upif ? {
+        projectType: upif.projectType,
+        location: upif.location,
+        feedstocks: upif.feedstocks,
+        outputRequirements: upif.outputRequirements,
+        constraints: upif.constraints,
+      } : {};
+
+      const projectType = mbResults?.projectType || upifData.projectType || scenario.projectType || "A";
+      const preferredModel = (scenario.preferredModel || "gpt5") as import("./llm").LLMProvider;
+
+      const { generateCapexWithAI } = await import("./services/capexAI");
+      const aiResult = await generateCapexWithAI(upifData, mbResults, projectType, preferredModel, storage);
+      modelUsed = aiResult.providerLabel;
+
+      const oldLocks = (existing.locks || {}) as Record<string, boolean>;
+      const oldOverrides = (existing.overrides || {}) as Record<string, any>;
+      const newResults = aiResult.results;
+
+      for (const [path, isLocked] of Object.entries(oldLocks)) {
+        if (!isLocked) continue;
+        const override = oldOverrides[path];
+        if (!override) continue;
+
+        const lineItemMatch = path.match(/^lineItems\.(.+?)\.(.+)$/);
+        if (lineItemMatch) {
+          const [, itemId, field] = lineItemMatch;
+          const lineItem = newResults.lineItems.find(li => li.id === itemId || li.equipmentId === itemId);
+          if (lineItem && field in lineItem) {
+            const numVal = parseFloat(override.value);
+            (lineItem as any)[field] = isNaN(numVal) ? override.value : numVal;
+          }
+        }
+
+        const summaryMatch = path.match(/^summary\.(.+)$/);
+        if (summaryMatch) {
+          const [, field] = summaryMatch;
+          if (field in newResults.summary) {
+            const numVal = parseFloat(override.value);
+            (newResults.summary as any)[field] = isNaN(numVal) ? override.value : numVal;
+          }
+        }
+      }
+
+      const updated = await storage.updateCapexEstimate(existing.id, {
+        results: newResults,
+        overrides: oldOverrides,
+        locks: oldLocks,
+        inputSnapshot: {
+          ...(existing.inputSnapshot as any || {}),
+          lastRecompute: new Date().toISOString(),
+          model: modelUsed,
+        },
+      });
+
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "CapEx",
+        modelUsed,
+        projectId: scenario.projectId,
+        projectName: scenario.project?.name || null,
+        scenarioId: existing.scenarioId,
+        scenarioName: scenario.name,
+        durationMs,
+        status: "success",
+      }).catch(e => console.error("Failed to log generation:", e));
+
+      res.json(updated);
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "CapEx",
+        modelUsed,
+        durationMs,
+        status: "error",
+        errorMessage: (error as any)?.message || "Unknown error",
+      }).catch(e => console.error("Failed to log generation:", e));
+
+      console.error("Error recomputing capex:", error);
+      res.status(500).json({ error: `Failed to recompute CapEx: ${(error as Error).message}` });
+    }
+  });
+
+  app.patch("/api/capex/:id", async (req: Request, res: Response) => {
+    try {
+      const existing = await storage.getCapexEstimate(req.params.id);
+      if (!existing) return res.status(404).json({ error: "CapEx estimate not found" });
+
+      const { results, overrides, locks, status } = req.body;
+      const updates: any = {};
+
+      if (results !== undefined) updates.results = results;
+      if (overrides !== undefined) updates.overrides = overrides;
+      if (locks !== undefined) updates.locks = locks;
+      if (status !== undefined) {
+        const validStatuses = ["draft", "reviewed", "finalized"];
+        if (!validStatuses.includes(status)) {
+          return res.status(400).json({ error: `Invalid status. Must be: ${validStatuses.join(", ")}` });
+        }
+        updates.status = status;
+      }
+
+      const updated = await storage.updateCapexEstimate(req.params.id, updates);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating capex:", error);
+      res.status(500).json({ error: "Failed to update CapEx estimate" });
+    }
+  });
+
+  // =========================================================================
   // Generation Stats
   // =========================================================================
 

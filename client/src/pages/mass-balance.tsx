@@ -44,6 +44,7 @@ import {
   Pencil,
   Check,
   X,
+  DollarSign,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData, ADProcessStage, MassBalanceOverrides } from "@shared/schema";
@@ -990,6 +991,13 @@ export default function MassBalancePage() {
             >
               New Version
             </Button>
+            {latestRun.status === "finalized" && (
+              <Link href={`/scenarios/${scenarioId}/capex`}>
+                <Button variant="default" data-testid="button-go-to-capex">
+                  <DollarSign className="h-4 w-4 mr-2" /> Generate CapEx
+                </Button>
+              </Link>
+            )}
             {Object.keys(overrides).length > 0 && (
               <Badge variant="secondary" data-testid="badge-overrides-count">
                 {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}

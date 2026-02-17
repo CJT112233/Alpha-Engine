@@ -20,7 +20,7 @@ Number formatting: Always display numbers with comma separators for thousands (e
 - **2-Step Project Type Classification**: AI classifies projects into types (Wastewater Treatment, RNG Greenfield, RNG Bolt-On, Hybrid) before extraction, using type-specific prompts for improved relevance.
 - **Reviewer Chat**: AI-powered chat allows users to suggest UPIF changes, with the system applying structured updates while respecting confirmed fields.
 - **Configurable Prompt Templates**: AI prompts are stored in the database and can be customized via a settings interface.
-- **Generation Stats**: Tracks timing and metadata for every AI-generated document (Classification, UPIF, Mass Balance). Stats page at `/stats` shows date, document type, model used, project/scenario, generation time, and success/error status. Data stored in `generation_logs` table.
+- **Generation Stats**: Tracks timing and metadata for every AI-generated document (Classification, UPIF, Mass Balance, CapEx). Stats page at `/stats` shows date, document type, model used, project/scenario, generation time, and success/error status. Data stored in `generation_logs` table.
 - **AI-Powered Mass Balance & Equipment List**: Mass balances are generated using one of the three LLMs (GPT-5, Claude Sonnet 4.6, Claude Opus 4.6) via type-specific prompts. The system uses the scenario's preferred model selection. Deterministic calculators serve as fallback if AI generation fails. Results stored in `mass_balance_runs` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/mass-balance`.
 - **Multi-Type Mass Balance**: Supports all four project types with both AI and deterministic calculators:
   - **Type A**: Wastewater treatment train with recycle streams (deterministic: server/services/massBalance.ts, AI prompt: mass_balance_type_a)
@@ -31,6 +31,13 @@ Number formatting: Always display numbers with comma separators for thousands (e
   - Route dispatcher in server/routes.ts attempts AI generation first, falls back to deterministic calculators on failure
   - Generation stats log records which model was used (or "deterministic (AI fallback)" if fallback occurred)
   - Frontend mass balance page renders project-type-specific views with AD process stages, summary cards, and equipment lists
+- **AI-Powered CapEx Estimation**: Capital cost estimates generated from confirmed mass balance equipment lists using AI with type-specific prompts. Gated on finalized mass balance. Results stored in `capex_estimates` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/capex`.
+  - Supports all four project types with type-specific prompts (capex_type_a through capex_type_d)
+  - AI generation service in server/services/capexAI.ts handles prompt building, LLM calls, and JSON validation
+  - Line items reference mass balance equipment IDs with base cost, installation factor, contingency, and total cost
+  - Summary includes total equipment cost, installed cost, contingency, engineering, and total project cost with cost-per-unit metrics
+  - Frontend renders editable/lockable line items with inline editing, override badges, and recompute with locked value preservation
+  - Navigation: "Generate CapEx" button appears on mass balance page when mass balance is finalized
 
 ### Technical Implementation
 - **Frontend**: React 18 with TypeScript, Wouter for routing, TanStack Query for state, shadcn/ui and Tailwind CSS for UI, React Hook Form with Zod for forms, Vite for building.
