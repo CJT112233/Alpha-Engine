@@ -15,6 +15,7 @@ CATALOG = os.environ.get("DATABRICKS_CATALOG", "burnham_rng")
 JSON_FIELDS_UPIF = [
     "feedstock_parameters", "feedstock_specs", "feedstocks",
     "output_specs", "constraints", "confirmed_fields",
+    "validation_warnings", "unmapped_specs", "performance_targets",
 ]
 JSON_FIELDS_SCENARIO = ["clarifying_questions", "clarifying_answers"]
 JSON_FIELDS_CHAT = ["applied_updates"]
@@ -520,6 +521,9 @@ class DatabricksStorage:
         location = data.get("location")
         constraints = _serialize_json(data.get("constraints"))
         confirmed_fields = _serialize_json(data.get("confirmed_fields"))
+        validation_warnings = _serialize_json(data.get("validation_warnings"))
+        unmapped_specs = _serialize_json(data.get("unmapped_specs"))
+        performance_targets = _serialize_json(data.get("performance_targets"))
         is_confirmed = data.get("is_confirmed", False)
 
         with get_connection() as conn:
@@ -528,14 +532,16 @@ class DatabricksStorage:
                     f"INSERT INTO {self._upif_records} "
                     "(id, scenario_id, feedstock_type, feedstock_volume, feedstock_unit, "
                     "feedstock_parameters, feedstock_specs, feedstocks, output_requirements, "
-                    "output_specs, location, constraints, confirmed_fields, is_confirmed, "
-                    "created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "output_specs, location, constraints, confirmed_fields, "
+                    "validation_warnings, unmapped_specs, performance_targets, "
+                    "is_confirmed, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         upif_id, scenario_id, feedstock_type, feedstock_volume, feedstock_unit,
                         feedstock_parameters, feedstock_specs, feedstocks, output_requirements,
-                        output_specs, location, constraints, confirmed_fields, is_confirmed,
-                        now, now,
+                        output_specs, location, constraints, confirmed_fields,
+                        validation_warnings, unmapped_specs, performance_targets,
+                        is_confirmed, now, now,
                     ),
                 )
                 cur.execute(

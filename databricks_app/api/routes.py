@@ -12,6 +12,13 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Response
 from pydantic import BaseModel
 
 from services.storage import storage
+from api.validation import (
+    validate_and_sanitize_output_specs,
+    validate_feedstocks_for_type_a,
+    apply_ts_tss_guardrail,
+    deduplicate_parameters,
+    validate_section_assignment,
+)
 from services.llm import (
     llm_complete,
     get_available_providers,
@@ -1108,6 +1115,28 @@ async def extract_parameters(scenario_id: str):
         if len(valid_params) < len(extracted_params):
             logger.info("AI extraction: Filtered out %d parameters with missing name/category", len(extracted_params) - len(valid_params))
 
+        valid_params = deduplicate_parameters(valid_params)
+        logger.info("Validation: After deduplication: %d parameters", len(valid_params))
+
+        section_result = validate_section_assignment(valid_params)
+        valid_params = section_result["valid"]
+        all_validation_warnings: list[dict] = list(section_result["warnings"])
+        all_unmapped_specs: dict[str, dict] = {}
+        all_performance_targets: list[dict] = []
+        if section_result["unmapped"]:
+            for p in section_result["unmapped"]:
+                k = f"section_{p.get('name', 'unknown')}".replace(" ", "_").lower()
+                all_unmapped_specs[k] = {
+                    "displayName": p.get("name", ""),
+                    "value": p.get("value", ""),
+                    "unit": p.get("unit", ""),
+                    "source": "ai_extraction",
+                    "confidence": p.get("confidence", "low"),
+                    "provenance": "Moved to unmapped due to section/unit mismatch",
+                    "group": "unmapped",
+                    "sortOrder": 999,
+                }
+
         for param in valid_params:
             storage.create_parameter(
                 scenario_id=scenario_id,
@@ -1173,6 +1202,22 @@ async def extract_parameters(scenario_id: str):
             feedstock_entries.append(entry)
 
         logger.info("Enrichment: Total feedstock entries: %d", len(feedstock_entries))
+
+        type_a_result = validate_feedstocks_for_type_a(feedstock_entries, valid_params, project_type)
+        feedstock_entries = type_a_result["feedstocks"]
+        all_validation_warnings.extend(type_a_result["warnings"])
+        if type_a_result["missingRequired"]:
+            for req in type_a_result["missingRequired"]:
+                all_validation_warnings.append({
+                    "field": req,
+                    "section": "Type A Requirements",
+                    "message": f"Missing required parameter: {req}",
+                    "severity": "error",
+                })
+
+        ts_tss_result = apply_ts_tss_guardrail(feedstock_entries, valid_params)
+        feedstock_entries = ts_tss_result["feedstocks"]
+        all_validation_warnings.extend(ts_tss_result["warnings"])
 
         location_params = [p for p in extracted_params if p.get("category") == "location"]
         location = ", ".join(p["value"] for p in location_params) if location_params else ""
@@ -1241,6 +1286,15 @@ async def extract_parameters(scenario_id: str):
             logger.info("Output enrichment (keyword fallback): Generated %d criteria for %s", len(enriched), effluent_profile)
 
         logger.info("Output enrichment: Total output profiles enriched: %d", len(output_specs))
+
+        if output_specs:
+            os_result = validate_and_sanitize_output_specs(output_specs, project_type)
+            output_specs = os_result["sanitized"]
+            all_unmapped_specs.update(os_result["unmapped"])
+            all_performance_targets.extend(os_result["performanceTargets"])
+            all_validation_warnings.extend(os_result["warnings"])
+            logger.info("Validation: Output specs sanitized — %d unmapped, %d targets, %d warnings",
+                        len(os_result["unmapped"]), len(os_result["performanceTargets"]), len(os_result["warnings"]))
 
         if rng_profile in output_specs:
             rng_specs = output_specs[rng_profile]
@@ -1347,7 +1401,12 @@ async def extract_parameters(scenario_id: str):
             "constraints": merged_constraints,
             "confirmed_fields": cf if cf else None,
             "is_confirmed": False,
+            "validation_warnings": all_validation_warnings if all_validation_warnings else None,
+            "unmapped_specs": all_unmapped_specs if all_unmapped_specs else None,
+            "performance_targets": all_performance_targets if all_performance_targets else None,
         }
+        logger.info("Validation summary: %d warnings, %d unmapped, %d performance targets",
+                     len(all_validation_warnings), len(all_unmapped_specs), len(all_performance_targets))
 
         if existing_upif:
             storage.update_upif(scenario_id, upif_data)

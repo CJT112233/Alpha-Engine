@@ -190,6 +190,32 @@ export const upifRecords = pgTable("upif_records", {
     displayName: string;
     sortOrder: number;
   }>>>(),
+  validationWarnings: jsonb("validation_warnings").$type<Array<{
+    field: string;
+    section: string;
+    message: string;
+    severity: "error" | "warning" | "info";
+    originalValue?: string;
+    originalUnit?: string;
+  }>>(),
+  unmappedSpecs: jsonb("unmapped_specs").$type<Record<string, {
+    value: string;
+    unit: string;
+    source: string;
+    confidence: string;
+    provenance: string;
+    group: string;
+    displayName: string;
+    sortOrder: number;
+  }>>(),
+  performanceTargets: jsonb("performance_targets").$type<Array<{
+    displayName: string;
+    value: string;
+    unit: string;
+    source: string;
+    provenance: string;
+    group: string;
+  }>>(),
   location: text("location"),
   constraints: text("constraints").array(),
   confirmedFields: jsonb("confirmed_fields").$type<ConfirmedFields>(),

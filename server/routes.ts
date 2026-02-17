@@ -25,6 +25,15 @@ import { feedstockGroupLabels, feedstockGroupOrder } from "@shared/feedstock-lib
 import { outputGroupLabels, outputGroupOrder } from "@shared/output-criteria-library";
 import { llmComplete, getAvailableProviders, providerLabels, isProviderAvailable, type LLMProvider } from "./llm";
 import { DEFAULT_PROMPTS, PROMPT_KEYS, type PromptKey } from "@shared/default-prompts";
+import {
+  validateAndSanitizeOutputSpecs,
+  validateFeedstocksForTypeA,
+  applyTsTssGuardrail,
+  deduplicateParameters,
+  validateSectionAssignment,
+  type ValidationWarning,
+  type PerformanceTarget,
+} from "./validation";
 
 // ---------------------------------------------------------------------------
 // Utility Functions
@@ -1215,17 +1224,30 @@ export async function registerRoutes(
       const extractionPromptKey = (projectType && extractScenario?.projectTypeConfirmed && typePromptMap[projectType]) || "extraction";
       console.log(`Extraction: projectType=${projectType}, confirmed=${extractScenario?.projectTypeConfirmed}, using prompt: ${extractionPromptKey}`);
 
-      const extractedParams = await extractParametersWithAI(allEntries, extractModel, clarifyingAnswers, extractionPromptKey);
+      const rawExtractedParams = await extractParametersWithAI(allEntries, extractModel, clarifyingAnswers, extractionPromptKey);
       
-      // Clear existing parameters
+      const basicValid = rawExtractedParams.filter(p => p.name && p.category);
+      if (basicValid.length < rawExtractedParams.length) {
+        console.log(`AI extraction: Filtered out ${rawExtractedParams.length - basicValid.length} parameters with missing name/category`);
+      }
+      
+      const deduped = deduplicateParameters(basicValid);
+      if (deduped.length < basicValid.length) {
+        console.log(`Validation: Deduplicated ${basicValid.length - deduped.length} duplicate parameters`);
+      }
+      
+      const { valid: sectionValid, unmapped: sectionUnmapped, warnings: sectionWarnings } = validateSectionAssignment(deduped);
+      if (sectionUnmapped.length > 0) {
+        console.log(`Validation: ${sectionUnmapped.length} parameters moved to unmapped due to section mismatch`);
+      }
+      
+      const extractedParams = sectionValid;
+      const allValidationWarnings: ValidationWarning[] = [...sectionWarnings];
+      const allUnmappedParams = sectionUnmapped;
+      
       await storage.deleteParametersByScenario(scenarioId);
       
-      // Create new parameters (filter out any with missing name/category)
-      const validParams = extractedParams.filter(p => p.name && p.category);
-      if (validParams.length < extractedParams.length) {
-        console.log(`AI extraction: Filtered out ${extractedParams.length - validParams.length} parameters with missing name/category`);
-      }
-      for (const param of validParams) {
+      for (const param of extractedParams) {
         await storage.createParameter({
           scenarioId,
           ...param,
@@ -1404,31 +1426,83 @@ export async function registerRoutes(
       
       console.log("Output enrichment: Total output profiles enriched:", Object.keys(outputSpecs).length);
       
-      // Post-extraction validation: catch cross-stream contamination
-      if (outputSpecs[rngProfile]) {
-        const rngSpecs = outputSpecs[rngProfile];
-        const solidsContaminants = Object.entries(rngSpecs).filter(([key, spec]) => {
-          const v = `${spec.displayName} ${spec.value} ${spec.unit}`.toLowerCase();
-          return v.includes("% total solids") || v.includes("% ts") || v.includes("dewatered") || 
-                 v.includes("land application") || v.includes("cake") || v.includes("mg/kg dry weight") ||
-                 v.includes("pathogen") || v.includes("vector attraction") || v.includes("part 503");
-        });
-        for (const [key] of solidsContaminants) {
-          console.log(`Validation: Removing cross-stream contaminant "${key}" from RNG profile`);
-          delete rngSpecs[key];
+      // ===== VALIDATION PIPELINE =====
+      
+      // V1: Validate & sanitize output specs (gas/liquid/solids section checks, removal efficiency separation)
+      const {
+        sanitized: sanitizedOutputSpecs,
+        unmapped: unmappedOutputSpecs,
+        performanceTargets,
+        warnings: outputWarnings,
+      } = validateAndSanitizeOutputSpecs(outputSpecs, projectType);
+      allValidationWarnings.push(...outputWarnings);
+      
+      if (Object.keys(unmappedOutputSpecs).length > 0) {
+        console.log(`Validation: ${Object.keys(unmappedOutputSpecs).length} output specs moved to unmapped`);
+      }
+      if (performanceTargets.length > 0) {
+        console.log(`Validation: ${performanceTargets.length} removal efficiencies separated to performance targets`);
+      }
+      
+      // V2: Type A feedstock validation (sludge guard + fail-fast on missing minimums)
+      const {
+        feedstocks: typeAValidatedFeedstocks,
+        warnings: typeAWarnings,
+        missingRequired,
+      } = validateFeedstocksForTypeA(feedstockEntries, extractedParams, projectType);
+      allValidationWarnings.push(...typeAWarnings);
+      
+      if (missingRequired.length > 0) {
+        console.log(`Validation: Type A missing required inputs: ${missingRequired.join(", ")}`);
+        for (const missing of missingRequired) {
+          allValidationWarnings.push({
+            field: missing,
+            section: "Type A Required Inputs",
+            message: `Missing required input for wastewater project: ${missing}`,
+            severity: "error",
+          });
         }
       }
       
-      if (outputSpecs[effluentProfile]) {
-        const effSpecs = outputSpecs[effluentProfile];
-        for (const [key, spec] of Object.entries(effSpecs)) {
-          if (spec.source === "user_provided" && spec.value.includes("%") && !spec.value.includes("mg/L")) {
-            const v = spec.value.toLowerCase();
-            if (v.includes("removal") || (v.startsWith(">") && v.includes("%"))) {
-              console.log(`Validation: Removal efficiency "${spec.displayName}: ${spec.value}" detected in effluent limits — removing`);
-              delete effSpecs[key];
-            }
-          }
+      // V3: TS/TSS guardrail
+      const { feedstocks: tsTssValidated, warnings: tsTssWarnings } = applyTsTssGuardrail(typeAValidatedFeedstocks, extractedParams);
+      allValidationWarnings.push(...tsTssWarnings);
+      
+      // Use validated feedstocks for the rest of the pipeline
+      const validatedFeedstockEntries = tsTssValidated;
+      
+      // Build unmapped specs from section-rejected params + output unmapped
+      const allUnmappedSpecs: Record<string, { value: string; unit: string; source: string; confidence: string; provenance: string; group: string; displayName: string; sortOrder: number }> = {};
+      for (const [key, spec] of Object.entries(unmappedOutputSpecs)) {
+        allUnmappedSpecs[key] = {
+          value: spec.value,
+          unit: spec.unit,
+          source: spec.source,
+          confidence: spec.confidence,
+          provenance: spec.provenance,
+          group: "unmapped",
+          displayName: spec.displayName,
+          sortOrder: spec.sortOrder,
+        };
+      }
+      for (const param of allUnmappedParams) {
+        const safeKey = `param_${param.name.replace(/\s+/g, "_").toLowerCase()}`;
+        allUnmappedSpecs[safeKey] = {
+          value: param.value || "",
+          unit: param.unit || "",
+          source: param.source || "predicted",
+          confidence: param.confidence || "low",
+          provenance: "Moved to unmapped by validation — section/unit mismatch",
+          group: "unmapped",
+          displayName: param.name,
+          sortOrder: 99,
+        };
+      }
+      
+      if (allValidationWarnings.length > 0) {
+        console.log(`Validation: Total warnings: ${allValidationWarnings.length}`);
+        for (const w of allValidationWarnings) {
+          console.log(`  [${w.severity}] ${w.section}: ${w.message}`);
         }
       }
       
@@ -1438,7 +1512,7 @@ export async function registerRoutes(
       const oldFeedstocks = (existingUpif?.feedstocks as FeedstockEntry[] | null) || [];
       const oldOutputSpecs = existingUpif?.outputSpecs as Record<string, Record<string, EnrichedOutputSpec>> | null;
 
-      const mergedFeedstocks = feedstockEntries.length > 0 ? feedstockEntries : [];
+      const mergedFeedstocks = validatedFeedstockEntries.length > 0 ? validatedFeedstockEntries : [];
       if (cf.feedstocks && existingUpif) {
         for (const [idxStr, confirmed] of Object.entries(cf.feedstocks)) {
           const idx = parseInt(idxStr);
@@ -1462,7 +1536,7 @@ export async function registerRoutes(
         }
       }
 
-      let mergedOutputSpecs: Record<string, Record<string, EnrichedOutputSpec>> | undefined = Object.keys(outputSpecs).length > 0 ? outputSpecs : undefined;
+      let mergedOutputSpecs: Record<string, Record<string, EnrichedOutputSpec>> | undefined = Object.keys(sanitizedOutputSpecs).length > 0 ? sanitizedOutputSpecs : undefined;
       if (cf.outputSpecs && oldOutputSpecs) {
         for (const [profile, specConfirms] of Object.entries(cf.outputSpecs)) {
           if (!oldOutputSpecs[profile]) continue;
@@ -1505,6 +1579,9 @@ export async function registerRoutes(
         feedstocks: mergedFeedstocks.length > 0 ? mergedFeedstocks : undefined,
         outputRequirements: mergedOutputReq,
         outputSpecs: mergedOutputSpecs,
+        validationWarnings: allValidationWarnings.length > 0 ? allValidationWarnings : undefined,
+        unmappedSpecs: Object.keys(allUnmappedSpecs).length > 0 ? allUnmappedSpecs : undefined,
+        performanceTargets: performanceTargets.length > 0 ? performanceTargets : undefined,
         location: mergedLocation,
         constraints: mergedConstraints,
         confirmedFields: Object.keys(cf).length > 0 ? cf : undefined,

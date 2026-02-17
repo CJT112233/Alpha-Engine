@@ -18,7 +18,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles, Download, Lock, Unlock, Plus, Minus, Trash2, HelpCircle, MessageCircle, SkipForward } from "lucide-react";
+import { FileText, CheckCircle2, AlertCircle, Edit2, Save, X, Beaker, MapPin, FileOutput, Settings2, Info, FlaskConical, Bug, Layers, Flame, Droplets, Leaf, Sparkles, Download, Lock, Unlock, Plus, Minus, Trash2, HelpCircle, MessageCircle, SkipForward, AlertTriangle, Target, CircleAlert } from "lucide-react";
 import type { UpifRecord, FeedstockEntry, ConfirmedFields } from "@shared/schema";
 import { feedstockGroupLabels, feedstockGroupOrder, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { outputGroupLabels, outputGroupOrder, type EnrichedOutputSpec } from "@shared/output-criteria-library";
@@ -725,6 +725,12 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
   const hasFeedstocks = feedstocks.length > 0;
   const outputSpecs = upif?.outputSpecs as Record<string, Record<string, EnrichedOutputSpec>> | null | undefined;
   const hasOutputSpecs = outputSpecs && Object.keys(outputSpecs).length > 0;
+  const validationWarnings = upif?.validationWarnings;
+  const hasValidationWarnings = validationWarnings && validationWarnings.length > 0;
+  const unmappedSpecs = upif?.unmappedSpecs;
+  const hasUnmappedSpecs = unmappedSpecs && Object.keys(unmappedSpecs).length > 0;
+  const performanceTargets = upif?.performanceTargets;
+  const hasPerformanceTargets = performanceTargets && performanceTargets.length > 0;
   const [outputSpecEdits, setOutputSpecEdits] = useState<Record<string, Record<string, string>>>({});
   const [outputNoteEdits, setOutputNoteEdits] = useState<Record<string, Record<string, string>>>({});
   const [deletedOutputSpecs, setDeletedOutputSpecs] = useState<Record<string, Set<string>>>({});
@@ -2078,6 +2084,129 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                       />
                     </div>
                   ))}
+                </CollapsibleSection>
+              </>
+            )}
+
+            {hasPerformanceTargets && (
+              <>
+                <Separator />
+                <CollapsibleSection
+                  icon={<Target className="h-4 w-4 text-primary" />}
+                  title="Performance Targets / Removal Efficiency"
+                  testId="toggle-section-performance-targets"
+                  rightContent={
+                    <Badge variant="secondary" className="text-xs bg-purple-500/10 text-purple-700 dark:text-purple-400">
+                      {performanceTargets!.length} targets
+                    </Badge>
+                  }
+                >
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/30">
+                          <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Parameter</th>
+                          <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[25%]">Target</th>
+                          <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[15%]">Source</th>
+                          <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {performanceTargets!.map((pt, idx) => (
+                          <tr key={idx} className="border-b last:border-b-0">
+                            <td className="p-2 font-medium">{pt.displayName}</td>
+                            <td className="p-2">{pt.value}{pt.unit ? ` ${pt.unit}` : ""}</td>
+                            <td className="p-2">
+                              <Badge variant="secondary" className="text-xs bg-purple-500/10 text-purple-700 dark:text-purple-400">
+                                {pt.source === "user_provided" ? "User" : "Est."}
+                              </Badge>
+                            </td>
+                            <td className="p-2 text-xs text-muted-foreground">{pt.provenance}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CollapsibleSection>
+              </>
+            )}
+
+            {hasUnmappedSpecs && (
+              <>
+                <Separator />
+                <CollapsibleSection
+                  icon={<CircleAlert className="h-4 w-4 text-amber-500" />}
+                  title="Unmapped / Needs Review"
+                  testId="toggle-section-unmapped"
+                  rightContent={
+                    <Badge variant="secondary" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                      {Object.keys(unmappedSpecs!).length} items
+                    </Badge>
+                  }
+                >
+                  <div className="border rounded-md border-amber-500/30 overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-amber-500/5">
+                          <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[30%]">Parameter</th>
+                          <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[25%]">Value</th>
+                          <th className="text-left p-2 font-medium text-xs text-muted-foreground w-[45%]">Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(unmappedSpecs!).map(([key, spec]) => (
+                          <tr key={key} className="border-b last:border-b-0">
+                            <td className="p-2 font-medium">{spec.displayName}</td>
+                            <td className="p-2">{spec.value}{spec.unit ? ` ${spec.unit}` : ""}</td>
+                            <td className="p-2 text-xs text-muted-foreground">{spec.provenance}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CollapsibleSection>
+              </>
+            )}
+
+            {hasValidationWarnings && (
+              <>
+                <Separator />
+                <CollapsibleSection
+                  icon={<AlertTriangle className="h-4 w-4 text-amber-500" />}
+                  title="Validation Notes"
+                  testId="toggle-section-validation-warnings"
+                  rightContent={
+                    <div className="flex items-center gap-1">
+                      {validationWarnings!.filter(w => w.severity === "error").length > 0 && (
+                        <Badge variant="destructive" className="text-xs">
+                          {validationWarnings!.filter(w => w.severity === "error").length} errors
+                        </Badge>
+                      )}
+                      {validationWarnings!.filter(w => w.severity === "warning").length > 0 && (
+                        <Badge variant="secondary" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                          {validationWarnings!.filter(w => w.severity === "warning").length} warnings
+                        </Badge>
+                      )}
+                    </div>
+                  }
+                >
+                  <div className="space-y-1">
+                    {validationWarnings!.map((w, idx) => (
+                      <div key={idx} className={`flex items-start gap-2 p-2 rounded-md text-sm ${
+                        w.severity === "error" ? "bg-red-500/5 text-red-700 dark:text-red-400" :
+                        w.severity === "warning" ? "bg-amber-500/5 text-amber-700 dark:text-amber-400" :
+                        "bg-blue-500/5 text-blue-700 dark:text-blue-400"
+                      }`} data-testid={`validation-warning-${idx}`}>
+                        {w.severity === "error" ? <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" /> :
+                         w.severity === "warning" ? <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> :
+                         <Info className="h-4 w-4 shrink-0 mt-0.5" />}
+                        <div>
+                          <span className="font-medium">{w.section}:</span>{" "}
+                          <span>{w.message}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </CollapsibleSection>
               </>
             )}

@@ -83,13 +83,16 @@ CREATE TABLE IF NOT EXISTS burnham_rng.project_intakes.upif_records (
   location STRING,
   constraints STRING,
   confirmed_fields STRING,
+  validation_warnings STRING,
+  unmapped_specs STRING,
+  performance_targets STRING,
   is_confirmed BOOLEAN NOT NULL,
   confirmed_at TIMESTAMP,
   created_at TIMESTAMP NOT NULL,
   updated_at TIMESTAMP NOT NULL
 )
 USING DELTA
-COMMENT 'Consolidated UPIF with multi-feedstock support. JSON fields stored as STRING.';
+COMMENT 'Consolidated UPIF with multi-feedstock support. JSON fields stored as STRING. validation_warnings/unmapped_specs/performance_targets hold guardrail results.';
 
 CREATE TABLE IF NOT EXISTS burnham_rng.project_intakes.upif_chat_messages (
   id STRING NOT NULL,

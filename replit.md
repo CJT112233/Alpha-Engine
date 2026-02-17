@@ -57,6 +57,14 @@ Number formatting: Always display numbers with comma separators for thousands (e
     - Re-generation (POST /extract) preserves confirmed values and only updates unconfirmed fields
     - ConfirmToggle component (lock/unlock icon) in read-only view toggles confirmation per item
     - Confirmation state is persisted immediately via PATCH /api/scenarios/:id/upif
+- **Validation Guardrails**: Between AI extraction and UPIF save, a multi-step validation pipeline runs:
+  - `validationWarnings` JSONB stores errors/warnings/info from validation steps
+  - `unmappedSpecs` JSONB stores parameters that failed validation (wrong section/unit mismatches)
+  - `performanceTargets` JSONB stores removal efficiencies separated from concentration limits
+  - Pipeline order: deduplication → section assignment validation → Type A feedstock checks → TS/TSS guardrail → output specs sanitization (RNG gas-only units, removal efficiency separation)
+  - Server-side logic in `server/validation.ts` (Node.js) and `databricks_app/api/validation.py` (Python)
+  - UPIF Review UI renders 3 collapsible sections: Validation Notes, Unmapped/Needs Review, Performance Targets
+  - Re-generation preserves confirmed fields while re-running validation on unconfirmed data
 - **UPIF Chat Messages**: Reviewer chat for suggesting UPIF changes via GPT-5
   - `upif_chat_messages` table stores chat history (role, content, appliedUpdates jsonb)
   - POST /api/scenarios/:id/upif/chat sends message to GPT-5 with current UPIF state and locked fields list
