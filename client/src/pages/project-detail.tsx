@@ -89,9 +89,10 @@ export default function ProjectDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios/recent"] });
       toast({
         title: "Project deleted",
-        description: "The project has been deleted successfully.",
+        description: "The project and all its scenarios have been deleted.",
       });
       setLocation("/");
     },
