@@ -21,7 +21,7 @@ Number formatting: Always display numbers with comma separators for thousands (e
 - **Reviewer Chat**: AI-powered chat allows users to suggest UPIF changes, with the system applying structured updates while respecting confirmed fields.
 - **Configurable Prompt Templates**: AI prompts are stored in the database and can be customized via a settings interface.
 - **Generation Stats**: Tracks timing and metadata for every AI-generated document (Classification, UPIF, Mass Balance). Stats page at `/stats` shows date, document type, model used, project/scenario, generation time, and success/error status. Data stored in `generation_logs` table.
-- **AI-Powered Mass Balance & Equipment List**: Mass balances are generated using one of the three LLMs (GPT-5, Claude Sonnet 4.5, Claude Opus 4.6) via type-specific prompts. The system uses the scenario's preferred model selection. Deterministic calculators serve as fallback if AI generation fails. Results stored in `mass_balance_runs` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/mass-balance`.
+- **AI-Powered Mass Balance & Equipment List**: Mass balances are generated using one of the three LLMs (GPT-5, Claude Sonnet 4.6, Claude Opus 4.6) via type-specific prompts. The system uses the scenario's preferred model selection. Deterministic calculators serve as fallback if AI generation fails. Results stored in `mass_balance_runs` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/mass-balance`.
 - **Multi-Type Mass Balance**: Supports all four project types with both AI and deterministic calculators:
   - **Type A**: Wastewater treatment train with recycle streams (deterministic: server/services/massBalance.ts, AI prompt: mass_balance_type_a)
   - **Type B**: RNG Greenfield — full AD pipeline: feedstock receiving → pretreatment → digestion → biogas conditioning → gas upgrading → RNG (deterministic: server/services/massBalanceTypeB.ts, AI prompt: mass_balance_type_b)
@@ -53,7 +53,7 @@ The project is migrating to a Databricks environment with a FastAPI (Python) bac
 - Lucide React (icons)
 
 ### AI/ML Integration
-- **Multi-LLM Support**: OpenAI (GPT-5), Anthropic (Claude Sonnet 4.5, Claude Opus 4.6).
+- **Multi-LLM Support**: OpenAI (GPT-5), Anthropic (Claude Sonnet 4.6, Claude Opus 4.6).
 - **Feedstock Library**: Built-in knowledge base for common AD feedstocks (e.g., Potato Waste, Dairy Manure).
 - **Output Criteria Library**: Built-in knowledge base for output acceptance criteria (e.g., RNG Pipeline Injection, Solid Digestate Land Application, Liquid Effluent to WWTP).
 

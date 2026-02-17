@@ -3,7 +3,7 @@
  * 
  * This module provides a unified interface for interacting with multiple LLM providers:
  * - GPT-5 (via OpenAI API)
- * - Claude Sonnet 4.5 (via Anthropic API - with Replit integration support)
+ * - Claude Sonnet 4.6 (via Anthropic API - with Replit integration support)
  * - Claude Opus 4.6 (via Anthropic direct API only)
  * 
  * The abstraction handles provider availability detection, automatic fallback selection,
@@ -16,7 +16,7 @@ import Anthropic from "@anthropic-ai/sdk";
 /**
  * LLMProvider: Union type representing all supported LLM providers.
  * - "gpt5": OpenAI's GPT-5 model
- * - "claude": Anthropic Claude Sonnet 4.5
+ * - "claude": Anthropic Claude Sonnet 4.6
  * - "claude-opus": Anthropic Claude Opus 4.6
  */
 export type LLMProvider = "gpt5" | "claude" | "claude-opus";
@@ -112,7 +112,7 @@ const anthropic = directAnthropic || integrationAnthropic || new Anthropic({ api
  * This constraint exists because the integration only exposes a curated subset of available models.
  */
 const integrationSupportedModels = new Set([
-  "claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-1",
+  "claude-opus-4-5", "claude-sonnet-4-5", "claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-1",
 ]);
 
 /**
@@ -120,7 +120,7 @@ const integrationSupportedModels = new Set([
  * Returns true if either:
  * - Direct API key is configured, OR
  * - Both integration API key AND baseURL are configured
- * This ensures Claude Sonnet (which supports both paths) can be used.
+ * This ensures Claude Sonnet 4.6 (which supports both paths) can be used.
  */
 function isAnthropicAvailable(): boolean {
   return !!process.env.ANTHROPIC_API_KEY || (!!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY && !!process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL);
@@ -170,7 +170,7 @@ export function getAvailableProviders(): LLMProvider[] {
 
 export const providerLabels: Record<LLMProvider, string> = {
   gpt5: "GPT-5",
-  claude: "Claude Sonnet 4.5",
+  claude: "Claude Sonnet 4.6",
   "claude-opus": "Claude Opus 4.6",
 };
 
@@ -178,14 +178,14 @@ export const providerLabels: Record<LLMProvider, string> = {
  * anthropicModelIds: Maps LLMProvider names to specific Claude model IDs for API calls.
  * 
  * Note on modelId fallback: In completeWithClaude(), if a provider lookup fails,
- * the modelId defaults to "claude-sonnet-4-5" (line 305). This is safe because:
+ * the modelId defaults to "claude-sonnet-4-6". This is safe because:
  * - Sonnet is the mid-tier, most widely supported model
  * - It's available via both direct API and integration proxy
  * - It balances performance with cost (better than Haiku, cheaper than Opus)
  * - The fallback gracefully degrades service availability
  */
 const anthropicModelIds: Record<string, string> = {
-  claude: "claude-sonnet-4-5",
+  claude: "claude-sonnet-4-6",
   "claude-opus": "claude-opus-4-6",
 };
 
@@ -309,7 +309,7 @@ async function completeWithClaude(
   }
 
   // Map provider to Claude model ID - defaults to Sonnet if lookup fails
-  const modelId = anthropicModelIds[provider] || "claude-sonnet-4-5";
+  const modelId = anthropicModelIds[provider] || "claude-sonnet-4-6";
 
   // Select appropriate Anthropic client based on model support and availability
   let client: Anthropic;
