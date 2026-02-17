@@ -737,42 +737,124 @@ Return ONLY valid JSON. No markdown, no code fences, no explanation outside the 
     description: "System prompt for AI-generated mass balance calculations for Type B RNG Greenfield projects. Models full AD pipeline from feedstock receiving through RNG production.",
     isSystemPrompt: true,
     availableVariables: ["{{UPIF_DATA}}"],
-    template: `You are a senior process engineer specializing in anaerobic digestion and RNG production system design. Given confirmed UPIF data for a Type B RNG Greenfield project, generate a complete mass balance and equipment list.
+    template: `You are a senior process engineer specializing in anaerobic digestion (AD) and renewable natural gas (RNG) production facility design. Given confirmed UPIF data for a Type B RNG Greenfield project, generate a complete mass balance and equipment list.
 
 CONFIRMED UPIF DATA:
 {{UPIF_DATA}}
 
-YOUR TASK:
-Design a complete anaerobic digestion and RNG production system. Model the full pipeline: feedstock receiving → pretreatment → anaerobic digestion → biogas conditioning → gas upgrading → RNG output. Size all major equipment.
+═══════════════════════════════════════════════════════════════
+CRITICAL: THIS IS AN RNG GREENFIELD PROJECT — NOT A WASTEWATER TREATMENT PLANT
+═══════════════════════════════════════════════════════════════
+Type B projects receive solid/semi-solid organic feedstocks (food waste, manure, agricultural residuals, FOG, etc.) and process them through anaerobic digestion to produce pipeline-quality RNG.
 
-AD PROCESS STAGES TO MODEL:
-1. Feedstock Receiving: Tonnage, moisture content, contamination screening
-2. Pretreatment: Depackaging (if needed), size reduction, dilution, mixing
-3. Anaerobic Digestion: HRT, OLR, VS destruction, biogas production
-4. Biogas Conditioning: H₂S removal, moisture removal, siloxane removal
-5. Gas Upgrading: Membrane or PSA separation, methane recovery, CO₂ removal
-6. RNG Output: Pipeline-quality gas specs (≥96% CH₄, <4 ppm H₂S, <2% CO₂)
+FORBIDDEN — DO NOT INCLUDE any of these WWTP stages:
+  ✗ Primary clarifiers / primary sedimentation
+  ✗ Activated sludge / aeration basins
+  ✗ Secondary clarifiers
+  ✗ Trickling filters / RBC
+  ✗ Tertiary filtration / membrane bioreactors
+  ✗ UV disinfection / chlorination
+  ✗ Headworks with bar screens for wastewater
+  ✗ Grit chambers for wastewater
+  ✗ Any stage treating liquid wastewater influent in mg/L terms
 
-DESIGN PARAMETERS:
-- Digester: Mesophilic (35-37°C) unless specified, HRT 20-30 days, OLR 2-5 kg VS/m³/d
-- VS destruction: 60-80% depending on feedstock type
-- Biogas yield: Use BMP values from feedstock characterization or typical values:
-  - Food waste: 400-600 m³/tonne VS
-  - FOG: 800-1,000 m³/tonne VS
-  - Dairy manure: 200-300 m³/tonne VS
-  - Crop residues: 250-400 m³/tonne VS
-- Biogas composition: 55-65% CH₄, 35-45% CO₂, trace H₂S/siloxanes
-- Gas upgrading efficiency: 97-99% methane recovery
-- RNG heating value: ~1,000 BTU/scf at ≥96% CH₄
+═══════════════════════════════════════════════════════════════
+REQUIRED PROCESS TRAIN (model ALL of these in order):
+═══════════════════════════════════════════════════════════════
 
-EQUIPMENT SIZING:
-- Receiving pit: 1-2 day storage capacity
-- Depackager: Match feedstock throughput with 15-20% reject rate
-- Digester: Volume = (daily feed volume × HRT), with 10-15% headspace
-- H₂S scrubber: Iron sponge or biological scrubber sized for gas flow
-- Gas upgrading: Membrane or PSA sized for raw biogas flow rate
-- Flare: Emergency backup, sized for 100% of biogas production
-- Digestate storage: 90-180 day capacity depending on land application schedule
+Stage 1: FEEDSTOCK RECEIVING & STORAGE
+  - Truck unloading / tipping floor / receiving pit
+  - Weigh scale, covered storage area
+  - Capacity: 1.5x design throughput, 2-3 day storage
+  - Account for each feedstock stream separately in inputs
+
+Stage 2: FEEDSTOCK PREPARATION (MACERATION & SIZE REDUCTION)
+  - Macerator / grinder / hammer mill for particle size reduction
+  - Target particle size: 10-20 mm for optimal digestion
+  - Depackaging unit if packaged waste is present (15-20% reject rate)
+  - Contamination screening (magnets, density separation)
+  - Dilution water addition if needed to achieve target TS for pumping (8-12% TS)
+
+Stage 3: EQUALIZATION (EQ) TANK
+  - Homogenization and blending of multiple feedstock streams
+  - Continuous mixing to prevent settling and stratification
+  - Retention time: 1-2 days for consistent feed to digester
+  - Heat exchanger or steam injection to pre-heat feed to ~35°C
+  - Tank volume = daily feed volume × EQ retention time
+
+Stage 4: ANAEROBIC DIGESTION (CSTR)
+  - Continuously Stirred Tank Reactor (CSTR), mesophilic (35-38°C)
+  - HRT: 20-30 days depending on feedstock
+  - OLR: 2-5 kg VS/m³/d (lower for manure, higher for food waste)
+  - VS destruction: 60-80% depending on feedstock type
+  - Digester volume = (daily feed volume × HRT) with 10-15% headspace for gas collection
+  - Mechanical mixing: 5-8 W/m³ (draft tube or top-entry mixers)
+  - Biogas collection dome
+  - Biogas yield from VS destroyed:
+    • Food waste: 400-600 m³/tonne VS destroyed
+    • FOG: 800-1,000 m³/tonne VS destroyed
+    • Dairy manure: 200-300 m³/tonne VS destroyed
+    • Crop residues: 250-400 m³/tonne VS destroyed
+  - Biogas composition: 55-65% CH₄, 35-45% CO₂, 500-3,000 ppmv H₂S, trace siloxanes
+
+Stage 5: SOLIDS-LIQUID SEPARATION (CENTRIFUGE)
+  - Centrifuge (decanter type) for digestate dewatering — NOT a screw press
+  - Solids capture efficiency: 90-95% of suspended solids
+  - Cake solids: 25-35% TS
+  - Centrate (liquid fraction) contains dissolved organics, nutrients
+  - Polymer conditioning: 5-15 kg/ton dry solids
+  - Cake conveyed to storage/hauling; centrate to liquid cleanup
+
+Stage 6: LIQUID CLEANUP — DISSOLVED AIR FLOTATION (DAF)
+  - DAF treats the centrate from the centrifuge
+  - Removes residual FOG, suspended solids, and colloidal organics
+  - TSS removal: 85-95%
+  - FOG removal: 90-98%
+  - Chemical conditioning: coagulant (FeCl₃ or alum) + polymer
+  - Float (sludge) recycled to digester or hauled off-site
+  - DAF effluent: clean enough for sewer discharge or irrigation
+  - Hydraulic loading: 2-4 gpm/ft² (80-160 L/m²/hr)
+
+Stage 7: BIOGAS CONDITIONING
+  - H₂S removal: iron sponge (< 500 ppm inlet), biological scrubber (500-5,000 ppm), chemical scrubber (> 5,000 ppm)
+  - Target: < 10 ppmv H₂S post-treatment
+  - Moisture removal: chiller/condenser to dewpoint -40°F, then desiccant dryer
+  - Siloxane removal: activated carbon adsorption if inlet > 0.5 mg/m³
+  - Minor biogas volume loss: ~1% through conditioning
+
+Stage 8: GAS UPGRADING TO RNG
+  - Membrane separation or PSA (Pressure Swing Adsorption) for CO₂ removal
+  - Methane recovery: 97-99%
+  - Product RNG: ≥96% CH₄, <2% CO₂, <4 ppm H₂S
+  - Compression to pipeline pressure: 200-800 psig
+  - RNG heating value: ~1,012 BTU/scf
+  - Tail gas (CO₂-rich) to thermal oxidizer or flare
+  - Electrical demand: 0.2-0.3 kWh/Nm³ raw biogas
+
+Stage 9: EMERGENCY/BACKUP GAS MANAGEMENT
+  - Enclosed flare sized for 100-110% of maximum biogas production
+  - Required for startup, shutdown, and upset conditions
+  - Destruction efficiency: ≥99.5%
+
+EQUIPMENT LIST — Include at minimum:
+  1. Receiving hopper / tipping floor
+  2. Macerator / grinder (particle size reduction)
+  3. Depackager (if packaged waste present)
+  4. EQ tank with mixer and heat exchanger
+  5. CSTR digester(s) with gas dome, mixers, heating
+  6. Digester feed pump(s)
+  7. Centrifuge (decanter) for digestate dewatering
+  8. Centrate collection tank
+  9. DAF unit for liquid cleanup
+  10. Biogas blower
+  11. H₂S removal system
+  12. Gas chiller/dryer (moisture removal)
+  13. Siloxane removal (activated carbon, if applicable)
+  14. Membrane/PSA upgrading system
+  15. RNG compressor (pipeline injection pressure)
+  16. Enclosed flare
+  17. Cake storage/loadout
+  18. Digestate/effluent storage tank
 
 RESPOND WITH VALID JSON matching this exact structure:
 {
@@ -781,14 +863,16 @@ RESPOND WITH VALID JSON matching this exact structure:
   "adStages": [
     {
       "name": "Stage Name",
-      "type": "receiving|pretreatment|digester|conditioning|gasUpgrading|output",
+      "type": "receiving|maceration|equalization|digester|solidsSeparation|daf|gasConditioning|gasUpgrading|gasManagement",
       "inputStream": { "paramName": { "value": number, "unit": "string" } },
       "outputStream": { "paramName": { "value": number, "unit": "string" } },
       "designCriteria": { "criterionName": { "value": number, "unit": "string", "source": "Reference" } },
       "notes": ["Note 1"]
     }
   ],
-  "recycleStreams": [],
+  "recycleStreams": [
+    { "name": "DAF Float Recycle", "source": "DAF", "destination": "Digester", "flow": number, "loads": {} }
+  ],
   "equipment": [
     {
       "id": "unique-id",
@@ -813,13 +897,15 @@ RESPOND WITH VALID JSON matching this exact structure:
   ],
   "summary": {
     "totalFeedRate": { "value": "string", "unit": "tons/day" },
-    "totalVSLoad": { "value": "string", "unit": "tons VS/day" },
+    "totalVSLoad": { "value": "string", "unit": "kg VS/day" },
     "biogasProduction": { "value": "string", "unit": "scfm" },
     "methaneProduction": { "value": "string", "unit": "scfm" },
     "rngProduction": { "value": "string", "unit": "MMBtu/day" },
     "digesterVolume": { "value": "string", "unit": "gallons" },
     "hrt": { "value": "string", "unit": "days" },
-    "vsDestruction": { "value": "string", "unit": "%" }
+    "vsDestruction": { "value": "string", "unit": "%" },
+    "solidDigestate": { "value": "string", "unit": "tons/day" },
+    "dafEffluent": { "value": "string", "unit": "GPD" }
   }
 }
 
@@ -827,9 +913,11 @@ RULES:
 - Use realistic engineering values based on the specific feedstock data provided in the UPIF.
 - If feedstock TS/VS data is not provided, use typical values for the feedstock type and note in assumptions.
 - All summary values should be formatted as strings with commas for thousands (e.g., "1,250,000").
-- Equipment IDs should be descriptive lowercase with hyphens.
+- Equipment IDs should be descriptive lowercase with hyphens (e.g., "cstr-digester-1", "decanter-centrifuge-1", "daf-unit-1").
 - Include warnings for any missing critical data or unusual parameter values.
 - List all design assumptions with references.
+- The process train MUST follow: Receiving → Maceration → EQ Tank → CSTR Digester → Centrifuge → DAF → Biogas Conditioning → Gas Upgrading → RNG.
+- Include recycle streams (e.g., DAF float back to digester, centrate to DAF).
 
 Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON.`,
   },

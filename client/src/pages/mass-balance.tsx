@@ -30,6 +30,11 @@ import {
   ChevronUp,
   Flame,
   Zap,
+  Truck,
+  Scissors,
+  Beaker,
+  Filter,
+  Wind,
 } from "lucide-react";
 import { useState } from "react";
 import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData, ADProcessStage } from "@shared/schema";
@@ -122,6 +127,12 @@ function ADStagesTable({ adStages }: { adStages: ADProcessStage[] }) {
         const isExpanded = expandedIndex === idx;
         const stageIcon = stage.type === "digester" ? <Flame className="h-4 w-4" /> :
                           stage.type === "gasUpgrading" ? <Zap className="h-4 w-4" /> :
+                          stage.type === "receiving" ? <Truck className="h-4 w-4" /> :
+                          stage.type === "maceration" ? <Scissors className="h-4 w-4" /> :
+                          stage.type === "equalization" ? <Beaker className="h-4 w-4" /> :
+                          stage.type === "solidsSeparation" ? <Filter className="h-4 w-4" /> :
+                          stage.type === "daf" ? <Droplets className="h-4 w-4" /> :
+                          stage.type === "gasConditioning" ? <Wind className="h-4 w-4" /> :
                           <Factory className="h-4 w-4" />;
         const notes = stage.notes || [];
         const inputStream = stage.inputStream || {};
