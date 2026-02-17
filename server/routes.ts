@@ -1361,6 +1361,8 @@ export async function registerRoutes(
       const allInputText = allEntries.map(e => e.content).join(" ").toLowerCase();
       const searchText = `${allOutputText} ${allInputText}`;
       
+      const isTypeA = projectType === "A";
+      
       const rngKeywords = ["rng", "pipeline", "biomethane", "renewable natural gas", "upgraded biogas", "pipeline injection"];
       const digestateKeywords = ["digestate", "land application", "biosolids", "compost", "soil amendment", "land apply"];
       const effluentKeywords = isTypeA
@@ -1370,8 +1372,6 @@ export async function registerRoutes(
       const rngProfile = "Renewable Natural Gas (RNG) - Pipeline Injection";
       const digestateProfile = "Solid Digestate - Land Application";
       const effluentProfile = "Liquid Effluent - Discharge to WWTP";
-      
-      const isTypeA = projectType === "A";
       
       if (!outputSpecs[rngProfile] && rngKeywords.some(k => searchText.includes(k))) {
         const enriched = enrichOutputSpecs(rngProfile, userOutputCriteria, location || undefined);
