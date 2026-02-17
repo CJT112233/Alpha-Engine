@@ -2563,6 +2563,7 @@ export async function registerRoutes(
 
       const projectType = (scenario as any).projectType || upif.projectType || "";
       const preferredModel = (scenario.preferredModel || "gpt5") as LLMProvider;
+      console.log(`Mass Balance Generate: scenarioId=${scenarioId}, projectType="${projectType}", preferredModel=${preferredModel}`);
 
       let results;
       try {
@@ -2575,14 +2576,14 @@ export async function registerRoutes(
         console.warn(`Mass Balance: AI generation failed, falling back to deterministic calculator:`, (aiError as Error).message);
         modelUsed = "deterministic (AI fallback)";
 
-        const ptLower = projectType.toLowerCase();
-        if (ptLower.includes("type b") || ptLower.includes("rng greenfield") || ptLower.includes("greenfield")) {
+        const ptLower = projectType.toLowerCase().trim();
+        if (ptLower === "b" || ptLower.includes("type b") || ptLower.includes("rng greenfield") || ptLower.includes("greenfield")) {
           const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
           results = calculateMassBalanceTypeB(upif);
-        } else if (ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
+        } else if (ptLower === "c" || ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
           const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
           results = calculateMassBalanceTypeC(upif);
-        } else if (ptLower.includes("type d") || ptLower.includes("hybrid")) {
+        } else if (ptLower === "d" || ptLower.includes("type d") || ptLower.includes("hybrid")) {
           const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
           results = calculateMassBalanceTypeD(upif);
         } else {
@@ -2750,14 +2751,14 @@ export async function registerRoutes(
         console.log(`Mass Balance Recompute: AI succeeded using ${aiResult.providerLabel}`);
       } catch (aiError) {
         console.warn(`Mass Balance Recompute: AI failed, falling back to deterministic:`, (aiError as Error).message);
-        const ptLower = projectType.toLowerCase();
-        if (ptLower.includes("type b") || ptLower.includes("greenfield")) {
+        const ptLower = projectType.toLowerCase().trim();
+        if (ptLower === "b" || ptLower.includes("type b") || ptLower.includes("greenfield")) {
           const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
           results = calculateMassBalanceTypeB(upif);
-        } else if (ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
+        } else if (ptLower === "c" || ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
           const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
           results = calculateMassBalanceTypeC(upif);
-        } else if (ptLower.includes("type d") || ptLower.includes("hybrid")) {
+        } else if (ptLower === "d" || ptLower.includes("type d") || ptLower.includes("hybrid")) {
           const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
           results = calculateMassBalanceTypeD(upif);
         } else {
