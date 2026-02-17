@@ -843,15 +843,54 @@ function detectFlowInSpecs(
   return { hasAvgFlow, hasPeakFlow };
 }
 
+interface IndustryDefaults {
+  fog: string;
+  ph: string;
+  peakFlowMultiplier: number;
+}
+
+const INDUSTRY_DEFAULTS: Record<string, IndustryDefaults> = {
+  dairy:    { fog: "200-800",  ph: "4.0-7.0",  peakFlowMultiplier: 2.0 },
+  meat:     { fog: "100-500",  ph: "6.0-7.5",  peakFlowMultiplier: 2.5 },
+  poultry:  { fog: "100-400",  ph: "6.0-7.5",  peakFlowMultiplier: 2.0 },
+  produce:  { fog: "50-200",   ph: "4.0-6.0",  peakFlowMultiplier: 2.0 },
+  potato:   { fog: "50-200",   ph: "5.0-7.0",  peakFlowMultiplier: 2.0 },
+  beverage: { fog: "20-100",   ph: "3.0-6.0",  peakFlowMultiplier: 1.5 },
+  brewery:  { fog: "20-80",    ph: "4.0-7.0",  peakFlowMultiplier: 1.5 },
+  winery:   { fog: "20-80",    ph: "3.5-5.5",  peakFlowMultiplier: 3.0 },
+  seafood:  { fog: "100-400",  ph: "6.0-7.5",  peakFlowMultiplier: 2.0 },
+  bakery:   { fog: "100-500",  ph: "4.0-7.0",  peakFlowMultiplier: 1.5 },
+  default:  { fog: "100-400",  ph: "5.0-7.0",  peakFlowMultiplier: 2.0 },
+};
+
+function detectIndustryType(feedstocks: FeedstockEntry[]): IndustryDefaults {
+  const allText = feedstocks.map(fs => (fs.feedstockType || "").toLowerCase()).join(" ");
+  for (const [key, defaults] of Object.entries(INDUSTRY_DEFAULTS)) {
+    if (key === "default") continue;
+    if (allText.includes(key)) return defaults;
+  }
+  if (allText.includes("milk") || allText.includes("cheese") || allText.includes("yogurt") || allText.includes("whey")) return INDUSTRY_DEFAULTS.dairy;
+  if (allText.includes("slaughter") || allText.includes("rendering") || allText.includes("beef") || allText.includes("pork")) return INDUSTRY_DEFAULTS.meat;
+  if (allText.includes("chicken") || allText.includes("turkey") || allText.includes("egg")) return INDUSTRY_DEFAULTS.poultry;
+  if (allText.includes("vegetable") || allText.includes("fruit") || allText.includes("salad") || allText.includes("juice")) return INDUSTRY_DEFAULTS.produce;
+  if (allText.includes("spud") || allText.includes("french fry") || allText.includes("starch")) return INDUSTRY_DEFAULTS.potato;
+  if (allText.includes("beer") || allText.includes("ale") || allText.includes("hops")) return INDUSTRY_DEFAULTS.brewery;
+  if (allText.includes("wine") || allText.includes("grape") || allText.includes("crush")) return INDUSTRY_DEFAULTS.winery;
+  if (allText.includes("soda") || allText.includes("soft drink") || allText.includes("bottling") || allText.includes("distill")) return INDUSTRY_DEFAULTS.beverage;
+  if (allText.includes("fish") || allText.includes("shrimp") || allText.includes("crab") || allText.includes("shellfish")) return INDUSTRY_DEFAULTS.seafood;
+  if (allText.includes("bread") || allText.includes("dough") || allText.includes("flour") || allText.includes("baking")) return INDUSTRY_DEFAULTS.bakery;
+  return INDUSTRY_DEFAULTS.default;
+}
+
 export function validateTypeADesignDrivers(
   feedstocks: FeedstockEntry[],
   extractedParams: Array<{ name: string; value?: string | null; unit?: string | null; category?: string }>,
   projectType: string | null,
-): { warnings: ValidationWarning[] } {
+): { warnings: ValidationWarning[]; feedstocks: FeedstockEntry[] } {
   const warnings: ValidationWarning[] = [];
 
   if (projectType !== "A") {
-    return { warnings };
+    return { warnings, feedstocks };
   }
 
   const { hasAvgFlow, hasPeakFlow } = detectFlowInSpecs(feedstocks, extractedParams);
@@ -893,21 +932,114 @@ export function validateTypeADesignDrivers(
     }
   }
 
+  let updatedFeedstocks = feedstocks;
+
   if (missingDrivers.length > 0) {
-    warnings.push({
-      field: "Core Design Drivers",
-      section: "Type A Completeness",
-      message: `Missing core design driver(s): ${missingDrivers.join(", ")}. Type A wastewater projects must surface Flow (avg + peak), BOD, COD, TSS, FOG, and pH in the Feedstock/Influent section.`,
-      severity: "error",
+    const industry = detectIndustryType(feedstocks);
+    const industryLabel = feedstocks.map(fs => fs.feedstockType || "").filter(Boolean).join(", ") || "food processing wastewater";
+
+    const AUTO_POPULATE_DRIVERS = new Set(["Peak Flow", "FOG", "pH"]);
+
+    updatedFeedstocks = feedstocks.map((fs, idx) => {
+      if (idx !== 0) return fs;
+      const specs: EnrichedFeedstockSpecRecord = { ...(fs.feedstockSpecs || {}) };
+      let nextSortOrder = Object.values(specs).reduce((max, s) => Math.max(max, s.sortOrder || 0), 0) + 1;
+
+      for (const missing of missingDrivers) {
+        if (!AUTO_POPULATE_DRIVERS.has(missing)) continue;
+
+        let key: string;
+        let displayName: string;
+        let value: string;
+        let unit: string;
+
+        switch (missing) {
+          case "Peak Flow": {
+            const avgFlow = fs.feedstockVolume ? parseFloat(fs.feedstockVolume.replace(/,/g, "")) : null;
+            const avgUnit = fs.feedstockUnit || "GPD";
+            if (avgFlow && !isNaN(avgFlow)) {
+              value = Math.round(avgFlow * industry.peakFlowMultiplier).toLocaleString();
+              unit = avgUnit;
+            } else {
+              value = `${industry.peakFlowMultiplier}x average`;
+              unit = "multiplier";
+            }
+            key = "peakFlowRate";
+            displayName = "Peak Flow Rate";
+            break;
+          }
+          case "FOG": {
+            key = "fogContent";
+            displayName = "FOG (Fats, Oils & Grease)";
+            value = industry.fog;
+            unit = "mg/L";
+            break;
+          }
+          case "pH": {
+            key = "phLevel";
+            displayName = "pH Range";
+            value = industry.ph;
+            unit = "";
+            break;
+          }
+          default:
+            continue;
+        }
+
+        if (!specs[key]) {
+          specs[key] = {
+            value,
+            unit,
+            source: "estimated_default",
+            confidence: "low",
+            provenance: `Design default — estimated from typical ${industryLabel} characteristics`,
+            group: "biochemical",
+            displayName,
+            sortOrder: nextSortOrder++,
+          };
+        }
+      }
+
+      return { ...fs, feedstockSpecs: specs };
     });
 
-    for (const missing of missingDrivers) {
+    const autoPopulated = missingDrivers.filter(d => AUTO_POPULATE_DRIVERS.has(d));
+    const stillMissing = missingDrivers.filter(d => !AUTO_POPULATE_DRIVERS.has(d));
+
+    if (autoPopulated.length > 0) {
       warnings.push({
-        field: missing,
+        field: "Core Design Drivers",
         section: "Type A Completeness",
-        message: `"${missing}" not found in Feedstock/Influent section — this is a core design driver for wastewater treatment and must be provided.`,
+        message: `Auto-populated ${autoPopulated.length} missing design driver(s): ${autoPopulated.join(", ")}. Values are industry-typical estimates for ${industryLabel} — please review and update with actual data.`,
+        severity: "warning",
+      });
+
+      for (const filled of autoPopulated) {
+        warnings.push({
+          field: filled,
+          section: "Type A Completeness",
+          message: `"${filled}" was not found in user input — auto-populated with typical industry default. Please verify or update this value.`,
+          severity: "warning",
+        });
+      }
+    }
+
+    if (stillMissing.length > 0) {
+      warnings.push({
+        field: "Core Design Drivers",
+        section: "Type A Completeness",
+        message: `Missing core design driver(s): ${stillMissing.join(", ")}. Type A wastewater projects must surface Flow (avg + peak), BOD, COD, TSS, FOG, and pH in the Feedstock/Influent section.`,
         severity: "error",
       });
+
+      for (const missing of stillMissing) {
+        warnings.push({
+          field: missing,
+          section: "Type A Completeness",
+          message: `"${missing}" not found in Feedstock/Influent section — this is a core design driver for wastewater treatment and must be provided.`,
+          severity: "error",
+        });
+      }
     }
   } else {
     warnings.push({
@@ -918,5 +1050,5 @@ export function validateTypeADesignDrivers(
     });
   }
 
-  return { warnings };
+  return { warnings, feedstocks: updatedFeedstocks };
 }

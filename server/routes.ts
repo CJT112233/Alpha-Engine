@@ -1530,22 +1530,29 @@ export async function registerRoutes(
         : projectType === "A" ? typeAValidatedFeedstocks
         : feedstockEntries;
       
-      // V2c: Type A core design driver completeness check (Flow avg+peak, BOD, COD, TSS, FOG, pH)
-      const { warnings: designDriverWarnings } = validateTypeADesignDrivers(
+      // V2c: Type A core design driver completeness check + auto-populate missing drivers
+      const { warnings: designDriverWarnings, feedstocks: designDriverFeedstocks } = validateTypeADesignDrivers(
         postTypeValidated, extractedParams, projectType
       );
       allValidationWarnings.push(...designDriverWarnings);
+      const postDesignDriverValidated = projectType === "A" ? designDriverFeedstocks : postTypeValidated;
       if (designDriverWarnings.length > 0 && projectType === "A") {
+        const warningCount = designDriverWarnings.filter(w => w.severity === "warning").length;
         const errorCount = designDriverWarnings.filter(w => w.severity === "error").length;
+        const infoCount = designDriverWarnings.filter(w => w.severity === "info").length;
+        if (warningCount > 0) {
+          console.log(`Validation: Type A design driver check — auto-populated missing design driver(s) with industry defaults`);
+        }
         if (errorCount > 0) {
-          console.log(`Validation: Type A design driver check — ${errorCount} missing core design driver(s)`);
-        } else {
+          console.log(`Validation: Type A design driver check — ${errorCount} critical design driver(s) still missing`);
+        }
+        if (infoCount > 0 && warningCount === 0 && errorCount === 0) {
           console.log("Validation: Type A design driver check — all core design drivers present");
         }
       }
       
       // V3: TS/TSS guardrail
-      const { feedstocks: tsTssValidated, warnings: tsTssWarnings } = applyTsTssGuardrail(postTypeValidated, extractedParams);
+      const { feedstocks: tsTssValidated, warnings: tsTssWarnings } = applyTsTssGuardrail(postDesignDriverValidated, extractedParams);
       allValidationWarnings.push(...tsTssWarnings);
       
       // V4: Swap detection — wastewater streams with solids params but no flow/analytes
