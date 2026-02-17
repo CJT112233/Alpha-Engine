@@ -126,7 +126,7 @@ export type ExtractedParameter = typeof extractedParameters.$inferSelect;
 export type EnrichedFeedstockSpecRecord = Record<string, {
   value: string;
   unit: string;
-  source: "user_provided" | "estimated_default";
+  source: "user_provided" | "ai_inferred" | "estimated_default";
   confidence: "high" | "medium" | "low";
   provenance: string;
   group: "identity" | "physical" | "biochemical" | "contaminants" | "extended";

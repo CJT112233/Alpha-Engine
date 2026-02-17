@@ -18,7 +18,7 @@ export interface OutputProfile {
 export interface EnrichedOutputSpec {
   value: string;
   unit: string;
-  source: "typical_industry_standard" | "estimated_requirement" | "assumed_placeholder" | "user_provided";
+  source: "typical_industry_standard" | "estimated_requirement" | "assumed_placeholder" | "user_provided" | "ai_inferred";
   confidence: "high" | "medium" | "low";
   provenance: string;
   group: string;

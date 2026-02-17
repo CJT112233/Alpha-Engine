@@ -18,7 +18,7 @@ export interface FeedstockProfile {
 export interface EnrichedFeedstockSpec {
   value: string;
   unit: string;
-  source: "user_provided" | "estimated_default";
+  source: "user_provided" | "ai_inferred" | "estimated_default";
   confidence: "high" | "medium" | "low";
   provenance: string;
   group: "identity" | "physical" | "biochemical" | "contaminants" | "extended";
@@ -1023,7 +1023,7 @@ const SOLIDS_ONLY_KEYS = new Set([
 
 export function enrichFeedstockSpecs(
   feedstockType: string,
-  userProvidedParams: Record<string, { value: string; unit?: string }>,
+  userProvidedParams: Record<string, { value: string; unit?: string; extractionSource?: string }>,
   projectType?: string | null,
 ): Record<string, EnrichedFeedstockSpec> {
   const profile = matchFeedstockType(feedstockType);
@@ -1139,22 +1139,30 @@ export function enrichFeedstockSpecs(
       }
     }
 
+    const resolvedSource: EnrichedFeedstockSpec["source"] =
+      paramData.extractionSource === "ai_extraction" ? "ai_inferred" : "user_provided";
+    const resolvedProvenance = resolvedSource === "ai_inferred"
+      ? "AI-inferred value from project input"
+      : "User-provided value from project input";
+    const resolvedConfidence: EnrichedFeedstockSpec["confidence"] =
+      resolvedSource === "ai_inferred" ? "medium" : "high";
+
     if (mappedKey && specs[mappedKey]) {
       specs[mappedKey] = {
         ...specs[mappedKey],
         value: paramData.value,
         unit: paramData.unit || specs[mappedKey].unit,
-        source: "user_provided",
-        confidence: "high",
-        provenance: "User-provided value from project input",
+        source: resolvedSource,
+        confidence: resolvedConfidence,
+        provenance: resolvedProvenance,
       };
     } else if (mappedKey) {
       specs[mappedKey] = {
         value: paramData.value,
         unit: paramData.unit || "",
-        source: "user_provided",
-        confidence: "high",
-        provenance: "User-provided value from project input",
+        source: resolvedSource,
+        confidence: resolvedConfidence,
+        provenance: resolvedProvenance,
         group: "physical",
         displayName: paramName,
         sortOrder: 50,
