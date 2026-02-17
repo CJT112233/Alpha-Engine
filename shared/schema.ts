@@ -325,14 +325,26 @@ export type EquipmentItem = {
   isLocked: boolean;
 };
 
+export type ADProcessStage = {
+  name: string;
+  type: string;
+  inputStream: Record<string, { value: number; unit: string }>;
+  outputStream: Record<string, { value: number; unit: string }>;
+  designCriteria: Record<string, { value: number; unit: string; source: string }>;
+  notes: string[];
+};
+
 export type MassBalanceResults = {
+  projectType?: string;
   stages: TreatmentStage[];
+  adStages?: ADProcessStage[];
   recycleStreams: RecycleStream[];
   equipment: EquipmentItem[];
   convergenceIterations: number;
   convergenceAchieved: boolean;
   assumptions: Array<{ parameter: string; value: string; source: string }>;
   warnings: Array<{ field: string; message: string; severity: "error" | "warning" | "info" }>;
+  summary?: Record<string, { value: string; unit: string }>;
 };
 
 export type MassBalanceOverrides = Record<string, {

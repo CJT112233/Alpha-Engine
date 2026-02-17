@@ -153,6 +153,7 @@ function FeedstockSpecsTable({
   onSpecUpdate,
   onNoteUpdate,
   onSpecDelete,
+  onSourceUpdate,
   deletedKeys,
   confirmedSpecs,
   onToggleConfirm,
@@ -168,6 +169,7 @@ function FeedstockSpecsTable({
   onSpecUpdate?: (key: string, value: string) => void;
   onNoteUpdate?: (key: string, note: string) => void;
   onSpecDelete?: (key: string) => void;
+  onSourceUpdate?: (key: string, source: EnrichedFeedstockSpec["source"]) => void;
   deletedKeys?: Set<string>;
   confirmedSpecs?: Record<string, boolean>;
   onToggleConfirm?: (key: string) => void;
@@ -250,15 +252,31 @@ function FeedstockSpecsTable({
                           )}
                         </td>
                         <td className="p-2">
-                          <Badge
-                            variant="secondary"
-                            className={`text-xs ${spec.source === "user_provided"
-                              ? "bg-blue-500/10 text-blue-700 dark:text-blue-400"
-                              : "bg-orange-500/10 text-orange-700 dark:text-orange-400"
-                            }`}
-                          >
-                            {spec.source === "user_provided" ? "User" : "Estimated"}
-                          </Badge>
+                          {isEditing && !isLocked ? (
+                            <select
+                              className="text-xs border rounded px-1 py-0.5 bg-transparent cursor-pointer"
+                              value={spec.source}
+                              onChange={(e) => onSourceUpdate?.(key, e.target.value as EnrichedFeedstockSpec["source"])}
+                              data-testid={`select-source-${key}`}
+                            >
+                              <option value="user_provided">User</option>
+                              <option value="ai_inferred">AI</option>
+                              <option value="estimated_default">Estimated</option>
+                            </select>
+                          ) : (
+                            <Badge
+                              variant="secondary"
+                              className={`text-xs ${
+                                spec.source === "user_provided"
+                                  ? "bg-blue-500/10 text-blue-700 dark:text-blue-400"
+                                  : spec.source === "ai_inferred"
+                                  ? "bg-purple-500/10 text-purple-700 dark:text-purple-400"
+                                  : "bg-orange-500/10 text-orange-700 dark:text-orange-400"
+                              }`}
+                            >
+                              {spec.source === "user_provided" ? "User" : spec.source === "ai_inferred" ? "AI" : "Estimated"}
+                            </Badge>
+                          )}
                           <Badge
                             variant="secondary"
                             className={`text-xs ml-1 ${confidenceBadgeClass[spec.confidence]}`}
@@ -379,6 +397,8 @@ const sourceLabels: Record<string, { label: string; className: string }> = {
   estimated_requirement: { label: "Estimated", className: "bg-orange-500/10 text-orange-700 dark:text-orange-400" },
   assumed_placeholder: { label: "Assumed", className: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400" },
   user_provided: { label: "User", className: "bg-blue-500/10 text-blue-700 dark:text-blue-400" },
+  ai_inferred: { label: "AI", className: "bg-purple-500/10 text-purple-700 dark:text-purple-400" },
+  estimated_default: { label: "Estimated", className: "bg-orange-500/10 text-orange-700 dark:text-orange-400" },
 };
 
 /**
@@ -640,6 +660,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
   const [selectedType, setSelectedType] = useState<string>("");
   const [feedstockEdits, setFeedstockEdits] = useState<Record<number, Partial<FeedstockEntry>>>({});
   const [feedstockSpecEdits, setFeedstockSpecEdits] = useState<Record<number, Record<string, string>>>({});
+  const [feedstockSourceEdits, setFeedstockSourceEdits] = useState<Record<number, Record<string, string>>>({});
   const [feedstockNoteEdits, setFeedstockNoteEdits] = useState<Record<number, Record<string, string>>>({});
   const [deletedFeedstockIndices, setDeletedFeedstockIndices] = useState<Set<number>>(new Set());
   const [deletedFeedstockSpecs, setDeletedFeedstockSpecs] = useState<Record<number, Set<string>>>({});
@@ -771,6 +792,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
           const i = feedstocks.indexOf(f);
           const edits = feedstockEdits[i];
           const specEdits = feedstockSpecEdits[i];
+          const sourceEdits = feedstockSourceEdits[i];
           const noteEdits = feedstockNoteEdits[i];
           const deletedSpecKeys = deletedFeedstockSpecs[i];
           let entry = { ...f };
@@ -790,6 +812,16 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                     source: "user_provided",
                     confidence: "high",
                     provenance: noteEdits?.[key] ?? "User-provided override",
+                  };
+                }
+              }
+            }
+            if (sourceEdits) {
+              for (const [key, source] of Object.entries(sourceEdits)) {
+                if (updated[key]) {
+                  updated[key] = {
+                    ...updated[key],
+                    source: source as EnrichedFeedstockSpec["source"],
                   };
                 }
               }
@@ -926,6 +958,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
       setIsEditing(false);
       setFeedstockEdits({});
       setFeedstockSpecEdits({});
+      setFeedstockSourceEdits({});
       setFeedstockNoteEdits({});
       setDeletedFeedstockIndices(new Set());
       setDeletedFeedstockSpecs({});
@@ -1428,6 +1461,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                   });
                   setFeedstockEdits({});
                   setFeedstockSpecEdits({});
+                  setFeedstockSourceEdits({});
                   setFeedstockNoteEdits({});
                   setDeletedFeedstockIndices(new Set());
                   setDeletedFeedstockSpecs({});
@@ -1571,6 +1605,12 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                                 setDeletedFeedstockSpecs(prev => ({
                                   ...prev,
                                   [idx]: new Set([...(prev[idx] || []), key]),
+                                }));
+                              }}
+                              onSourceUpdate={(key, source) => {
+                                setFeedstockSourceEdits(prev => ({
+                                  ...prev,
+                                  [idx]: { ...(prev[idx] || {}), [key]: source },
                                 }));
                               }}
                               deletedKeys={deletedFeedstockSpecs[idx]}
@@ -1868,6 +1908,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                     setIsEditing(false);
                     setFeedstockEdits({});
                     setFeedstockSpecEdits({});
+                    setFeedstockSourceEdits({});
                     setFeedstockNoteEdits({});
                     setDeletedFeedstockIndices(new Set());
                     setDeletedFeedstockSpecs({});

@@ -677,12 +677,15 @@ export function calculateMassBalance(upif: UpifRecord): MassBalanceResults {
   }
 
   return {
+    projectType: "A",
     stages,
+    adStages: [],
     recycleStreams,
     equipment,
     convergenceIterations: iterations,
     convergenceAchieved: converged,
     assumptions,
     warnings,
+    summary: {},
   };
 }

@@ -22,6 +22,13 @@ Number formatting: Always display numbers with comma separators for thousands (e
 - **Configurable Prompt Templates**: AI prompts are stored in the database and can be customized via a settings interface.
 - **Generation Stats**: Tracks timing and metadata for every AI-generated document (Classification, UPIF, Mass Balance). Stats page at `/stats` shows date, document type, model used, project/scenario, generation time, and success/error status. Data stored in `generation_logs` table.
 - **Mass Balance & Equipment List**: Deterministic calculation engine for Type A (Wastewater Treatment) projects. Parses confirmed UPIF influent data, determines treatment train (preliminary → equalization → primary → secondary → tertiary → disinfection), applies removal efficiencies from WEF MOP 8 / Ten States Standards, iterates recycle streams to convergence, and sizes equipment (screens, clarifiers, aeration basins, MBR, filters, UV). Results stored in `mass_balance_runs` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/mass-balance`.
+- **Multi-Type Mass Balance**: Supports all four project types:
+  - **Type A**: Wastewater treatment train with recycle streams (server/services/massBalance.ts)
+  - **Type B**: RNG Greenfield — full AD pipeline: feedstock receiving → pretreatment → digestion → biogas conditioning → gas upgrading → RNG (server/services/massBalanceTypeB.ts)
+  - **Type C**: RNG Bolt-On — biogas-only inputs (CH₄%, CO₂%, H₂S, siloxanes, flow scfm) through gas conditioning to RNG specs, no digester sizing (server/services/massBalanceTypeC.ts)
+  - **Type D**: Hybrid — combines WW treatment (Type A) with sludge → AD → biogas → RNG, optional co-digestion with trucked feedstocks (server/services/massBalanceTypeD.ts)
+  - Route dispatcher in server/routes.ts auto-selects calculator based on project type
+  - Frontend mass balance page renders project-type-specific views with AD process stages, summary cards, and equipment lists
 
 ### Technical Implementation
 - **Frontend**: React 18 with TypeScript, Wouter for routing, TanStack Query for state, shadcn/ui and Tailwind CSS for UI, React Hook Form with Zod for forms, Vite for building.

@@ -23,15 +23,16 @@ import {
   Lock,
   Unlock,
   RefreshCw,
-  Download,
   AlertTriangle,
   Info,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Flame,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
-import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData } from "@shared/schema";
+import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData, ADProcessStage } from "@shared/schema";
 
 function formatNum(val: number | undefined, decimals: number = 1): string {
   if (val === undefined || val === null) return "—";
@@ -110,6 +111,174 @@ function StreamTable({ stages }: { stages: TreatmentStage[] }) {
   );
 }
 
+function ADStagesTable({ adStages }: { adStages: ADProcessStage[] }) {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
+  if (!adStages || adStages.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      {adStages.map((stage, idx) => {
+        const isExpanded = expandedIndex === idx;
+        const stageIcon = stage.type === "digester" ? <Flame className="h-4 w-4" /> :
+                          stage.type === "gasUpgrading" ? <Zap className="h-4 w-4" /> :
+                          <Factory className="h-4 w-4" />;
+        const notes = stage.notes || [];
+        const inputStream = stage.inputStream || {};
+        const outputStream = stage.outputStream || {};
+        const designCriteria = stage.designCriteria || {};
+
+        return (
+          <Card key={idx} data-testid={`card-ad-stage-${idx}`}>
+            <div
+              className="flex items-center gap-3 p-3 cursor-pointer hover-elevate"
+              onClick={() => setExpandedIndex(isExpanded ? null : idx)}
+              data-testid={`button-expand-ad-stage-${idx}`}
+            >
+              {stageIcon}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-sm">{stage.name}</span>
+                  <Badge variant="outline" className="text-xs">{stage.type}</Badge>
+                </div>
+                {notes.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1 truncate">{notes[0]}</p>
+                )}
+              </div>
+              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
+            {isExpanded && (
+              <CardContent className="pt-0 pb-3 px-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                  {Object.keys(inputStream).length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-medium text-muted-foreground mb-2">Input Stream</h4>
+                      <div className="space-y-1">
+                        {Object.entries(inputStream).map(([key, val]) => (
+                          <div key={key} className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-2 py-1">
+                            <span className="text-muted-foreground">{formatLabel(key)}</span>
+                            <span className="font-medium">{typeof val?.value === 'number' ? val.value.toLocaleString() : val?.value} {val?.unit}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {Object.keys(outputStream).length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-medium text-muted-foreground mb-2">Output Stream</h4>
+                      <div className="space-y-1">
+                        {Object.entries(outputStream).map(([key, val]) => (
+                          <div key={key} className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-2 py-1">
+                            <span className="text-muted-foreground">{formatLabel(key)}</span>
+                            <span className="font-medium">{typeof val?.value === 'number' ? val.value.toLocaleString() : val?.value} {val?.unit}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {Object.keys(designCriteria).length > 0 && (
+                  <div className="mt-3">
+                    <h4 className="text-xs font-medium text-muted-foreground mb-2">Design Criteria</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {Object.entries(designCriteria).map(([key, val]) => (
+                        <div key={key} className="rounded-md bg-muted/40 p-2">
+                          <div className="text-xs text-muted-foreground">{formatLabel(key)}</div>
+                          <div className="text-sm font-medium">{val?.value} {val?.unit}</div>
+                          <div className="text-xs text-muted-foreground">{val?.source}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {notes.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    {notes.map((note, ni) => (
+                      <div key={ni} className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                        <span>{note}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function SummaryCard({ summary }: { summary: Record<string, { value: string; unit: string }> | undefined }) {
+  if (!summary || Object.keys(summary).length === 0) return null;
+  const summaryLabels: Record<string, string> = {
+    totalFeedRate: "Total Feed Rate",
+    totalVSLoad: "Total VS Load",
+    biogasProduction: "Biogas Production",
+    biogasFlowSCFM: "Biogas Flow",
+    rngProduction: "RNG Production",
+    rngFlowSCFM: "RNG Flow",
+    rngEnergy: "RNG Energy",
+    rngEnergyGJ: "RNG Energy (GJ)",
+    digesterVolume: "Digester Volume",
+    electricalDemand: "Electrical Demand",
+    solidDigestate: "Solid Digestate",
+    liquidFiltrate: "Liquid Filtrate",
+    biogasInletFlow: "Biogas Inlet Flow",
+    biogasInletCH4: "Inlet CH₄",
+    biogasInletH2S: "Inlet H₂S",
+    rngProductionDaily: "RNG Production (daily)",
+    rngCH4Purity: "RNG CH₄ Purity",
+    methaneRecovery: "Methane Recovery",
+    tailgasFlow: "Tail Gas Flow",
+    wastewaterFlow: "Wastewater Flow",
+    wwTreatmentStages: "WW Treatment Stages",
+    wwSludgeVS: "WW Sludge VS",
+    truckedFeedstockVS: "Trucked Feedstock VS",
+    biosolidsCake: "Biosolids Cake",
+  };
+
+  return (
+    <Card data-testid="card-summary">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Project Summary</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {Object.entries(summary).map(([key, val]) => (
+            <div key={key} className="rounded-md bg-muted/40 p-3">
+              <div className="text-xs text-muted-foreground">{summaryLabels[key] || formatLabel(key)}</div>
+              <div className="text-lg font-semibold mt-1">{val.value}</div>
+              <div className="text-xs text-muted-foreground">{val.unit}</div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function formatLabel(camelCase: string): string {
+  return camelCase
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, s => s.toUpperCase())
+    .replace(/\bScfm\b/gi, "SCFM")
+    .replace(/\bCh4\b/gi, "CH₄")
+    .replace(/\bCo2\b/gi, "CO₂")
+    .replace(/\bH2s\b/gi, "H₂S")
+    .replace(/\bTs\b/gi, "TS")
+    .replace(/\bVs\b/gi, "VS")
+    .replace(/\bRng\b/gi, "RNG")
+    .replace(/\bMgd\b/gi, "MGD")
+    .replace(/\bMm Btu\b/gi, "MMBtu")
+    .replace(/\bGj\b/gi, "GJ")
+    .replace(/\bWw\b/gi, "WW")
+    .trim();
+}
+
 function EquipmentTable({ equipment, locks, onToggleLock }: {
   equipment: EquipmentItem[];
   locks: Record<string, boolean>;
@@ -153,7 +322,7 @@ function EquipmentTable({ equipment, locks, onToggleLock }: {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
                   {Object.entries(eq.specs).map(([key, spec]) => (
                     <div key={key} className="rounded-md bg-muted/40 p-2">
-                      <div className="text-xs text-muted-foreground">{key.replace(/([A-Z])/g, " $1").trim()}</div>
+                      <div className="text-xs text-muted-foreground">{formatLabel(key)}</div>
                       <div className="text-sm font-medium">{spec.value} {spec.unit}</div>
                     </div>
                   ))}
@@ -223,6 +392,27 @@ function AssumptionsList({ assumptions }: { assumptions: MassBalanceResults["ass
   );
 }
 
+function getProjectTypeLabel(pt: string | undefined): string {
+  if (!pt) return "Wastewater Treatment";
+  switch (pt) {
+    case "A": return "Type A — Wastewater Treatment";
+    case "B": return "Type B — RNG Greenfield";
+    case "C": return "Type C — RNG Bolt-On";
+    case "D": return "Type D — Hybrid (WW + RNG)";
+    default: return pt;
+  }
+}
+
+function getProjectTypeDescription(pt: string | undefined): string {
+  if (!pt) return "Deterministic treatment train calculation";
+  switch (pt) {
+    case "B": return "Feedstock → Anaerobic Digestion → Biogas → Gas Conditioning → RNG";
+    case "C": return "Existing Biogas → Gas Conditioning → RNG Upgrading → Pipeline";
+    case "D": return "Wastewater Treatment + Sludge → AD → Biogas → RNG";
+    default: return "Deterministic treatment train calculation";
+  }
+}
+
 export default function MassBalancePage() {
   const { scenarioId } = useParams<{ scenarioId: string }>();
   const { toast } = useToast();
@@ -234,6 +424,10 @@ export default function MassBalancePage() {
   const latestRun = runs?.[0];
   const results = latestRun?.results as MassBalanceResults | undefined;
   const locks = (latestRun?.locks || {}) as Record<string, boolean>;
+  const projectType = results?.projectType;
+  const hasWWStages = (results?.stages?.length ?? 0) > 0;
+  const hasADStages = (results?.adStages?.length ?? 0) > 0;
+  const hasSummary = results?.summary && Object.keys(results.summary).length > 0;
 
   const generateMutation = useMutation({
     mutationFn: async () => {
@@ -242,7 +436,7 @@ export default function MassBalancePage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "mass-balance"] });
-      toast({ title: "Mass Balance Generated", description: "Treatment train calculation complete." });
+      toast({ title: "Mass Balance Generated", description: "Calculation complete." });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -298,6 +492,15 @@ export default function MassBalancePage() {
     );
   }
 
+  const tabItems: { value: string; label: string }[] = [];
+  if (hasSummary) tabItems.push({ value: "summary", label: "Summary" });
+  if (hasWWStages) tabItems.push({ value: "treatment-train", label: "Treatment Train" });
+  if (hasADStages) tabItems.push({ value: "ad-process", label: "AD / RNG Process" });
+  tabItems.push({ value: "equipment", label: `Equipment (${results?.equipment?.length || 0})` });
+  tabItems.push({ value: "assumptions", label: "Assumptions" });
+
+  const defaultTab = tabItems[0]?.value || "summary";
+
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
@@ -311,11 +514,16 @@ export default function MassBalancePage() {
             <Droplets className="h-5 w-5" />
             Mass Balance & Equipment
           </h1>
-          <p className="text-sm text-muted-foreground">Deterministic treatment train calculation</p>
+          <p className="text-sm text-muted-foreground">{getProjectTypeDescription(projectType)}</p>
         </div>
 
         {latestRun && (
           <div className="flex items-center gap-2 flex-wrap">
+            {projectType && (
+              <Badge variant="outline" data-testid="badge-project-type">
+                {getProjectTypeLabel(projectType)}
+              </Badge>
+            )}
             <Badge variant={latestRun.status === "finalized" ? "default" : "outline"} data-testid="badge-status">
               {latestRun.status === "finalized" ? (
                 <><CheckCircle2 className="h-3 w-3 mr-1" /> Finalized</>
@@ -337,7 +545,7 @@ export default function MassBalancePage() {
             <div className="text-center">
               <h3 className="font-medium">No Mass Balance Generated</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Generate a mass balance from the confirmed UPIF to see treatment stages and equipment sizing.
+                Generate a mass balance from the confirmed UPIF to see process stages and equipment sizing.
               </p>
             </div>
             <Button
@@ -389,103 +597,119 @@ export default function MassBalancePage() {
             <>
               <WarningsList warnings={results.warnings} />
 
-              <Tabs defaultValue="treatment-train" className="w-full">
+              <Tabs defaultValue={defaultTab} className="w-full">
                 <TabsList data-testid="tabs-mass-balance">
-                  <TabsTrigger value="treatment-train" data-testid="tab-treatment-train">Treatment Train</TabsTrigger>
-                  <TabsTrigger value="equipment" data-testid="tab-equipment">Equipment List ({results.equipment.length})</TabsTrigger>
-                  <TabsTrigger value="assumptions" data-testid="tab-assumptions">Assumptions</TabsTrigger>
+                  {tabItems.map(tab => (
+                    <TabsTrigger key={tab.value} value={tab.value} data-testid={`tab-${tab.value}`}>
+                      {tab.label}
+                    </TabsTrigger>
+                  ))}
                 </TabsList>
 
-                <TabsContent value="treatment-train" className="mt-4 space-y-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <CardTitle className="text-base">Stream Data by Treatment Stage</CardTitle>
-                        <div className="flex items-center gap-2">
-                          {results.convergenceAchieved ? (
-                            <Badge variant="outline" className="text-xs">
-                              <CheckCircle2 className="h-3 w-3 mr-1" /> Converged ({results.convergenceIterations} iter)
-                            </Badge>
-                          ) : (
-                            <Badge variant="destructive" className="text-xs">
-                              <AlertTriangle className="h-3 w-3 mr-1" /> Not converged
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <StreamTable stages={results.stages} />
-                    </CardContent>
-                  </Card>
+                {hasSummary && results.summary && (
+                  <TabsContent value="summary" className="mt-4">
+                    <SummaryCard summary={results.summary} />
+                  </TabsContent>
+                )}
 
-                  {results.recycleStreams.length > 0 && (
+                {hasWWStages && (
+                  <TabsContent value="treatment-train" className="mt-4 space-y-4">
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-base">Recycle Streams</CardTitle>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <CardTitle className="text-base">Stream Data by Treatment Stage</CardTitle>
+                          <div className="flex items-center gap-2">
+                            {results.convergenceAchieved ? (
+                              <Badge variant="outline" className="text-xs">
+                                <CheckCircle2 className="h-3 w-3 mr-1" /> Converged ({results.convergenceIterations} iter)
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive" className="text-xs">
+                                <AlertTriangle className="h-3 w-3 mr-1" /> Not converged
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
                       </CardHeader>
                       <CardContent>
-                        <Table data-testid="table-recycle-streams">
+                        <StreamTable stages={results.stages} />
+                      </CardContent>
+                    </Card>
+
+                    {results.recycleStreams.length > 0 && (
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base">Recycle Streams</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <Table data-testid="table-recycle-streams">
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Stream</TableHead>
+                                <TableHead>Source</TableHead>
+                                <TableHead>Destination</TableHead>
+                                <TableHead className="text-right">Flow (MGD)</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {results.recycleStreams.map((rs, i) => (
+                                <TableRow key={i}>
+                                  <TableCell className="font-medium">{rs.name}</TableCell>
+                                  <TableCell>{rs.source}</TableCell>
+                                  <TableCell>{rs.destination}</TableCell>
+                                  <TableCell className="text-right">{formatNum(rs.flow, 4)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Removal Efficiencies by Stage</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <Table data-testid="table-removal-efficiencies">
                           <TableHeader>
                             <TableRow>
-                              <TableHead>Stream</TableHead>
-                              <TableHead>Source</TableHead>
-                              <TableHead>Destination</TableHead>
-                              <TableHead className="text-right">Flow (MGD)</TableHead>
+                              <TableHead>Stage</TableHead>
+                              <TableHead className="text-center">BOD</TableHead>
+                              <TableHead className="text-center">COD</TableHead>
+                              <TableHead className="text-center">TSS</TableHead>
+                              <TableHead className="text-center">TKN</TableHead>
+                              <TableHead className="text-center">TP</TableHead>
+                              <TableHead className="text-center">FOG</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {results.recycleStreams.map((rs, i) => (
-                              <TableRow key={i}>
-                                <TableCell className="font-medium">{rs.name}</TableCell>
-                                <TableCell>{rs.source}</TableCell>
-                                <TableCell>{rs.destination}</TableCell>
-                                <TableCell className="text-right">{formatNum(rs.flow, 4)}</TableCell>
-                              </TableRow>
-                            ))}
+                            {results.stages
+                              .filter(s => Object.keys(s.removalEfficiencies).length > 0)
+                              .map((stage, i) => (
+                                <TableRow key={i}>
+                                  <TableCell className="font-medium">{stage.name}</TableCell>
+                                  {["bod", "cod", "tss", "tkn", "tp", "fog"].map(p => (
+                                    <TableCell key={p} className="text-center">
+                                      {stage.removalEfficiencies[p] !== undefined
+                                        ? `${(stage.removalEfficiencies[p] * 100).toFixed(0)}%`
+                                        : "—"}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                              ))}
                           </TableBody>
                         </Table>
                       </CardContent>
                     </Card>
-                  )}
+                  </TabsContent>
+                )}
 
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Removal Efficiencies by Stage</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <Table data-testid="table-removal-efficiencies">
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Stage</TableHead>
-                            <TableHead className="text-center">BOD</TableHead>
-                            <TableHead className="text-center">COD</TableHead>
-                            <TableHead className="text-center">TSS</TableHead>
-                            <TableHead className="text-center">TKN</TableHead>
-                            <TableHead className="text-center">TP</TableHead>
-                            <TableHead className="text-center">FOG</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {results.stages
-                            .filter(s => Object.keys(s.removalEfficiencies).length > 0)
-                            .map((stage, i) => (
-                              <TableRow key={i}>
-                                <TableCell className="font-medium">{stage.name}</TableCell>
-                                {["bod", "cod", "tss", "tkn", "tp", "fog"].map(p => (
-                                  <TableCell key={p} className="text-center">
-                                    {stage.removalEfficiencies[p] !== undefined
-                                      ? `${(stage.removalEfficiencies[p] * 100).toFixed(0)}%`
-                                      : "—"}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
-                            ))}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                {hasADStages && results.adStages && (
+                  <TabsContent value="ad-process" className="mt-4 space-y-4">
+                    <ADStagesTable adStages={results.adStages} />
+                  </TabsContent>
+                )}
 
                 <TabsContent value="equipment" className="mt-4">
                   <EquipmentTable

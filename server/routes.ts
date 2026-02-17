@@ -1324,12 +1324,12 @@ export async function registerRoutes(
         return { index: 1, cleanName: name };
       }
       
-      const feedstockGroups: Map<number, Array<{ cleanName: string; value: string; unit?: string }>> = new Map();
+      const feedstockGroups: Map<number, Array<{ cleanName: string; value: string; unit?: string; extractionSource?: string }>> = new Map();
       for (const param of feedstockParams) {
         const { index, cleanName } = classifyFeedstockParam(param.name);
         if (index === 0) continue;
         if (!feedstockGroups.has(index)) feedstockGroups.set(index, []);
-        feedstockGroups.get(index)!.push({ cleanName, value: param.value || "", unit: param.unit || undefined });
+        feedstockGroups.get(index)!.push({ cleanName, value: param.value || "", unit: param.unit || undefined, extractionSource: param.source });
       }
       
       function mapTechnicalParamName(rawName: string): string | null {
@@ -1370,14 +1370,14 @@ export async function registerRoutes(
         });
         
         const feedstockType = typeParam?.value || `Unknown Feedstock ${idx}`;
-        const userParams: Record<string, { value: string; unit?: string }> = {};
+        const userParams: Record<string, { value: string; unit?: string; extractionSource?: string }> = {};
         const rawParams: Record<string, { value: string; unit: string }> = {};
         
         for (const p of group) {
           if (p === typeParam || p === volumeParam) continue;
           const mapped = mapTechnicalParamName(p.cleanName);
           if (mapped) {
-            userParams[mapped] = { value: p.value, unit: p.unit };
+            userParams[mapped] = { value: p.value, unit: p.unit, extractionSource: p.extractionSource };
           }
           rawParams[p.cleanName] = { value: p.value, unit: p.unit || "" };
         }
@@ -2525,12 +2525,22 @@ export async function registerRoutes(
       if (!upif) return res.status(400).json({ error: "No UPIF found for this scenario. Generate and confirm a UPIF first." });
 
       const projectType = (scenario as any).projectType || upif.projectType || "";
-      if (!projectType.toLowerCase().includes("wastewater") && !projectType.toLowerCase().includes("type a")) {
-        return res.status(400).json({ error: "Mass balance is only available for Type A (Wastewater Treatment) projects." });
-      }
+      const ptLower = projectType.toLowerCase();
 
-      const { calculateMassBalance } = await import("./services/massBalance");
-      const results = calculateMassBalance(upif);
+      let results;
+      if (ptLower.includes("type b") || ptLower.includes("rng greenfield") || ptLower.includes("greenfield")) {
+        const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
+        results = calculateMassBalanceTypeB(upif);
+      } else if (ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
+        const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
+        results = calculateMassBalanceTypeC(upif);
+      } else if (ptLower.includes("type d") || ptLower.includes("hybrid")) {
+        const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
+        results = calculateMassBalanceTypeD(upif);
+      } else {
+        const { calculateMassBalance } = await import("./services/massBalance");
+        results = calculateMassBalance(upif);
+      }
 
       const existingRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
       const nextVersion = String(existingRuns.length + 1);
@@ -2645,8 +2655,23 @@ export async function registerRoutes(
       const upif = await storage.getUpifByScenario(run.scenarioId);
       if (!upif) return res.status(400).json({ error: "Source UPIF no longer exists" });
 
-      const { calculateMassBalance } = await import("./services/massBalance");
-      const results = calculateMassBalance(upif);
+      const scenario = await storage.getScenario(run.scenarioId);
+      const projectType = ((scenario as any)?.projectType || upif.projectType || "").toLowerCase();
+
+      let results;
+      if (projectType.includes("type b") || projectType.includes("greenfield")) {
+        const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
+        results = calculateMassBalanceTypeB(upif);
+      } else if (projectType.includes("type c") || projectType.includes("bolt-on") || projectType.includes("bolt on")) {
+        const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
+        results = calculateMassBalanceTypeC(upif);
+      } else if (projectType.includes("type d") || projectType.includes("hybrid")) {
+        const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
+        results = calculateMassBalanceTypeD(upif);
+      } else {
+        const { calculateMassBalance } = await import("./services/massBalance");
+        results = calculateMassBalance(upif);
+      }
 
       const updated = await storage.updateMassBalanceRun(run.id, {
         results,
