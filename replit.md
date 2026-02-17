@@ -64,3 +64,18 @@ The project is migrating to a Databricks environment with a FastAPI (Python) bac
 ### Databricks Specific
 - Databricks Model Serving (for AI)
 - ReportLab (PDF generation in Databricks environment)
+
+## Validation Pipeline
+
+Between AI extraction and UPIF save, a multi-step validation pipeline runs:
+- `validationWarnings` JSONB stores errors/warnings/info from validation steps
+- `unmappedSpecs` JSONB stores parameters that failed validation (wrong section/unit mismatches)
+- `performanceTargets` JSONB stores removal efficiencies separated from concentration limits
+- Pipeline order: (V0) Universal biosolids rejection → (V1) Output specs sanitization → (V1b) Biogas/RNG separation → (V2) Type A wastewater gate → (V2b) Type D stream separation → (V3) TS/TSS guardrail → (V4) Swap detection
+- Universal biosolids guardrail: "Solid Digestate - Land Application" profile rejected for ALL project types
+- Type A wastewater gate: if mg/L analytes (BOD/COD/TSS/FOG/TKN/TP) or flow units (MGD/gpm/GPD/m³/d) detected, hard-block ALL solids-basis parameters (VS/TS, BMP m³/kg VS, C:N, bulk density, moisture%, delivery form, preprocessing) regardless of source. Also blocks primary/WAS sludge terminology from feedstock names and spec values. Feedstock section must display influent analytes + flow only.
+- Type A fail-fast: requires influent flow + at least one mg/L analyte before UPIF generation
+- Type D hard separation: wastewater must carry flow + mg/L analytes, trucked feedstocks carry TS/VS/BMP/C:N
+- Swap detection: wastewater-labeled streams with solids params but no flow/analytes flagged and re-routed to Unmapped
+- Gas separation: biogas CH₄ <90% rejected from RNG gas-quality table; RNG spec requires ≥96% pipeline quality
+- Server-side logic in `server/validation.ts` (Node.js) and `databricks_app/api/validation.py` (Python)

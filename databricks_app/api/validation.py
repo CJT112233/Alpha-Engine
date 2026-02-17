@@ -107,6 +107,20 @@ FEEDSTOCK_SOLID_SPEC_KEYS = {
     "bulkDensity", "moistureContent",
 }
 
+WASTEWATER_HARD_BLOCK_KEYS = {
+    "totalSolids", "volatileSolids", "vsTs",
+    "methanePotential", "biodegradableFraction", "inertFraction",
+    "bulkDensity", "moistureContent", "cnRatio",
+    "deliveryForm", "receivingCondition", "preprocessingRequirement",
+}
+
+PRIMARY_WAS_TERMS = [
+    "primary sludge", "waste activated sludge", "was ", "was/",
+    "/was", "primary/was", "was blend", "sludge blend",
+    "thickened sludge", "dewatered sludge", "digested sludge",
+    "biosolids", "return activated", "ras ", "ras/",
+]
+
 
 def _detect_wastewater_context(extracted_params: list[dict]) -> dict[str, Any]:
     all_text = " ".join(
@@ -337,11 +351,24 @@ def validate_feedstocks_for_type_a(
     if not is_type_a:
         return {"feedstocks": feedstocks, "warnings": warnings, "missingRequired": missing_required}
 
-    has_sludge_context = _detect_sludge_context(extracted_params)
     ww_context = _detect_wastewater_context(extracted_params)
     has_flow_rate = ww_context["hasFlowRate"]
     has_analytes = ww_context["hasAnalytes"]
+    detected_analytes = ww_context.get("detectedAnalytes", [])
     is_wastewater_influent = has_flow_rate or has_analytes
+
+    if not is_wastewater_influent:
+        if not has_flow_rate:
+            missing_required.append("Influent flow rate (GPD, MGD, m³/d, or similar)")
+        if not has_analytes:
+            missing_required.append("At least one influent concentration (BOD, COD, or TSS in mg/L)")
+        warnings.append({
+            "field": "Type A Required Inputs",
+            "section": "Completeness Check",
+            "message": f"Missing required influent data: {'; '.join(missing_required)}",
+            "severity": "error",
+        })
+        return {"feedstocks": feedstocks, "warnings": warnings, "missingRequired": missing_required}
 
     sanitized_feedstocks = []
     for idx, fs in enumerate(feedstocks):
@@ -351,39 +378,73 @@ def validate_feedstocks_for_type_a(
             continue
 
         clean_specs = {}
-        for key, spec in specs.items():
-            source = spec.get("source", "")
+        blocked_count = 0
 
-            if key in SLUDGE_ONLY_SPEC_KEYS and not has_sludge_context and source == "estimated_default":
+        for key, spec in specs.items():
+            display_name = spec.get("displayName", key)
+            spec_value = spec.get("value", "")
+            spec_unit = spec.get("unit", "")
+
+            if key in WASTEWATER_HARD_BLOCK_KEYS:
+                blocked_count += 1
                 warnings.append({
-                    "field": spec.get("displayName", key),
+                    "field": display_name,
                     "section": f"Feedstock {idx + 1}",
-                    "message": "Sludge-specific default removed — no explicit sludge/biosolids mentioned in inputs",
+                    "message": f'Blocked — wastewater influent detected (flow/mg/L analytes present). "{display_name}" ({spec_value} {spec_unit}) is a solids-basis parameter not applicable to liquid influent characterization.',
                     "severity": "warning",
+                    "originalValue": spec_value,
+                    "originalUnit": spec_unit,
                 })
                 continue
 
-            if is_wastewater_influent and not has_sludge_context and key in SLUDGE_ASSUMPTION_KEYS and source == "estimated_default":
-                unit_lower = spec.get("unit", "").lower()
-                if "%" in unit_lower and "mg/l" not in unit_lower:
-                    warnings.append({
-                        "field": spec.get("displayName", key),
-                        "section": f"Feedstock {idx + 1}",
-                        "message": "Solids-basis assumption removed for wastewater project — use BOD/COD/TSS + flow instead",
-                        "severity": "warning",
-                    })
-                    continue
-
-            if is_wastewater_influent and not has_sludge_context and key == "totalSolids" and source == "estimated_default":
+            unit_lower = spec_unit.lower()
+            is_bmp_unit = any(u in unit_lower for u in ["m³/kg", "m3/kg", "l/kg", "ft³/lb", "ft3/lb"])
+            if is_bmp_unit:
+                blocked_count += 1
                 warnings.append({
-                    "field": spec.get("displayName", key),
+                    "field": display_name,
                     "section": f"Feedstock {idx + 1}",
-                    "message": "TS% removed — wastewater influent detected (mg/L analytes present), TS% only valid for sludge streams",
+                    "message": f'Blocked — BMP unit "{spec_unit}" is a solids-basis metric, not applicable to wastewater influent.',
                     "severity": "warning",
+                    "originalValue": spec_value,
+                    "originalUnit": spec_unit,
+                })
+                continue
+
+            name_lower = display_name.lower()
+            value_lower = (spec_value or "").lower()
+            has_primary_was = any(t in name_lower or t in value_lower for t in PRIMARY_WAS_TERMS)
+            if has_primary_was:
+                blocked_count += 1
+                warnings.append({
+                    "field": display_name,
+                    "section": f"Feedstock {idx + 1}",
+                    "message": f'Blocked — primary/WAS sludge language detected in "{display_name}". Wastewater influent section should describe incoming liquid stream, not sludge byproducts.',
+                    "severity": "warning",
+                    "originalValue": spec_value,
+                    "originalUnit": spec_unit,
                 })
                 continue
 
             clean_specs[key] = spec
+
+        fs_name_lower = (fs.get("feedstockType") or "").lower()
+        has_fs_name_sludge = any(t in fs_name_lower for t in PRIMARY_WAS_TERMS)
+        if has_fs_name_sludge:
+            warnings.append({
+                "field": "Feedstock Type",
+                "section": f"Feedstock {idx + 1}",
+                "message": f'Feedstock name "{fs.get("feedstockType", "")}" contains primary/WAS sludge terminology — wastewater influent projects should describe the incoming liquid stream (e.g., "Municipal Wastewater Influent"), not sludge.',
+                "severity": "error",
+            })
+
+        if blocked_count > 0:
+            warnings.append({
+                "field": "Solids-Basis Parameters",
+                "section": f"Feedstock {idx + 1}",
+                "message": f"Removed {blocked_count} solids-basis parameter(s) (VS/TS, BMP, delivery form, etc.) — Feedstock section should display influent analytes (BOD/COD/TSS/FOG in mg/L) + flow rate instead.",
+                "severity": "info",
+            })
 
         sanitized_feedstocks.append({**fs, "feedstockSpecs": clean_specs})
 
@@ -396,8 +457,16 @@ def validate_feedstocks_for_type_a(
         warnings.append({
             "field": "Type A Required Inputs",
             "section": "Completeness Check",
-            "message": f"Missing required influent flow and/or influent concentrations: {'; '.join(missing_required)}",
+            "message": f"Missing required influent data: {'; '.join(missing_required)} — Feedstock section requires influent analytes + flow.",
             "severity": "error",
+        })
+    else:
+        analyte_desc = ", ".join(detected_analytes) if detected_analytes else "BOD/COD/TSS"
+        warnings.append({
+            "field": "Wastewater Influent Mode",
+            "section": "Type A Gate",
+            "message": f"Wastewater influent detected — Feedstock section locked to influent analytes ({analyte_desc}) + flow. All solids-basis parameters (VS/TS, BMP, C:N, etc.) blocked.",
+            "severity": "info",
         })
 
     return {"feedstocks": sanitized_feedstocks, "warnings": warnings, "missingRequired": missing_required}

@@ -82,6 +82,20 @@ const FEEDSTOCK_SOLID_SPEC_KEYS = new Set([
   "bulkDensity", "moistureContent",
 ]);
 
+const WASTEWATER_HARD_BLOCK_KEYS = new Set([
+  "totalSolids", "volatileSolids", "vsTs",
+  "methanePotential", "biodegradableFraction", "inertFraction",
+  "bulkDensity", "moistureContent", "cnRatio",
+  "deliveryForm", "receivingCondition", "preprocessingRequirement",
+]);
+
+const PRIMARY_WAS_TERMS = [
+  "primary sludge", "waste activated sludge", "was ", "was/",
+  "/was", "primary/was", "was blend", "sludge blend",
+  "thickened sludge", "dewatered sludge", "digested sludge",
+  "biosolids", "return activated", "ras ", "ras/",
+];
+
 function detectWastewaterContext(
   extractedParams: Array<{ name: string; value?: string | null; unit?: string | null }>,
 ): { hasFlowRate: boolean; hasAnalytes: boolean; detectedAnalytes: string[] } {
@@ -297,50 +311,99 @@ export function validateFeedstocksForTypeA(
     return { feedstocks, warnings, missingRequired };
   }
 
-  const hasSludgeContext = detectSludgeContext(extractedParams);
-  const { hasFlowRate, hasAnalytes } = detectWastewaterContext(extractedParams);
+  const { hasFlowRate, hasAnalytes, detectedAnalytes } = detectWastewaterContext(extractedParams);
   const isWastewaterInfluent = hasFlowRate || hasAnalytes;
+
+  if (!isWastewaterInfluent) {
+    if (!hasFlowRate) {
+      missingRequired.push("Influent flow rate (GPD, MGD, m³/d, or similar)");
+    }
+    if (!hasAnalytes) {
+      missingRequired.push("At least one influent concentration (BOD, COD, or TSS in mg/L)");
+    }
+    warnings.push({
+      field: "Type A Required Inputs",
+      section: "Completeness Check",
+      message: `Missing required influent data: ${missingRequired.join("; ")}`,
+      severity: "error",
+    });
+    return { feedstocks, warnings, missingRequired };
+  }
 
   const sanitizedFeedstocks = feedstocks.map((fs, idx) => {
     if (!fs.feedstockSpecs) return fs;
 
     const cleanSpecs: EnrichedFeedstockSpecRecord = {};
+    let blockedCount = 0;
 
     for (const [key, spec] of Object.entries(fs.feedstockSpecs)) {
-      if (SLUDGE_ONLY_SPEC_KEYS.has(key) && !hasSludgeContext && spec.source === "estimated_default") {
+      if (WASTEWATER_HARD_BLOCK_KEYS.has(key)) {
+        blockedCount++;
         warnings.push({
           field: spec.displayName,
           section: `Feedstock ${idx + 1}`,
-          message: `Sludge-specific default removed — no explicit sludge/biosolids mentioned in inputs`,
+          message: `Blocked — wastewater influent detected (flow/mg/L analytes present). "${spec.displayName}" (${spec.value} ${spec.unit}) is a solids-basis parameter not applicable to liquid influent characterization.`,
           severity: "warning",
+          originalValue: spec.value,
+          originalUnit: spec.unit,
         });
         continue;
       }
 
-      if (isWastewaterInfluent && !hasSludgeContext && SLUDGE_ASSUMPTION_KEYS.has(key) && spec.source === "estimated_default") {
-        const unitLower = spec.unit.toLowerCase();
-        if (unitLower.includes("%") && !unitLower.includes("mg/l")) {
-          warnings.push({
-            field: spec.displayName,
-            section: `Feedstock ${idx + 1}`,
-            message: `Solids-basis assumption removed for wastewater project — use BOD/COD/TSS + flow instead`,
-            severity: "warning",
-          });
-          continue;
-        }
-      }
-
-      if (isWastewaterInfluent && !hasSludgeContext && key === "totalSolids" && spec.source === "estimated_default") {
+      const specNameLower = spec.displayName.toLowerCase();
+      const specValueLower = (spec.value || "").toLowerCase();
+      const specUnitLower = spec.unit.toLowerCase();
+      const isBmpUnit = specUnitLower.includes("m³/kg") || specUnitLower.includes("m3/kg") ||
+        specUnitLower.includes("l/kg") || specUnitLower.includes("ft³/lb") || specUnitLower.includes("ft3/lb");
+      if (isBmpUnit) {
+        blockedCount++;
         warnings.push({
           field: spec.displayName,
           section: `Feedstock ${idx + 1}`,
-          message: `TS% removed — wastewater influent detected (mg/L analytes present), TS% only valid for sludge streams`,
+          message: `Blocked — BMP unit "${spec.unit}" is a solids-basis metric, not applicable to wastewater influent.`,
           severity: "warning",
+          originalValue: spec.value,
+          originalUnit: spec.unit,
+        });
+        continue;
+      }
+
+      const hasPrimaryWasLang = PRIMARY_WAS_TERMS.some(t =>
+        specNameLower.includes(t) || specValueLower.includes(t));
+      if (hasPrimaryWasLang) {
+        blockedCount++;
+        warnings.push({
+          field: spec.displayName,
+          section: `Feedstock ${idx + 1}`,
+          message: `Blocked — primary/WAS sludge language detected in "${spec.displayName}". Wastewater influent section should describe incoming liquid stream, not sludge byproducts.`,
+          severity: "warning",
+          originalValue: spec.value,
+          originalUnit: spec.unit,
         });
         continue;
       }
 
       cleanSpecs[key] = spec;
+    }
+
+    const fsNameLower = (fs.feedstockType || "").toLowerCase();
+    const hasFsNameSludge = PRIMARY_WAS_TERMS.some(t => fsNameLower.includes(t));
+    if (hasFsNameSludge) {
+      warnings.push({
+        field: "Feedstock Type",
+        section: `Feedstock ${idx + 1}`,
+        message: `Feedstock name "${fs.feedstockType}" contains primary/WAS sludge terminology — wastewater influent projects should describe the incoming liquid stream (e.g., "Municipal Wastewater Influent"), not sludge.`,
+        severity: "error",
+      });
+    }
+
+    if (blockedCount > 0) {
+      warnings.push({
+        field: "Solids-Basis Parameters",
+        section: `Feedstock ${idx + 1}`,
+        message: `Removed ${blockedCount} solids-basis parameter(s) (VS/TS, BMP, delivery form, etc.) — Feedstock section should display influent analytes (BOD/COD/TSS/FOG in mg/L) + flow rate instead.`,
+        severity: "info",
+      });
     }
 
     return { ...fs, feedstockSpecs: cleanSpecs };
@@ -357,8 +420,15 @@ export function validateFeedstocksForTypeA(
     warnings.push({
       field: "Type A Required Inputs",
       section: "Completeness Check",
-      message: `Missing required influent flow and/or influent concentrations: ${missingRequired.join("; ")}`,
+      message: `Missing required influent data: ${missingRequired.join("; ")} — Feedstock section requires influent analytes + flow.`,
       severity: "error",
+    });
+  } else {
+    warnings.push({
+      field: "Wastewater Influent Mode",
+      section: "Type A Gate",
+      message: `Wastewater influent detected — Feedstock section locked to influent analytes (${detectedAnalytes.length > 0 ? detectedAnalytes.join(", ") : "BOD/COD/TSS"}) + flow. All solids-basis parameters (VS/TS, BMP, C:N, etc.) blocked.`,
+      severity: "info",
     });
   }
 
