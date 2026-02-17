@@ -29,6 +29,7 @@ import {
   validateAndSanitizeOutputSpecs,
   validateFeedstocksForTypeA,
   validateFeedstocksForTypeD,
+  validateTypeADesignDrivers,
   applyTsTssGuardrail,
   applySwapDetection,
   deduplicateParameters,
@@ -1528,6 +1529,20 @@ export async function registerRoutes(
       const postTypeValidated = projectType === "D" ? typeDValidatedFeedstocks
         : projectType === "A" ? typeAValidatedFeedstocks
         : feedstockEntries;
+      
+      // V2c: Type A core design driver completeness check (Flow avg+peak, BOD, COD, TSS, FOG, pH)
+      const { warnings: designDriverWarnings } = validateTypeADesignDrivers(
+        postTypeValidated, extractedParams, projectType
+      );
+      allValidationWarnings.push(...designDriverWarnings);
+      if (designDriverWarnings.length > 0 && projectType === "A") {
+        const errorCount = designDriverWarnings.filter(w => w.severity === "error").length;
+        if (errorCount > 0) {
+          console.log(`Validation: Type A design driver check — ${errorCount} missing core design driver(s)`);
+        } else {
+          console.log("Validation: Type A design driver check — all core design drivers present");
+        }
+      }
       
       // V3: TS/TSS guardrail
       const { feedstocks: tsTssValidated, warnings: tsTssWarnings } = applyTsTssGuardrail(postTypeValidated, extractedParams);

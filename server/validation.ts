@@ -738,3 +738,185 @@ export function validateSectionAssignment(
 
   return { valid, unmapped: unmappedParams, warnings };
 }
+
+const TYPE_A_DESIGN_DRIVER_SPECS: Array<{
+  label: string;
+  matchKeys: string[];
+  matchDisplayNames: RegExp[];
+}> = [
+  {
+    label: "BOD",
+    matchKeys: ["bod", "bod5", "biochemicalOxygenDemand"],
+    matchDisplayNames: [/\bbod[_\s]?5?\b/i, /biochemical oxygen demand/i],
+  },
+  {
+    label: "COD",
+    matchKeys: ["cod", "chemicalOxygenDemand"],
+    matchDisplayNames: [/\bcod\b/i, /chemical oxygen demand/i],
+  },
+  {
+    label: "TSS",
+    matchKeys: ["tss", "totalSuspendedSolids"],
+    matchDisplayNames: [/\btss\b/i, /total suspended solids/i],
+  },
+  {
+    label: "FOG",
+    matchKeys: ["fogContent", "fog", "fatsOilsGrease"],
+    matchDisplayNames: [/\bfog\b/i, /fats[\s,]*oils[\s,]*(?:and\s*)?grease/i, /\bo&g\b/i, /\boil\s*(?:and|&)\s*grease/i],
+  },
+  {
+    label: "pH",
+    matchKeys: ["ph", "phLevel"],
+    matchDisplayNames: [/\bph\b/i, /ph[\s_-]?level/i, /ph[\s_-]?range/i],
+  },
+];
+
+const FLOW_AVG_PATTERNS = [
+  /\bavg\.?\s*(?:daily\s*)?flow/i, /\baverage\s*(?:daily\s*)?flow/i,
+  /\badf\b/i, /\badwf\b/i, /\baadf\b/i,
+  /\bflow\s*\(avg/i, /\bflow\s*-\s*avg/i,
+  /\bdesign\s*(?:avg\.?\s*)?flow/i,
+  /\binfluent\s*flow\b/i,
+];
+
+const FLOW_PEAK_PATTERNS = [
+  /\bpeak\s*(?:daily\s*)?flow/i, /\bpeak\s*(?:hourly\s*)?flow/i,
+  /\bpdf\b/i, /\bphf\b/i, /\bpwwf\b/i, /\bmdwf\b/i,
+  /\bmax(?:imum)?\s*(?:daily\s*)?flow/i, /\bmax\s*(?:hourly\s*)?flow/i,
+  /\bpeak\s*wet\s*weather/i,
+  /\bflow\s*\(peak/i, /\bflow\s*-\s*peak/i,
+];
+
+const FLOW_GENERIC_PATTERN = /\bflow\b/i;
+
+function specMatchesDriver(
+  key: string,
+  displayName: string,
+  matchKeys: string[],
+  matchDisplayNames: RegExp[],
+): boolean {
+  const keyLower = key.toLowerCase();
+  if (matchKeys.some(mk => keyLower === mk.toLowerCase() || keyLower.startsWith(mk.toLowerCase()))) return true;
+  if (matchDisplayNames.some(p => p.test(displayName))) return true;
+  return false;
+}
+
+function detectFlowInSpecs(
+  feedstocks: FeedstockEntry[],
+  extractedParams: Array<{ name: string; value?: string | null; unit?: string | null; category?: string }>,
+): { hasAvgFlow: boolean; hasPeakFlow: boolean } {
+  let hasAvgFlow = false;
+  let hasPeakFlow = false;
+  let hasGenericFlow = false;
+
+  for (const fs of feedstocks) {
+    if (fs.feedstockSpecs) {
+      for (const [, spec] of Object.entries(fs.feedstockSpecs)) {
+        const dn = spec.displayName;
+        if (FLOW_PEAK_PATTERNS.some(p => p.test(dn))) hasPeakFlow = true;
+        else if (FLOW_AVG_PATTERNS.some(p => p.test(dn))) hasAvgFlow = true;
+        else if (FLOW_GENERIC_PATTERN.test(dn)) hasGenericFlow = true;
+      }
+    }
+    const volUnit = (fs.feedstockUnit || "").toLowerCase();
+    const isFlowUnit = /mgd|gpd|gpm|m³\/d|m3\/d|gallons?\s*per\s*day|liters?\s*per\s*day|l\/d/i.test(volUnit);
+    if (isFlowUnit && fs.feedstockVolume) {
+      hasAvgFlow = true;
+    }
+  }
+
+  const feedstockParams = extractedParams.filter(p => {
+    const cat = (p.category || "").toLowerCase();
+    return cat === "feedstock" || cat === "input";
+  });
+  for (const p of feedstockParams) {
+    const text = `${p.name} ${p.value || ""}`;
+    if (FLOW_PEAK_PATTERNS.some(pat => pat.test(text))) hasPeakFlow = true;
+    else if (FLOW_AVG_PATTERNS.some(pat => pat.test(text))) hasAvgFlow = true;
+    else if (FLOW_GENERIC_PATTERN.test(text)) hasGenericFlow = true;
+  }
+
+  if (hasGenericFlow && !hasAvgFlow) {
+    hasAvgFlow = true;
+  }
+
+  return { hasAvgFlow, hasPeakFlow };
+}
+
+export function validateTypeADesignDrivers(
+  feedstocks: FeedstockEntry[],
+  extractedParams: Array<{ name: string; value?: string | null; unit?: string | null; category?: string }>,
+  projectType: string | null,
+): { warnings: ValidationWarning[] } {
+  const warnings: ValidationWarning[] = [];
+
+  if (projectType !== "A") {
+    return { warnings };
+  }
+
+  const { hasAvgFlow, hasPeakFlow } = detectFlowInSpecs(feedstocks, extractedParams);
+  const missingDrivers: string[] = [];
+
+  if (!hasAvgFlow) missingDrivers.push("Average Flow");
+  if (!hasPeakFlow) missingDrivers.push("Peak Flow");
+
+  const feedstockParams = extractedParams.filter(p => {
+    const cat = (p.category || "").toLowerCase();
+    return cat === "feedstock" || cat === "input";
+  });
+
+  for (const driver of TYPE_A_DESIGN_DRIVER_SPECS) {
+    let found = false;
+    for (const fs of feedstocks) {
+      if (!fs.feedstockSpecs) continue;
+      for (const [key, spec] of Object.entries(fs.feedstockSpecs)) {
+        if (specMatchesDriver(key, spec.displayName, driver.matchKeys, driver.matchDisplayNames)) {
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+
+    if (!found) {
+      for (const p of feedstockParams) {
+        const text = `${p.name} ${p.value || ""}`;
+        if (driver.matchDisplayNames.some(pat => pat.test(text))) {
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if (!found) {
+      missingDrivers.push(driver.label);
+    }
+  }
+
+  if (missingDrivers.length > 0) {
+    warnings.push({
+      field: "Core Design Drivers",
+      section: "Type A Completeness",
+      message: `Missing core design driver(s): ${missingDrivers.join(", ")}. Type A wastewater projects must surface Flow (avg + peak), BOD, COD, TSS, FOG, and pH in the Feedstock/Influent section.`,
+      severity: "error",
+    });
+
+    for (const missing of missingDrivers) {
+      warnings.push({
+        field: missing,
+        section: "Type A Completeness",
+        message: `"${missing}" not found in Feedstock/Influent section — this is a core design driver for wastewater treatment and must be provided.`,
+        severity: "error",
+      });
+    }
+  } else {
+    warnings.push({
+      field: "Core Design Drivers",
+      section: "Type A Completeness",
+      message: "All six core design drivers present: Flow (avg + peak), BOD, COD, TSS, FOG, pH.",
+      severity: "info",
+    });
+  }
+
+  return { warnings };
+}
