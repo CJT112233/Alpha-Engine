@@ -114,7 +114,7 @@ export default function Documentation() {
               {[
                 { label: "Project Types (A, B, C, D)", anchor: "#project-types" },
                 { label: "End-to-End Process Flow", anchor: "#process-flow" },
-                { label: "Step 1: Project Type Classification", anchor: "#classification" },
+                { label: "Step 1: Project Type Selection", anchor: "#classification" },
                 { label: "Step 2: Parameter Extraction", anchor: "#extraction" },
                 { label: "Step 3: Feedstock & Output Enrichment", anchor: "#enrichment" },
                 { label: "Step 4: Validation Pipeline", anchor: "#validation" },
@@ -134,6 +134,23 @@ export default function Documentation() {
                   {item.label}
                 </a>
               ))}
+              <Separator className="col-span-full my-1" />
+              <Link
+                href="/docs/feedstock-library"
+                className="flex items-center gap-2 text-sm py-1.5 px-2 rounded hover-elevate transition-colors font-medium"
+                data-testid="link-toc-feedstock-library"
+              >
+                <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                Reference Libraries (Feedstock, Wastewater, Output)
+              </Link>
+              <Link
+                href="/docs/prompts"
+                className="flex items-center gap-2 text-sm py-1.5 px-2 rounded hover-elevate transition-colors font-medium"
+                data-testid="link-toc-prompts"
+              >
+                <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                AI Prompt Templates (Full Text)
+              </Link>
             </div>
           </CardContent>
         </Card>
@@ -248,8 +265,8 @@ export default function Documentation() {
             </CardHeader>
             <CardContent>
               <div className="space-y-0">
-                <FlowStep step={1} icon={Bot} title="Project Type Classification" badges={["AI"]}
-                  description="AI reads unstructured project descriptions and classifies into one of four types (A, B, C, D). This determines which extraction prompt and validation rules apply downstream." />
+                <FlowStep step={1} icon={ListChecks} title="Project Type Selection" badges={["User-Selected"]}
+                  description="The user selects the project type (A, B, C, or D) when creating a scenario. This selection drives which extraction prompt, validation guardrails, and mass balance model apply downstream." />
                 <FlowStep step={2} icon={Sparkles} title="Parameter Extraction" badges={["AI", "Type-Specific"]}
                   description="Using the classified type, a type-specific AI prompt extracts every technical parameter from user text and uploaded documents. Returns structured JSON with feedstock specs, location, outputs, and constraints." />
                 <FlowStep step={3} icon={Database} title="Feedstock & Output Enrichment" badges={["Knowledge Base"]}
@@ -449,50 +466,62 @@ export default function Documentation() {
               </p>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="p-4 rounded-md border space-y-2">
-                  <h4 className="font-medium text-sm flex items-center gap-2">
-                    <Beaker className="h-4 w-4 text-primary" />
-                    Feedstock Library
-                  </h4>
-                  <p className="text-xs text-muted-foreground">
-                    Common AD feedstocks with default properties. Matched by feedstock type name (fuzzy matching).
-                  </p>
-                  <div className="text-xs space-y-1">
-                    <p className="font-medium">Parameters enriched:</p>
-                    <div className="flex flex-wrap gap-1">
-                      <Badge variant="secondary" className="text-xs">TS%</Badge>
-                      <Badge variant="secondary" className="text-xs">VS/TS</Badge>
-                      <Badge variant="secondary" className="text-xs">BMP</Badge>
-                      <Badge variant="secondary" className="text-xs">C:N Ratio</Badge>
-                      <Badge variant="secondary" className="text-xs">Bulk Density</Badge>
-                      <Badge variant="secondary" className="text-xs">pH Range</Badge>
-                      <Badge variant="secondary" className="text-xs">N, P, K</Badge>
+                <Link href="/docs/feedstock-library" className="block" data-testid="link-feedstock-library">
+                  <div className="p-4 rounded-md border space-y-2 hover-elevate transition-colors h-full">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <h4 className="font-medium text-sm flex items-center gap-2">
+                        <Beaker className="h-4 w-4 text-primary" />
+                        Feedstock Library
+                      </h4>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Common AD feedstocks with default properties. Matched by feedstock type name (fuzzy matching).
+                      Click to browse all profiles and see every parameter.
+                    </p>
+                    <div className="text-xs space-y-1">
+                      <p className="font-medium">Parameters enriched:</p>
+                      <div className="flex flex-wrap gap-1">
+                        <Badge variant="secondary" className="text-xs">TS%</Badge>
+                        <Badge variant="secondary" className="text-xs">VS/TS</Badge>
+                        <Badge variant="secondary" className="text-xs">BMP</Badge>
+                        <Badge variant="secondary" className="text-xs">C:N Ratio</Badge>
+                        <Badge variant="secondary" className="text-xs">Bulk Density</Badge>
+                        <Badge variant="secondary" className="text-xs">pH Range</Badge>
+                        <Badge variant="secondary" className="text-xs">N, P, K</Badge>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Example feedstocks: Potato Waste, Dairy Manure, Food Waste, Grease Trap Waste, Brewery Spent Grain
                     </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Example feedstocks: Potato Waste, Dairy Manure, Food Waste, Grease Trap Waste, Brewery Spent Grain
-                  </div>
-                </div>
+                </Link>
 
-                <div className="p-4 rounded-md border space-y-2">
-                  <h4 className="font-medium text-sm flex items-center gap-2">
-                    <FileOutput className="h-4 w-4 text-primary" />
-                    Output Criteria Library
-                  </h4>
-                  <p className="text-xs text-muted-foreground">
-                    Acceptance criteria for common output profiles, including regulatory limits and industry standards.
-                  </p>
-                  <div className="text-xs space-y-1">
-                    <p className="font-medium">Output profiles:</p>
-                    <ul className="text-muted-foreground space-y-0.5">
-                      <li>RNG - Pipeline Injection (CH4 &ge; 96%, H2S &lt; 4 ppmv)</li>
-                      <li>Liquid Effluent - Discharge to WWTP</li>
-                      <li>Solid Digestate - Land Application (blocked by guardrail)</li>
-                      <li>Electricity Generation</li>
-                      <li>Compost Production</li>
-                    </ul>
+                <Link href="/docs/feedstock-library?tab=output" className="block" data-testid="link-output-criteria-library">
+                  <div className="p-4 rounded-md border space-y-2 hover-elevate transition-colors h-full">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <h4 className="font-medium text-sm flex items-center gap-2">
+                        <FileOutput className="h-4 w-4 text-primary" />
+                        Output Criteria Library
+                      </h4>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Acceptance criteria for common output profiles, including regulatory limits and industry standards.
+                      Click to browse all profiles and see every parameter.
+                    </p>
+                    <div className="text-xs space-y-1">
+                      <p className="font-medium">Output profiles:</p>
+                      <ul className="text-muted-foreground space-y-0.5">
+                        <li>RNG - Pipeline Injection (CH4 &ge; 96%, H2S &lt; 4 ppmv)</li>
+                        <li>Liquid Effluent - Discharge to WWTP</li>
+                        <li>Solid Digestate - Land Application (blocked by guardrail)</li>
+                        <li>Electricity Generation</li>
+                        <li>Compost Production</li>
+                      </ul>
+                    </div>
                   </div>
-                </div>
+                </Link>
               </div>
 
               <div className="p-4 rounded-md bg-muted/50 space-y-2">
@@ -1055,7 +1084,14 @@ export default function Documentation() {
 
               <Separator />
 
-              <p className="text-sm font-medium">Complete Prompt Template Reference</p>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-sm font-medium">Complete Prompt Template Reference</p>
+                <Link href="/docs/prompts" data-testid="link-view-all-prompts">
+                  <Badge variant="outline" className="text-xs hover-elevate cursor-pointer">
+                    View all prompts with full text <ChevronRight className="h-3 w-3 ml-1 inline" />
+                  </Badge>
+                </Link>
+              </div>
               <div className="grid gap-2 md:grid-cols-2">
                 <PromptLink name="Project Type Classification" promptKey="classification"
                   description="Classifies projects into types A-D." />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -117,7 +117,12 @@ function FeedstockDetail({ profile, type }: { profile: FeedstockProfile | Wastew
 type LibraryTab = "feedstock" | "wastewater" | "output";
 
 export default function DocsFeedstockLibrary() {
-  const [activeTab, setActiveTab] = useState<LibraryTab>("feedstock");
+  const searchParams = useSearch();
+  const initialTab = searchParams.includes("tab=output") ? "output" as LibraryTab
+    : searchParams.includes("tab=wastewater") ? "wastewater" as LibraryTab
+    : "feedstock" as LibraryTab;
+
+  const [activeTab, setActiveTab] = useState<LibraryTab>(initialTab);
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
