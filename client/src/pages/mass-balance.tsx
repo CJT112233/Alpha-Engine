@@ -582,14 +582,17 @@ function SummaryCard({ summary, overrides, locks, onSaveOverride, onToggleLock }
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {Object.entries(summary).map(([key, val]) => {
             const fieldKey = `summary.${key}`;
+            const rawVal = val.value;
+            const displayVal = (rawVal !== null && typeof rawVal === "object" && "value" in (rawVal as any)) ? String((rawVal as any).value) : String(rawVal ?? "");
+            const displayUnit = val.unit || ((rawVal !== null && typeof rawVal === "object" && "unit" in (rawVal as any)) ? (rawVal as any).unit : "");
             return (
               <div key={key} className="rounded-md bg-muted/40 p-3">
                 <div className="text-xs text-muted-foreground">{summaryLabels[key] || formatLabel(key)}</div>
                 <div className="mt-1">
                   <EditableValue
                     fieldKey={fieldKey}
-                    displayValue={val.value}
-                    unit={val.unit}
+                    displayValue={displayVal}
+                    unit={displayUnit}
                     isLocked={!!locks[fieldKey]}
                     isOverridden={!!overrides[fieldKey]}
                     onSaveOverride={onSaveOverride}
@@ -669,13 +672,16 @@ function EquipmentTable({ equipment, locks, overrides, onToggleLock, onSaveOverr
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
                   {Object.entries(eq.specs).map(([key, spec]) => {
                     const fieldKey = `equipment.${eq.id}.specs.${key}`;
+                    const rawVal = spec.value;
+                    const displayVal = (rawVal !== null && typeof rawVal === "object" && "value" in rawVal) ? String((rawVal as any).value) : String(rawVal ?? "");
+                    const displayUnit = spec.unit || ((rawVal !== null && typeof rawVal === "object" && "unit" in rawVal) ? (rawVal as any).unit : "");
                     return (
                       <div key={key} className="rounded-md bg-muted/40 p-2">
                         <div className="text-xs text-muted-foreground">{formatLabel(key)}</div>
                         <EditableValue
                           fieldKey={fieldKey}
-                          displayValue={String(spec.value)}
-                          unit={spec.unit}
+                          displayValue={displayVal}
+                          unit={displayUnit}
                           isLocked={!!locks[fieldKey]}
                           isOverridden={!!overrides[fieldKey]}
                           onSaveOverride={onSaveOverride}
