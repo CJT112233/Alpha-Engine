@@ -193,7 +193,7 @@ async function extractTextFromFile(filePath: string, mimeType: string, originalN
       const dataBuffer = fs.readFileSync(filePath);
       const uint8Data = new Uint8Array(dataBuffer);
       const parser = new PDFParse(uint8Data);
-      await parser.load();
+      await (parser as any).load();
       const result = await parser.getText();
       const rawText = result?.text?.trim() || null;
       if (!rawText) return null;
@@ -668,7 +668,7 @@ export async function registerRoutes(
 
   app.get("/api/prompts/:key", async (req: Request, res: Response) => {
     try {
-      const key = req.params.key as PromptKey;
+      const key = (req.params.key as string) as PromptKey;
       if (!PROMPT_KEYS.includes(key)) {
         return res.status(404).json({ error: "Unknown prompt key" });
       }
@@ -692,7 +692,7 @@ export async function registerRoutes(
 
   app.patch("/api/prompts/:key", async (req: Request, res: Response) => {
     try {
-      const key = req.params.key as PromptKey;
+      const key = (req.params.key as string) as PromptKey;
       if (!PROMPT_KEYS.includes(key)) {
         return res.status(404).json({ error: "Unknown prompt key" });
       }
@@ -720,7 +720,7 @@ export async function registerRoutes(
 
   app.post("/api/prompts/:key/reset", async (req: Request, res: Response) => {
     try {
-      const key = req.params.key as PromptKey;
+      const key = (req.params.key as string) as PromptKey;
       if (!PROMPT_KEYS.includes(key)) {
         return res.status(404).json({ error: "Unknown prompt key" });
       }
@@ -747,11 +747,11 @@ export async function registerRoutes(
       if (!model || !["gpt5", "claude", "claude-opus"].includes(model)) {
         return res.status(400).json({ error: "Invalid model. Must be 'gpt5', 'claude', or 'claude-opus'." });
       }
-      const scenario = await storage.getScenario(req.params.id);
+      const scenario = await storage.getScenario((req.params.id as string));
       if (!scenario) {
         return res.status(404).json({ error: "Scenario not found" });
       }
-      const updated = await storage.updateScenarioModel(req.params.id, model);
+      const updated = await storage.updateScenarioModel((req.params.id as string), model);
       res.json(updated);
     } catch (error) {
       console.error("Error updating preferred model:", error);
@@ -762,7 +762,7 @@ export async function registerRoutes(
   app.post("/api/scenarios/:id/classify", async (req: Request, res: Response) => {
     const startTime = Date.now();
     try {
-      const scenarioId = req.params.id;
+      const scenarioId = (req.params.id as string);
       const scenario = await storage.getScenario(scenarioId);
       if (!scenario) {
         return res.status(404).json({ error: "Scenario not found" });
@@ -880,11 +880,11 @@ export async function registerRoutes(
       if (!projectType || !["A", "B", "C", "D"].includes(projectType)) {
         return res.status(400).json({ error: "Invalid project type. Must be 'A', 'B', 'C', or 'D'." });
       }
-      const scenario = await storage.getScenario(req.params.id);
+      const scenario = await storage.getScenario((req.params.id as string));
       if (!scenario) {
         return res.status(404).json({ error: "Scenario not found" });
       }
-      const updated = await storage.updateScenarioProjectType(req.params.id, projectType, confirmed !== false);
+      const updated = await storage.updateScenarioProjectType((req.params.id as string), projectType, confirmed !== false);
       res.json(updated);
     } catch (error) {
       console.error("Error updating project type:", error);
@@ -908,7 +908,7 @@ export async function registerRoutes(
 
   app.get("/api/projects/:id", async (req: Request, res: Response) => {
     try {
-      const project = await storage.getProject(req.params.id);
+      const project = await storage.getProject((req.params.id as string));
       if (!project) {
         return res.status(404).json({ error: "Project not found" });
       }
@@ -935,7 +935,7 @@ export async function registerRoutes(
 
   app.delete("/api/projects/:id", async (req: Request, res: Response) => {
     try {
-      await storage.deleteProject(req.params.id);
+      await storage.deleteProject((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting project:", error);
@@ -949,7 +949,7 @@ export async function registerRoutes(
 
   app.get("/api/projects/:projectId/scenarios", async (req: Request, res: Response) => {
     try {
-      const scenarios = await storage.getScenariosByProject(req.params.projectId);
+      const scenarios = await storage.getScenariosByProject((req.params.projectId as string));
       res.json(scenarios);
     } catch (error) {
       console.error("Error fetching scenarios:", error);
@@ -969,7 +969,7 @@ export async function registerRoutes(
 
   app.get("/api/scenarios/:id", async (req: Request, res: Response) => {
     try {
-      const scenario = await storage.getScenario(req.params.id);
+      const scenario = await storage.getScenario((req.params.id as string));
       if (!scenario) {
         return res.status(404).json({ error: "Scenario not found" });
       }
@@ -984,7 +984,7 @@ export async function registerRoutes(
     try {
       const data = insertScenarioSchema.parse({
         ...req.body,
-        projectId: req.params.projectId,
+        projectId: (req.params.projectId as string),
       });
       const scenario = await storage.createScenario(data);
       res.status(201).json(scenario);
@@ -999,7 +999,7 @@ export async function registerRoutes(
 
   app.delete("/api/scenarios/:id", async (req: Request, res: Response) => {
     try {
-      await storage.deleteScenario(req.params.id);
+      await storage.deleteScenario((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting scenario:", error);
@@ -1013,7 +1013,7 @@ export async function registerRoutes(
 
   app.get("/api/scenarios/:scenarioId/text-entries", async (req: Request, res: Response) => {
     try {
-      const entries = await storage.getTextEntriesByScenario(req.params.scenarioId);
+      const entries = await storage.getTextEntriesByScenario((req.params.scenarioId as string));
       res.json(entries);
     } catch (error) {
       console.error("Error fetching text entries:", error);
@@ -1026,7 +1026,7 @@ export async function registerRoutes(
       const category = categorizeInput(req.body.content);
       const data = insertTextEntrySchema.parse({
         ...req.body,
-        scenarioId: req.params.scenarioId,
+        scenarioId: (req.params.scenarioId as string),
         category,
       });
       const entry = await storage.createTextEntry(data);
@@ -1042,7 +1042,7 @@ export async function registerRoutes(
 
   app.delete("/api/text-entries/:id", async (req: Request, res: Response) => {
     try {
-      await storage.deleteTextEntry(req.params.id);
+      await storage.deleteTextEntry((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting text entry:", error);
@@ -1056,7 +1056,7 @@ export async function registerRoutes(
 
   app.get("/api/scenarios/:scenarioId/documents", async (req: Request, res: Response) => {
     try {
-      const docs = await storage.getDocumentsByScenario(req.params.scenarioId);
+      const docs = await storage.getDocumentsByScenario((req.params.scenarioId as string));
       res.json(docs);
     } catch (error) {
       console.error("Error fetching documents:", error);
@@ -1085,7 +1085,7 @@ export async function registerRoutes(
       }
       
       const doc = await storage.createDocument({
-        scenarioId: req.params.scenarioId,
+        scenarioId: (req.params.scenarioId as string),
         filename: req.file.filename,
         originalName: req.file.originalname,
         mimeType: req.file.mimetype,
@@ -1102,7 +1102,7 @@ export async function registerRoutes(
 
   app.delete("/api/documents/:id", async (req: Request, res: Response) => {
     try {
-      await storage.deleteDocument(req.params.id);
+      await storage.deleteDocument((req.params.id as string));
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting document:", error);
@@ -1116,7 +1116,7 @@ export async function registerRoutes(
 
   app.get("/api/scenarios/:scenarioId/parameters", async (req: Request, res: Response) => {
     try {
-      const params = await storage.getParametersByScenario(req.params.scenarioId);
+      const params = await storage.getParametersByScenario((req.params.scenarioId as string));
       res.json(params);
     } catch (error) {
       console.error("Error fetching parameters:", error);
@@ -1126,7 +1126,7 @@ export async function registerRoutes(
 
   app.post("/api/scenarios/:scenarioId/clarify", async (req: Request, res: Response) => {
     try {
-      const scenarioId = req.params.scenarioId;
+      const scenarioId = (req.params.scenarioId as string);
       console.log(`Clarify: Starting for scenario ${scenarioId}`);
 
       const entries = await storage.getTextEntriesByScenario(scenarioId);
@@ -1194,7 +1194,7 @@ export async function registerRoutes(
 
   app.post("/api/scenarios/:scenarioId/clarify-answers", async (req: Request, res: Response) => {
     try {
-      const scenarioId = req.params.scenarioId;
+      const scenarioId = (req.params.scenarioId as string);
       const { answers } = req.body;
 
       if (!answers || !Array.isArray(answers)) {
@@ -1240,7 +1240,7 @@ export async function registerRoutes(
   app.post("/api/scenarios/:scenarioId/extract", async (req: Request, res: Response) => {
     const startTime = Date.now();
     try {
-      const scenarioId = req.params.scenarioId;
+      const scenarioId = (req.params.scenarioId as string);
       
       // Get all text entries for this scenario
       const entries = await storage.getTextEntriesByScenario(scenarioId);
@@ -1302,6 +1302,7 @@ export async function registerRoutes(
         await storage.createParameter({
           scenarioId,
           ...param,
+          source: (param as any).source || "document",
           isConfirmed: false,
         });
       }
@@ -1313,7 +1314,7 @@ export async function registerRoutes(
       // Accept both "feedstock" and "input" categories to support custom prompts that use "input" for influents/feedstocks
       const feedstockParams = extractedParams.filter(p => p.category === "feedstock" || p.category === "input");
       
-      function classifyFeedstockParam(name: string): { index: number; cleanName: string } {
+      const classifyFeedstockParam = (name: string): { index: number; cleanName: string } => {
         const numbered = name.match(/^(?:Feedstock|Influent)\s+(\d+)\s+(.+)$/i);
         if (numbered) return { index: parseInt(numbered[1]), cleanName: numbered[2].trim() };
         const lower = name.toLowerCase();
@@ -1329,10 +1330,10 @@ export async function registerRoutes(
         const { index, cleanName } = classifyFeedstockParam(param.name);
         if (index === 0) continue;
         if (!feedstockGroups.has(index)) feedstockGroups.set(index, []);
-        feedstockGroups.get(index)!.push({ cleanName, value: param.value || "", unit: param.unit || undefined, extractionSource: param.source });
+        feedstockGroups.get(index)!.push({ cleanName, value: param.value || "", unit: param.unit || undefined, extractionSource: (param as any).source });
       }
       
-      function mapTechnicalParamName(rawName: string, isTypeC: boolean = false): string | null {
+      const mapTechnicalParamName = (rawName: string, isTypeC: boolean = false): string | null => {
         const n = rawName.toLowerCase().trim();
         
         if (isTypeC) {
@@ -1786,7 +1787,7 @@ export async function registerRoutes(
         unmappedSpecs: Object.keys(allUnmappedSpecs).length > 0 ? allUnmappedSpecs : undefined,
         performanceTargets: performanceTargets.length > 0 ? performanceTargets : undefined,
         location: mergedLocation,
-        constraints: mergedConstraints,
+        constraints: mergedConstraints.filter((c): c is string => c != null),
         confirmedFields: Object.keys(cf).length > 0 ? cf : undefined,
         isConfirmed: false,
       };
@@ -1836,7 +1837,7 @@ export async function registerRoutes(
       if (value !== undefined) updates.value = value;
       if (isConfirmed !== undefined) updates.isConfirmed = isConfirmed;
       
-      const param = await storage.updateParameter(req.params.id, updates);
+      const param = await storage.updateParameter((req.params.id as string), updates);
       if (!param) {
         return res.status(404).json({ error: "Parameter not found" });
       }
@@ -1853,7 +1854,7 @@ export async function registerRoutes(
 
   app.get("/api/scenarios/:scenarioId/upif", async (req: Request, res: Response) => {
     try {
-      const upif = await storage.getUpifByScenario(req.params.scenarioId);
+      const upif = await storage.getUpifByScenario((req.params.scenarioId as string));
       res.json(upif || null);
     } catch (error) {
       console.error("Error fetching UPIF:", error);
@@ -1863,7 +1864,7 @@ export async function registerRoutes(
 
   app.patch("/api/scenarios/:scenarioId/upif", async (req: Request, res: Response) => {
     try {
-      const upif = await storage.updateUpif(req.params.scenarioId, req.body);
+      const upif = await storage.updateUpif((req.params.scenarioId as string), req.body);
       if (!upif) {
         return res.status(404).json({ error: "UPIF not found" });
       }
@@ -1876,7 +1877,7 @@ export async function registerRoutes(
 
   app.post("/api/scenarios/:scenarioId/confirm", async (req: Request, res: Response) => {
     try {
-      const scenarioId = req.params.scenarioId;
+      const scenarioId = (req.params.scenarioId as string);
       
       // Confirm UPIF
       await storage.confirmUpif(scenarioId);
@@ -1894,14 +1895,14 @@ export async function registerRoutes(
 
   app.get("/api/scenarios/:scenarioId/sibling-upifs", async (req: Request, res: Response) => {
     try {
-      const scenario = await storage.getScenario(req.params.scenarioId);
+      const scenario = await storage.getScenario((req.params.scenarioId as string));
       if (!scenario) return res.status(404).json({ error: "Scenario not found" });
 
       const siblings = await storage.getScenariosByProject(scenario.projectId);
       const results: { scenarioId: string; scenarioName: string; isConfirmed: boolean; updatedAt: string }[] = [];
 
       for (const sib of siblings) {
-        if (sib.id === req.params.scenarioId) continue;
+        if (sib.id === (req.params.scenarioId as string)) continue;
         const upif = await storage.getUpifByScenario(sib.id);
         if (upif) {
           results.push({
@@ -1926,7 +1927,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "sourceScenarioId is required" });
       }
 
-      const targetScenario = await storage.getScenario(req.params.scenarioId);
+      const targetScenario = await storage.getScenario((req.params.scenarioId as string));
       if (!targetScenario) return res.status(404).json({ error: "Target scenario not found" });
 
       if (targetScenario.status === "confirmed") {
@@ -1943,7 +1944,7 @@ export async function registerRoutes(
       const sourceUpif = await storage.getUpifByScenario(sourceScenarioId);
       if (!sourceUpif) return res.status(404).json({ error: "Source scenario has no UPIF to import" });
 
-      const existingUpif = await storage.getUpifByScenario(req.params.scenarioId);
+      const existingUpif = await storage.getUpifByScenario((req.params.scenarioId as string));
 
       const importData: Partial<InsertUpif> = {
         feedstockType: sourceUpif.feedstockType,
@@ -1963,20 +1964,19 @@ export async function registerRoutes(
 
       let upif;
       if (existingUpif) {
-        upif = await storage.updateUpif(req.params.scenarioId, {
+        upif = await storage.updateUpif((req.params.scenarioId as string), {
           ...importData,
           isConfirmed: false,
-          confirmedAt: null,
           confirmedFields: null,
         });
       } else {
         upif = await storage.createUpif({
-          scenarioId: req.params.scenarioId,
+          scenarioId: (req.params.scenarioId as string),
           ...importData,
         } as InsertUpif);
       }
 
-      await storage.updateScenarioStatus(req.params.scenarioId, "in_review");
+      await storage.updateScenarioStatus((req.params.scenarioId as string), "in_review");
 
       res.json(upif);
     } catch (error) {
@@ -2000,7 +2000,7 @@ export async function registerRoutes(
 
   app.get("/api/scenarios/:scenarioId/upif/chat", async (req: Request, res: Response) => {
     try {
-      const messages = await storage.getChatMessagesByScenario(req.params.scenarioId);
+      const messages = await storage.getChatMessagesByScenario((req.params.scenarioId as string));
       res.json(messages);
     } catch (error) {
       console.error("Error fetching chat messages:", error);
@@ -2010,7 +2010,7 @@ export async function registerRoutes(
 
   app.post("/api/scenarios/:scenarioId/upif/chat", async (req: Request, res: Response) => {
     try {
-      const scenarioId = req.params.scenarioId;
+      const scenarioId = (req.params.scenarioId as string);
       const { message } = req.body;
 
       if (!message || typeof message !== "string" || !message.trim()) {
@@ -2184,13 +2184,12 @@ export async function registerRoutes(
                 mergedSpecs[specKey] = {
                   value: newSpec.value || "",
                   unit: newSpec.unit || "",
-                  source: "user_provided",
-                  confidence: "medium",
-                  provenance: "Added via reviewer chat",
-                  group: "extended",
-                  displayName: specKey,
-                  sortOrder: 99,
-                  ...newSpec,
+                  source: newSpec.source || "user_provided",
+                  confidence: newSpec.confidence || "medium",
+                  provenance: newSpec.provenance || "Added via reviewer chat",
+                  group: newSpec.group || "extended",
+                  displayName: newSpec.displayName || specKey,
+                  sortOrder: newSpec.sortOrder ?? 99,
                 };
               }
             }
@@ -2360,7 +2359,7 @@ export async function registerRoutes(
   // PDF Export Route
   app.get("/api/scenarios/:scenarioId/upif/export-pdf", async (req: Request, res: Response) => {
     try {
-      const scenarioId = req.params.scenarioId;
+      const scenarioId = (req.params.scenarioId as string);
       const scenario = await storage.getScenario(scenarioId);
       if (!scenario) {
         return res.status(404).json({ error: "Scenario not found" });
@@ -2730,7 +2729,7 @@ export async function registerRoutes(
 
   app.get("/api/scenarios/:scenarioId/mass-balance", async (req: Request, res: Response) => {
     try {
-      const runs = await storage.getMassBalanceRunsByScenario(req.params.scenarioId);
+      const runs = await storage.getMassBalanceRunsByScenario((req.params.scenarioId as string));
       res.json(runs);
     } catch (error) {
       console.error("Error fetching mass balance runs:", error);
@@ -2740,7 +2739,7 @@ export async function registerRoutes(
 
   app.get("/api/mass-balance/:id", async (req: Request, res: Response) => {
     try {
-      const run = await storage.getMassBalanceRun(req.params.id);
+      const run = await storage.getMassBalanceRun((req.params.id as string));
       if (!run) return res.status(404).json({ error: "Mass balance run not found" });
       res.json(run);
     } catch (error) {
@@ -2755,7 +2754,7 @@ export async function registerRoutes(
     const startTime = Date.now();
     let modelUsed = "deterministic";
     try {
-      const { scenarioId } = req.params;
+      const scenarioId = req.params.scenarioId as string;
       const scenario = await storage.getScenario(scenarioId);
       if (!scenario) return res.status(404).json({ error: "Scenario not found" });
 
@@ -2766,7 +2765,7 @@ export async function registerRoutes(
       const upif = await storage.getUpifByScenario(scenarioId);
       if (!upif) return res.status(400).json({ error: "No UPIF found for this scenario. Generate and confirm a UPIF first." });
 
-      const projectType = (scenario as any).projectType || upif.projectType || "";
+      const projectType = (scenario as any).projectType || (upif as any).projectType || "";
       const preferredModel = (scenario.preferredModel || "gpt5") as LLMProvider;
       console.log(`Mass Balance Generate: scenarioId=${scenarioId}, projectType="${projectType}", preferredModel=${preferredModel}`);
 
@@ -2896,7 +2895,7 @@ export async function registerRoutes(
 
   app.patch("/api/mass-balance/:id/overrides", async (req: Request, res: Response) => {
     try {
-      const run = await storage.getMassBalanceRun(req.params.id);
+      const run = await storage.getMassBalanceRun((req.params.id as string));
       if (!run) return res.status(404).json({ error: "Mass balance run not found" });
 
       const parsed = overridesSchema.safeParse(req.body);
@@ -2905,7 +2904,7 @@ export async function registerRoutes(
       }
 
       const mergedOverrides = { ...(run.overrides || {}), ...parsed.data.overrides };
-      const updated = await storage.updateMassBalanceRun(req.params.id, {
+      const updated = await storage.updateMassBalanceRun((req.params.id as string), {
         overrides: mergedOverrides,
       });
       res.json(updated);
@@ -2917,7 +2916,7 @@ export async function registerRoutes(
 
   app.patch("/api/mass-balance/:id/locks", async (req: Request, res: Response) => {
     try {
-      const run = await storage.getMassBalanceRun(req.params.id);
+      const run = await storage.getMassBalanceRun((req.params.id as string));
       if (!run) return res.status(404).json({ error: "Mass balance run not found" });
 
       const parsed = locksSchema.safeParse(req.body);
@@ -2926,7 +2925,7 @@ export async function registerRoutes(
       }
 
       const mergedLocks = { ...(run.locks || {}), ...parsed.data.locks };
-      const updated = await storage.updateMassBalanceRun(req.params.id, {
+      const updated = await storage.updateMassBalanceRun((req.params.id as string), {
         locks: mergedLocks,
       });
       res.json(updated);
@@ -2938,14 +2937,14 @@ export async function registerRoutes(
 
   app.post("/api/mass-balance/:id/recompute", async (req: Request, res: Response) => {
     try {
-      const run = await storage.getMassBalanceRun(req.params.id);
+      const run = await storage.getMassBalanceRun((req.params.id as string));
       if (!run) return res.status(404).json({ error: "Mass balance run not found" });
 
       const upif = await storage.getUpifByScenario(run.scenarioId);
       if (!upif) return res.status(400).json({ error: "Source UPIF no longer exists" });
 
       const scenario = await storage.getScenario(run.scenarioId);
-      const projectType = (scenario as any)?.projectType || upif.projectType || "";
+      const projectType = (scenario as any)?.projectType || (upif as any).projectType || "";
       const preferredModel = (scenario?.preferredModel || "gpt5") as LLMProvider;
 
       let results;
@@ -2997,7 +2996,7 @@ export async function registerRoutes(
 
   app.patch("/api/mass-balance/:id/status", async (req: Request, res: Response) => {
     try {
-      const run = await storage.getMassBalanceRun(req.params.id);
+      const run = await storage.getMassBalanceRun((req.params.id as string));
       if (!run) return res.status(404).json({ error: "Mass balance run not found" });
 
       const parsed = statusSchema.safeParse(req.body);
@@ -3005,7 +3004,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid status. Must be: draft, reviewed, or finalized", details: parsed.error.issues });
       }
 
-      const updated = await storage.updateMassBalanceRun(req.params.id, { status: parsed.data.status });
+      const updated = await storage.updateMassBalanceRun((req.params.id as string), { status: parsed.data.status });
       res.json(updated);
     } catch (error) {
       console.error("Error updating status:", error);
@@ -3019,7 +3018,7 @@ export async function registerRoutes(
 
   app.get("/api/scenarios/:scenarioId/capex", async (req: Request, res: Response) => {
     try {
-      const estimates = await storage.getCapexEstimatesByScenario(req.params.scenarioId);
+      const estimates = await storage.getCapexEstimatesByScenario((req.params.scenarioId as string));
       res.json(estimates);
     } catch (error) {
       console.error("Error fetching capex estimates:", error);
@@ -3032,7 +3031,7 @@ export async function registerRoutes(
     res.setTimeout(300000);
     const startTime = Date.now();
     let modelUsed = "unknown";
-    const scenarioId = req.params.scenarioId;
+    const scenarioId = (req.params.scenarioId as string);
 
     try {
       const scenario = await storage.getScenario(scenarioId);
@@ -3054,14 +3053,14 @@ export async function registerRoutes(
 
       const upif = await storage.getUpifByScenario(scenarioId);
       const upifData = upif ? {
-        projectType: upif.projectType,
+        projectType: (upif as any).projectType,
         location: upif.location,
         feedstocks: upif.feedstocks,
         outputRequirements: upif.outputRequirements,
         constraints: upif.constraints,
-      } : {};
+      } : {} as any;
 
-      const projectType = mbResults.projectType || upifData.projectType || scenario.projectType || "A";
+      const projectType = mbResults.projectType || upifData.projectType || (scenario as any).projectType || "A";
       const preferredModel = (scenario.preferredModel || "gpt5") as import("./llm").LLMProvider;
 
       const { generateCapexWithAI } = await import("./services/capexAI");
@@ -3123,7 +3122,7 @@ export async function registerRoutes(
     let modelUsed = "unknown";
 
     try {
-      const existing = await storage.getCapexEstimate(req.params.id);
+      const existing = await storage.getCapexEstimate((req.params.id as string));
       if (!existing) return res.status(404).json({ error: "CapEx estimate not found" });
 
       const scenario = await storage.getScenario(existing.scenarioId);
@@ -3135,14 +3134,14 @@ export async function registerRoutes(
       const mbResults = mbRun.results as import("@shared/schema").MassBalanceResults;
       const upif = await storage.getUpifByScenario(existing.scenarioId);
       const upifData = upif ? {
-        projectType: upif.projectType,
+        projectType: (upif as any).projectType,
         location: upif.location,
         feedstocks: upif.feedstocks,
         outputRequirements: upif.outputRequirements,
         constraints: upif.constraints,
-      } : {};
+      } : {} as any;
 
-      const projectType = mbResults?.projectType || upifData.projectType || scenario.projectType || "A";
+      const projectType = mbResults?.projectType || upifData.projectType || (scenario as any).projectType || "A";
       const preferredModel = (scenario.preferredModel || "gpt5") as import("./llm").LLMProvider;
 
       const { generateCapexWithAI } = await import("./services/capexAI");
@@ -3219,7 +3218,7 @@ export async function registerRoutes(
 
   app.patch("/api/capex/:id", async (req: Request, res: Response) => {
     try {
-      const existing = await storage.getCapexEstimate(req.params.id);
+      const existing = await storage.getCapexEstimate((req.params.id as string));
       if (!existing) return res.status(404).json({ error: "CapEx estimate not found" });
 
       const { results, overrides, locks, status } = req.body;
@@ -3236,7 +3235,7 @@ export async function registerRoutes(
         updates.status = status;
       }
 
-      const updated = await storage.updateCapexEstimate(req.params.id, updates);
+      const updated = await storage.updateCapexEstimate((req.params.id as string), updates);
       res.json(updated);
     } catch (error) {
       console.error("Error updating capex:", error);

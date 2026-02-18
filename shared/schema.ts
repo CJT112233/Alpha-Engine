@@ -129,7 +129,7 @@ export type EnrichedFeedstockSpecRecord = Record<string, {
   source: "user_provided" | "ai_inferred" | "estimated_default";
   confidence: "high" | "medium" | "low";
   provenance: string;
-  group: "identity" | "physical" | "biochemical" | "contaminants" | "extended";
+  group: "identity" | "physical" | "biochemical" | "contaminants" | "extended" | "composition";
   displayName: string;
   sortOrder: number;
 }>;
@@ -183,7 +183,7 @@ export const upifRecords = pgTable("upif_records", {
   outputSpecs: jsonb("output_specs").$type<Record<string, Record<string, {
     value: string;
     unit: string;
-    source: "typical_industry_standard" | "estimated_requirement" | "assumed_placeholder" | "user_provided";
+    source: "typical_industry_standard" | "estimated_requirement" | "assumed_placeholder" | "user_provided" | "ai_inferred";
     confidence: "high" | "medium" | "low";
     provenance: string;
     group: string;
