@@ -17,7 +17,6 @@ import {
 import {
   ArrowLeft,
   MessageSquare,
-  FileUp,
   FileText,
   Trash2,
   Bot,
@@ -317,14 +316,10 @@ export default function ScenarioDetail() {
         </div>
 
         <Tabs defaultValue="input" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-6" data-testid="tabs-scenario">
+          <TabsList className="grid w-full grid-cols-5" data-testid="tabs-scenario">
             <TabsTrigger value="input" className="flex items-center gap-1.5" data-testid="tab-input">
               <MessageSquare className="h-4 w-4 shrink-0" />
               <span className="hidden md:inline">Input</span>
-            </TabsTrigger>
-            <TabsTrigger value="documents" className="flex items-center gap-1.5" data-testid="tab-documents">
-              <FileUp className="h-4 w-4 shrink-0" />
-              <span className="hidden md:inline">Documents</span>
             </TabsTrigger>
             <TabsTrigger value="upif" className="flex items-center gap-1.5" data-testid="tab-upif">
               <FileText className="h-4 w-4 shrink-0" />
@@ -344,16 +339,13 @@ export default function ScenarioDetail() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="input" className="space-y-4">
+          <TabsContent value="input" className="space-y-6">
             <ConversationalInput
               scenarioId={id!}
               entries={textEntries || []}
               isLoading={entriesLoading}
               isLocked={isConfirmed}
             />
-          </TabsContent>
-
-          <TabsContent value="documents" className="space-y-4">
             <DocumentUpload
               scenarioId={id!}
               documents={documents || []}
