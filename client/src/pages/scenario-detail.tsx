@@ -568,7 +568,20 @@ export default function ScenarioDetail() {
                               <TableCell className="font-medium">{eq.equipmentType}</TableCell>
                               <TableCell>{eq.quantity || 1}</TableCell>
                               <TableCell className="text-muted-foreground text-sm">
-                                {specEntries.map(([k, v]) => `${k}: ${v}`).join(", ") || "\u2014"}
+                                {specEntries.map(([k, v]) => {
+                                  let display: string;
+                                  if (v !== null && typeof v === "object") {
+                                    const obj = v as any;
+                                    if ("value" in obj) {
+                                      display = obj.unit ? `${obj.value} ${obj.unit}` : String(obj.value);
+                                    } else {
+                                      display = JSON.stringify(obj);
+                                    }
+                                  } else {
+                                    display = String(v ?? "");
+                                  }
+                                  return `${k}: ${display}`;
+                                }).join(", ") || "\u2014"}
                               </TableCell>
                             </TableRow>
                           );
