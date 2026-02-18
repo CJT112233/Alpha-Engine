@@ -99,8 +99,22 @@ export default function ScenarioDetail() {
 
   const generateMBMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/scenarios/${id}/mass-balance/generate`);
-      return res.json();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000);
+      try {
+        const res = await fetch(`/api/scenarios/${id}/mass-balance/generate`, {
+          method: "POST",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || res.statusText);
+        }
+        return res.json();
+      } finally {
+        clearTimeout(timeoutId);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", id, "mass-balance"] });
@@ -113,8 +127,22 @@ export default function ScenarioDetail() {
 
   const generateCapexMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/scenarios/${id}/capex/generate`);
-      return res.json();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000);
+      try {
+        const res = await fetch(`/api/scenarios/${id}/capex/generate`, {
+          method: "POST",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || res.statusText);
+        }
+        return res.json();
+      } finally {
+        clearTimeout(timeoutId);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", id, "capex"] });
@@ -250,7 +278,28 @@ export default function ScenarioDetail() {
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            {llmProviders && llmProviders.providers.length > 0 && (
+              <div className="flex items-center gap-2" data-testid="global-model-selector">
+                <Bot className="h-4 w-4 text-muted-foreground" />
+                <Select
+                  value={(scenario as any).preferredModel || llmProviders.default || "gpt5"}
+                  onValueChange={(value) => modelMutation.mutate(value)}
+                  disabled={modelMutation.isPending}
+                >
+                  <SelectTrigger className="w-[200px]" data-testid="select-llm-model">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {llmProviders.providers.map((p) => (
+                      <SelectItem key={p.id} value={p.id} data-testid={`option-model-${p.id}`}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button
               variant="outline"
               size="icon"
@@ -342,30 +391,6 @@ export default function ScenarioDetail() {
                   </Select>
                 </div>
               )}
-              {llmProviders && llmProviders.providers.length > 1 && (
-                <>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Bot className="h-4 w-4" />
-                    <span>AI Model</span>
-                  </div>
-                  <Select
-                    value={(scenario as any).preferredModel || "gpt5"}
-                    onValueChange={(value) => modelMutation.mutate(value)}
-                    disabled={modelMutation.isPending}
-                  >
-                    <SelectTrigger className="w-[200px]" data-testid="select-llm-model">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {llmProviders.providers.map((p) => (
-                        <SelectItem key={p.id} value={p.id} data-testid={`option-model-${p.id}`}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </>
-              )}
             </div>
             <UpifReview
               scenarioId={id!}
@@ -384,30 +409,6 @@ export default function ScenarioDetail() {
           </TabsContent>
 
           <TabsContent value="mass-balance" className="space-y-4">
-            {llmProviders && llmProviders.providers.length > 1 && (
-              <div className="flex items-center gap-3 justify-end flex-wrap" data-testid="mb-model-selector">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Bot className="h-4 w-4" />
-                  <span>AI Model</span>
-                </div>
-                <Select
-                  value={(scenario as any).preferredModel || "gpt5"}
-                  onValueChange={(value) => modelMutation.mutate(value)}
-                  disabled={modelMutation.isPending}
-                >
-                  <SelectTrigger className="w-[200px]" data-testid="select-mb-llm-model">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {llmProviders.providers.map((p) => (
-                      <SelectItem key={p.id} value={p.id} data-testid={`option-mb-model-${p.id}`}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
             {mbLoading ? (
               <div className="space-y-4">
                 <Skeleton className="h-32 w-full" />

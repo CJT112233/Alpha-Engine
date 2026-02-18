@@ -2750,6 +2750,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/scenarios/:scenarioId/mass-balance/generate", async (req: Request, res: Response) => {
+    req.setTimeout(300000);
+    res.setTimeout(300000);
     const startTime = Date.now();
     let modelUsed = "deterministic";
     try {
@@ -3026,6 +3028,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/scenarios/:scenarioId/capex/generate", async (req: Request, res: Response) => {
+    req.setTimeout(300000);
+    res.setTimeout(300000);
     const startTime = Date.now();
     let modelUsed = "unknown";
     const scenarioId = req.params.scenarioId;
@@ -3113,6 +3117,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/capex/:id/recompute", async (req: Request, res: Response) => {
+    req.setTimeout(300000);
+    res.setTimeout(300000);
     const startTime = Date.now();
     let modelUsed = "unknown";
 
