@@ -2167,6 +2167,38 @@ export async function registerRoutes(
       }
       if (updates.feedstocks !== null && updates.feedstocks !== undefined && Array.isArray(updates.feedstocks)) {
         const newFeedstocks = updates.feedstocks as FeedstockEntry[];
+        for (let i = 0; i < newFeedstocks.length; i++) {
+          const oldFs = feedstocks[i];
+          const newFs = newFeedstocks[i];
+          if (!oldFs || !newFs) continue;
+          if (oldFs.feedstockSpecs && newFs.feedstockSpecs) {
+            const mergedSpecs = { ...oldFs.feedstockSpecs };
+            for (const [specKey, newSpec] of Object.entries(newFs.feedstockSpecs)) {
+              if (mergedSpecs[specKey]) {
+                mergedSpecs[specKey] = {
+                  ...mergedSpecs[specKey],
+                  value: newSpec.value ?? mergedSpecs[specKey].value,
+                  unit: newSpec.unit ?? mergedSpecs[specKey].unit,
+                };
+              } else {
+                mergedSpecs[specKey] = {
+                  value: newSpec.value || "",
+                  unit: newSpec.unit || "",
+                  source: "user_provided",
+                  confidence: "medium",
+                  provenance: "Added via reviewer chat",
+                  group: "extended",
+                  displayName: specKey,
+                  sortOrder: 99,
+                  ...newSpec,
+                };
+              }
+            }
+            newFs.feedstockSpecs = mergedSpecs;
+          } else if (oldFs.feedstockSpecs && !newFs.feedstockSpecs) {
+            newFs.feedstockSpecs = oldFs.feedstockSpecs;
+          }
+        }
         if (cf.feedstocks) {
           for (const [idxStr, fsConf] of Object.entries(cf.feedstocks)) {
             const idx = parseInt(idxStr);

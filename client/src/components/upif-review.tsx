@@ -184,14 +184,15 @@ function FeedstockSpecsTable({
 
   for (const [key, spec] of Object.entries(specs)) {
     if (deletedKeys?.has(key)) continue;
-    if (!grouped[spec.group]) {
-      grouped[spec.group] = [];
+    const group = spec.group || "extended";
+    if (!grouped[group]) {
+      grouped[group] = [];
     }
-    grouped[spec.group].push([key, spec]);
+    grouped[group].push([key, { ...spec, group }]);
   }
 
   for (const group of Object.keys(grouped)) {
-    grouped[group].sort((a, b) => a[1].sortOrder - b[1].sortOrder);
+    grouped[group].sort((a, b) => (a[1].sortOrder ?? 99) - (b[1].sortOrder ?? 99));
   }
 
   return (
@@ -235,19 +236,19 @@ function FeedstockSpecsTable({
                           </td>
                         )}
                         <td className="p-2">
-                          <span className="font-medium text-sm">{spec.displayName}</span>
+                          <span className="font-medium text-sm">{spec.displayName || key}</span>
                         </td>
                         <td className="p-2">
                           {isEditing && !isLocked ? (
                             <Input
-                              defaultValue={spec.value}
+                              defaultValue={typeof spec.value === "object" ? String((spec.value as any)?.value ?? spec.value) : spec.value}
                               className="h-7 text-sm"
                               onChange={(e) => onSpecUpdate?.(key, e.target.value)}
                               data-testid={`input-spec-${key}`}
                             />
                           ) : (
                             <span className="text-sm" data-testid={`text-spec-${key}`}>
-                              {formatDisplayValue(spec.value)}{spec.unit ? ` ${spec.unit}` : ""}
+                              {formatDisplayValue(typeof spec.value === "object" ? String((spec.value as any)?.value ?? "") : spec.value)}{spec.unit ? ` ${spec.unit}` : ""}
                             </span>
                           )}
                         </td>
@@ -279,15 +280,15 @@ function FeedstockSpecsTable({
                           )}
                           <Badge
                             variant="secondary"
-                            className={`text-xs ml-1 ${confidenceBadgeClass[spec.confidence]}`}
+                            className={`text-xs ml-1 ${confidenceBadgeClass[spec.confidence] || confidenceBadgeClass["medium"]}`}
                           >
-                            {spec.confidence}
+                            {spec.confidence || "medium"}
                           </Badge>
                         </td>
                         <td className="p-2">
                           {isEditing && !isLocked ? (
                             <Input
-                              defaultValue={spec.provenance}
+                              defaultValue={spec.provenance || ""}
                               className="h-7 text-xs"
                               onChange={(e) => onNoteUpdate?.(key, e.target.value)}
                               data-testid={`input-note-${key}`}
@@ -441,10 +442,11 @@ function OutputSpecsTable({
 
   for (const [key, spec] of Object.entries(specs)) {
     if (deletedKeys?.has(key)) continue;
-    if (!grouped[spec.group]) {
-      grouped[spec.group] = [];
+    const group = spec.group || "extended";
+    if (!grouped[group]) {
+      grouped[group] = [];
     }
-    grouped[spec.group].push([key, spec]);
+    grouped[group].push([key, { ...spec, group }]);
   }
 
   for (const group of Object.keys(grouped)) {
@@ -517,15 +519,15 @@ function OutputSpecsTable({
                           </Badge>
                           <Badge
                             variant="secondary"
-                            className={`text-xs ml-1 ${confidenceBadgeClass[spec.confidence]}`}
+                            className={`text-xs ml-1 ${confidenceBadgeClass[spec.confidence] || confidenceBadgeClass["medium"]}`}
                           >
-                            {spec.confidence}
+                            {spec.confidence || "medium"}
                           </Badge>
                         </td>
                         <td className="p-2">
                           {isEditing && !isLocked ? (
                             <Input
-                              defaultValue={spec.provenance}
+                              defaultValue={spec.provenance || ""}
                               className="h-7 text-xs"
                               onChange={(e) => onNoteUpdate?.(profileName, key, e.target.value)}
                               data-testid={`input-output-note-${key}`}
@@ -1791,6 +1793,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
               icon={<Beaker className="h-4 w-4 text-primary" />}
               title="Feedstock Specifications"
               testId="toggle-section-feedstock"
+              defaultOpen={true}
               rightContent={feedstocks.length > 1 ? (
                 <Badge variant="secondary" className="text-xs">{feedstocks.length} feedstocks</Badge>
               ) : undefined}
