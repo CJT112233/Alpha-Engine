@@ -1359,13 +1359,14 @@ export async function registerRoutes(
         if (n.includes("bulk density") || n === "density") return "Bulk Density";
         if (n.includes("bmp") || n.includes("biochemical methane") || n.includes("methane potential")) return "BMP";
         if (n.includes("biodegradable fraction") || n.includes("biodegradability")) return "Biodegradable Fraction";
-        if (n === "bod" || n.includes("biochemical oxygen demand")) return "BOD";
-        if (n === "cod" || n.includes("chemical oxygen demand")) return "COD";
-        if (n === "tss" || n.includes("total suspended solids")) return "TSS";
-        if (n === "tds" || n.includes("total dissolved solids")) return "TDS";
-        if (n === "ph" || n === "ph level") return "pH";
+        if (n === "bod" || n.startsWith("bod ") || n.startsWith("bod5") || n.includes("biochemical oxygen demand")) return "BOD";
+        if (n === "cod" || n.startsWith("cod ") || n.includes("chemical oxygen demand")) return "COD";
+        if (n === "tss" || n.startsWith("tss ") || n.includes("total suspended solids")) return "TSS";
+        if (n === "tds" || n.startsWith("tds ") || n.includes("total dissolved solids")) return "TDS";
+        if (n === "ph" || n.startsWith("ph ") || n === "ph level" || n.includes("ph range") || n.includes("ph (")) return "pH";
+        if (n === "fog" || n.startsWith("fog ") || n.includes("fog (") || n.includes("fats") || (n.includes("oil") && n.includes("grease")) || n.includes("o&g")) return "FOG";
         if (n === "temperature" || n.includes("temp")) return "Temperature";
-        if ((n === "n" || n === "nitrogen" || n.includes("total nitrogen") || n === "tkn" || n.includes("total kjeldahl")) && !n.includes("c:n") && !n.includes("c/n")) return "Nitrogen";
+        if ((n === "n" || n === "nitrogen" || n.includes("total nitrogen") || n === "tkn" || n.startsWith("tkn ") || n.includes("total kjeldahl")) && !n.includes("c:n") && !n.includes("c/n")) return "Nitrogen";
         if (n === "p" || n === "phosphorus" || n.includes("total phosphorus")) return "Phosphorus";
         return null;
       }
@@ -1608,19 +1609,20 @@ export async function registerRoutes(
         postTypeValidated, extractedParams, projectType
       );
       allValidationWarnings.push(...designDriverWarnings);
-      const postDesignDriverValidated = projectType === "A" ? designDriverFeedstocks : postTypeValidated;
-      if (designDriverWarnings.length > 0 && projectType === "A") {
+      const postDesignDriverValidated = (projectType === "A" || projectType === "D") ? designDriverFeedstocks : postTypeValidated;
+      if (designDriverWarnings.length > 0 && (projectType === "A" || projectType === "D")) {
         const warningCount = designDriverWarnings.filter(w => w.severity === "warning").length;
         const errorCount = designDriverWarnings.filter(w => w.severity === "error").length;
         const infoCount = designDriverWarnings.filter(w => w.severity === "info").length;
+        const driverTypeLabel = projectType === "D" ? "Type D wastewater" : "Type A";
         if (warningCount > 0) {
-          console.log(`Validation: Type A design driver check — auto-populated missing design driver(s) with industry defaults`);
+          console.log(`Validation: ${driverTypeLabel} design driver check — auto-populated missing design driver(s) with industry defaults`);
         }
         if (errorCount > 0) {
-          console.log(`Validation: Type A design driver check — ${errorCount} critical design driver(s) still missing`);
+          console.log(`Validation: ${driverTypeLabel} design driver check — ${errorCount} critical design driver(s) still missing`);
         }
         if (infoCount > 0 && warningCount === 0 && errorCount === 0) {
-          console.log("Validation: Type A design driver check — all core design drivers present");
+          console.log(`Validation: ${driverTypeLabel} design driver check — all core design drivers present`);
         }
       }
       

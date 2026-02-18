@@ -1112,8 +1112,35 @@ export function enrichFeedstockSpecs(
     "fog content": "fogContent",
     "fats oils grease": "fogContent",
     "fats, oils, grease": "fogContent",
+    "fats, oils & grease": "fogContent",
+    "fats, oils and grease": "fogContent",
+    "o&g": "fogContent",
+    "oil and grease": "fogContent",
+    "oil & grease": "fogContent",
     "lipid fraction": "lipidFraction",
     "lipids": "lipidFraction",
+    "bod": "bod",
+    "bod5": "bod",
+    "biochemical oxygen demand": "bod",
+    "biochemical oxygen demand (bod)": "bod",
+    "cod": "cod",
+    "chemical oxygen demand": "cod",
+    "chemical oxygen demand (cod)": "cod",
+    "tss": "tss",
+    "total suspended solids": "tss",
+    "total suspended solids (tss)": "tss",
+    "tds": "tds",
+    "total dissolved solids": "tds",
+    "total dissolved solids (tds)": "tds",
+    "ph": "phLevel",
+    "ph level": "phLevel",
+    "ph range": "phLevel",
+    "temperature": "temperature",
+    "temp": "temperature",
+    "nitrogen": "tkn",
+    "phosphorus": "phosphorus",
+    "total phosphorus": "phosphorus",
+    "tp": "phosphorus",
   };
 
   if (profile) {
@@ -1159,13 +1186,14 @@ export function enrichFeedstockSpecs(
         provenance: resolvedProvenance,
       };
     } else if (mappedKey) {
+      const BIOCHEMICAL_KEYS = new Set(["bod", "cod", "tss", "tds", "tkn", "phLevel", "fogContent", "phosphorus", "ammoniaN"]);
       specs[mappedKey] = {
         value: paramData.value,
         unit: paramData.unit || "",
         source: resolvedSource,
         confidence: resolvedConfidence,
         provenance: resolvedProvenance,
-        group: "physical",
+        group: BIOCHEMICAL_KEYS.has(mappedKey) ? "biochemical" : "physical",
         displayName: paramName,
         sortOrder: 50,
       };

@@ -498,18 +498,51 @@ export function validateFeedstocksForTypeD(
     if (!isWastewaterStream) return fs;
 
     const cleanSpecs: EnrichedFeedstockSpecRecord = {};
-    let hasSwapIndicator = false;
-    const swappedKeys: string[] = [];
+    let blockedCount = 0;
 
     for (const [key, spec] of Object.entries(fs.feedstockSpecs)) {
-      if (!hasSludgeContext && FEEDSTOCK_SOLID_SPEC_KEYS.has(key) && spec.source === "estimated_default") {
-        hasSwapIndicator = true;
-        swappedKeys.push(spec.displayName);
+      if (WASTEWATER_HARD_BLOCK_KEYS.has(key)) {
+        blockedCount++;
         warnings.push({
           field: spec.displayName,
           section: `Feedstock ${idx + 1} (Wastewater)`,
-          message: `Solids parameter "${spec.displayName}" removed from wastewater stream — TS%/VS/BMP only valid for trucked feedstocks, not wastewater influent`,
+          message: `Blocked — wastewater influent detected. "${spec.displayName}" (${spec.value} ${spec.unit}) is a solids-basis parameter not applicable to liquid influent characterization.`,
           severity: "warning",
+          originalValue: spec.value,
+          originalUnit: spec.unit,
+        });
+        continue;
+      }
+
+      const specUnitLower = spec.unit.toLowerCase();
+      const isBmpUnit = specUnitLower.includes("m³/kg") || specUnitLower.includes("m3/kg") ||
+        specUnitLower.includes("l/kg") || specUnitLower.includes("ft³/lb") || specUnitLower.includes("ft3/lb");
+      if (isBmpUnit) {
+        blockedCount++;
+        warnings.push({
+          field: spec.displayName,
+          section: `Feedstock ${idx + 1} (Wastewater)`,
+          message: `Blocked — BMP unit "${spec.unit}" is a solids-basis metric, not applicable to wastewater influent.`,
+          severity: "warning",
+          originalValue: spec.value,
+          originalUnit: spec.unit,
+        });
+        continue;
+      }
+
+      const specNameLower = spec.displayName.toLowerCase();
+      const specValueLower = (spec.value || "").toLowerCase();
+      const hasPrimaryWasLang = PRIMARY_WAS_TERMS.some(t =>
+        specNameLower.includes(t) || specValueLower.includes(t));
+      if (hasPrimaryWasLang) {
+        blockedCount++;
+        warnings.push({
+          field: spec.displayName,
+          section: `Feedstock ${idx + 1} (Wastewater)`,
+          message: `Blocked — primary/WAS sludge language detected in "${spec.displayName}". Wastewater influent section should describe incoming liquid stream, not sludge byproducts.`,
+          severity: "warning",
+          originalValue: spec.value,
+          originalUnit: spec.unit,
         });
         continue;
       }
@@ -517,12 +550,12 @@ export function validateFeedstocksForTypeD(
       cleanSpecs[key] = spec;
     }
 
-    if (hasSwapIndicator && !hasFlowRate && !hasAnalytes) {
+    if (blockedCount > 0) {
       warnings.push({
-        field: `Feedstock ${idx + 1}`,
-        section: "Swap Detection",
-        message: `Stream labeled as wastewater contains solids parameters (${swappedKeys.join(", ")}) but no flow/analytes detected — likely mis-assigned feedstock. Parameters re-routed to Unmapped.`,
-        severity: "error",
+        field: "Solids-Basis Parameters",
+        section: `Feedstock ${idx + 1} (Wastewater)`,
+        message: `Removed ${blockedCount} solids-basis parameter(s) (VS/TS, BMP, delivery form, etc.) — wastewater stream should display influent analytes (BOD/COD/TSS/FOG in mg/L) + flow rate instead.`,
+        severity: "info",
       });
     }
 
@@ -801,7 +834,7 @@ function specMatchesDriver(
   matchDisplayNames: RegExp[],
 ): boolean {
   const keyLower = key.toLowerCase();
-  if (matchKeys.some(mk => keyLower === mk.toLowerCase() || keyLower.startsWith(mk.toLowerCase()))) return true;
+  if (matchKeys.some(mk => keyLower === mk.toLowerCase())) return true;
   if (matchDisplayNames.some(p => p.test(displayName))) return true;
   return false;
 }
@@ -898,8 +931,27 @@ export function validateTypeADesignDrivers(
 ): { warnings: ValidationWarning[]; feedstocks: FeedstockEntry[] } {
   const warnings: ValidationWarning[] = [];
 
-  if (projectType !== "A") {
+  if (projectType !== "A" && projectType !== "D") {
     return { warnings, feedstocks };
+  }
+
+  const typeLabel = projectType === "D" ? "Type D (Wastewater)" : "Type A";
+
+  const targetFeedstockIndices: number[] = [];
+  if (projectType === "D") {
+    feedstocks.forEach((fs, idx) => {
+      const typeLower = (fs.feedstockType || "").toLowerCase();
+      const isWastewater = typeLower.includes("wastewater") ||
+        typeLower.includes("influent") ||
+        typeLower.includes("sewage") ||
+        typeLower.includes("municipal");
+      if (isWastewater) targetFeedstockIndices.push(idx);
+    });
+    if (targetFeedstockIndices.length === 0) {
+      targetFeedstockIndices.push(0);
+    }
+  } else {
+    targetFeedstockIndices.push(0);
   }
 
   const { hasAvgFlow, hasPeakFlow } = detectFlowInSpecs(feedstocks, extractedParams);
@@ -915,8 +967,9 @@ export function validateTypeADesignDrivers(
 
   for (const driver of TYPE_A_DESIGN_DRIVER_SPECS) {
     let found = false;
-    for (const fs of feedstocks) {
-      if (!fs.feedstockSpecs) continue;
+    for (const fsIdx of targetFeedstockIndices) {
+      const fs = feedstocks[fsIdx];
+      if (!fs?.feedstockSpecs) continue;
       for (const [key, spec] of Object.entries(fs.feedstockSpecs)) {
         if (specMatchesDriver(key, spec.displayName, driver.matchKeys, driver.matchDisplayNames)) {
           found = true;
@@ -941,22 +994,22 @@ export function validateTypeADesignDrivers(
     }
   }
 
-  let updatedFeedstocks = feedstocks;
+  let updatedFeedstocks = [...feedstocks];
 
-  if (missingDrivers.length > 0) {
+  const AUTO_POPULATE_DRIVERS = new Set(["Peak Flow", "BOD", "COD", "TSS", "FOG", "TKN", "pH"]);
+  const driversToPopulate = missingDrivers.filter(d => AUTO_POPULATE_DRIVERS.has(d));
+
+  if (driversToPopulate.length > 0) {
     const industry = detectIndustryType(feedstocks);
     const industryLabel = feedstocks.map(fs => fs.feedstockType || "").filter(Boolean).join(", ") || "food processing wastewater";
 
-    const AUTO_POPULATE_DRIVERS = new Set(["Peak Flow", "BOD", "COD", "TSS", "FOG", "TKN", "pH"]);
-
-    updatedFeedstocks = feedstocks.map((fs, idx) => {
-      if (idx !== 0) return fs;
+    for (const fsIdx of targetFeedstockIndices) {
+      const fs = updatedFeedstocks[fsIdx];
+      if (!fs) continue;
       const specs: EnrichedFeedstockSpecRecord = { ...(fs.feedstockSpecs || {}) };
       let nextSortOrder = Object.values(specs).reduce((max, s) => Math.max(max, s.sortOrder || 0), 0) + 1;
 
-      for (const missing of missingDrivers) {
-        if (!AUTO_POPULATE_DRIVERS.has(missing)) continue;
-
+      for (const missing of driversToPopulate) {
         let key: string;
         let displayName: string;
         let value: string;
@@ -1037,52 +1090,51 @@ export function validateTypeADesignDrivers(
         }
       }
 
-      return { ...fs, feedstockSpecs: specs };
-    });
-
-    const autoPopulated = missingDrivers.filter(d => AUTO_POPULATE_DRIVERS.has(d));
-    const stillMissing = missingDrivers.filter(d => !AUTO_POPULATE_DRIVERS.has(d));
-
-    if (autoPopulated.length > 0) {
-      warnings.push({
-        field: "Core Design Drivers",
-        section: "Type A Completeness",
-        message: `Auto-populated ${autoPopulated.length} missing design driver(s): ${autoPopulated.join(", ")}. Values are industry-typical estimates for ${industryLabel} — please review and update with actual data.`,
-        severity: "warning",
-      });
-
-      for (const filled of autoPopulated) {
-        warnings.push({
-          field: filled,
-          section: "Type A Completeness",
-          message: `"${filled}" was not found in user input — auto-populated with typical industry default. Please verify or update this value.`,
-          severity: "warning",
-        });
-      }
+      updatedFeedstocks[fsIdx] = { ...fs, feedstockSpecs: specs };
     }
 
-    if (stillMissing.length > 0) {
-      warnings.push({
-        field: "Core Design Drivers",
-        section: "Type A Completeness",
-        message: `Missing core design driver(s): ${stillMissing.join(", ")}. Type A wastewater projects must surface Flow (avg + peak), BOD, COD, TSS, FOG, TKN, and pH in the Feedstock/Influent section.`,
-        severity: "error",
-      });
-
-      for (const missing of stillMissing) {
-        warnings.push({
-          field: missing,
-          section: "Type A Completeness",
-          message: `"${missing}" not found in Feedstock/Influent section — this is a core design driver for wastewater treatment and must be provided.`,
-          severity: "error",
-        });
-      }
-    }
-  } else {
     warnings.push({
       field: "Core Design Drivers",
-      section: "Type A Completeness",
-      message: "All six core design drivers present: Flow (avg + peak), BOD, COD, TSS, FOG, pH.",
+      section: `${typeLabel} Completeness`,
+      message: `Auto-populated ${driversToPopulate.length} missing design driver(s): ${driversToPopulate.join(", ")}. Values are industry-typical estimates for ${industryLabel} — please review and update with actual data.`,
+      severity: "warning",
+    });
+
+    for (const filled of driversToPopulate) {
+      warnings.push({
+        field: filled,
+        section: `${typeLabel} Completeness`,
+        message: `"${filled}" was not found in user input — auto-populated with typical industry default. Please verify or update this value.`,
+        severity: "warning",
+      });
+    }
+  }
+
+  const stillMissing = missingDrivers.filter(d => !AUTO_POPULATE_DRIVERS.has(d));
+
+  if (stillMissing.length > 0) {
+    warnings.push({
+      field: "Core Design Drivers",
+      section: `${typeLabel} Completeness`,
+      message: `Missing core design driver(s): ${stillMissing.join(", ")}. Wastewater projects must surface Flow (avg + peak), BOD, COD, TSS, FOG, TKN, and pH in the Feedstock/Influent section.`,
+      severity: "error",
+    });
+
+    for (const missing of stillMissing) {
+      warnings.push({
+        field: missing,
+        section: `${typeLabel} Completeness`,
+        message: `"${missing}" not found in Feedstock/Influent section — this is a core design driver for wastewater treatment and must be provided.`,
+        severity: "error",
+      });
+    }
+  }
+
+  if (missingDrivers.length === 0) {
+    warnings.push({
+      field: "Core Design Drivers",
+      section: `${typeLabel} Completeness`,
+      message: "All core design drivers present: Flow (avg + peak), BOD, COD, TSS, FOG, TKN, pH.",
       severity: "info",
     });
   }
