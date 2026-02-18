@@ -45,10 +45,19 @@ import {
   Check,
   X,
   DollarSign,
+  Download,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { ElapsedTimer } from "@/components/elapsed-timer";
 import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData, ADProcessStage, MassBalanceOverrides } from "@shared/schema";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 function formatNum(val: number | undefined, decimals: number = 1): string {
   if (val === undefined || val === null) return "\u2014";
@@ -1009,6 +1018,27 @@ export default function MassBalancePage() {
               New Version
             </Button>
             <ElapsedTimer isRunning={generateMutation.isPending || recomputeMutation.isPending} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" data-testid="button-export-mass-balance">
+                  <Download className="h-4 w-4 mr-2" /> Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  data-testid="button-export-mb-pdf"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/mass-balance/export-pdf`, "_blank")}
+                >
+                  <FileText className="h-4 w-4 mr-2" /> Download PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="button-export-mb-excel"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/mass-balance/export-excel`, "_blank")}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Download Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {latestRun.status === "finalized" && (
               <Link href={`/scenarios/${scenarioId}/capex`}>
                 <Button variant="default" data-testid="button-go-to-capex">

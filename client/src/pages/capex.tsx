@@ -34,9 +34,18 @@ import {
   AlertTriangle,
   Info,
   Calculator,
+  Download,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { ElapsedTimer } from "@/components/elapsed-timer";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { CapexEstimate, CapexResults, CapexLineItem, CapexOverrides, CapexLocks, CapexSummary } from "@shared/schema";
 
 function formatCurrency(val: number): string {
@@ -441,6 +450,27 @@ export default function CapexPage() {
               New Version
             </Button>
             <ElapsedTimer isRunning={generateMutation.isPending || recomputeMutation.isPending} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" data-testid="button-export-capex">
+                  <Download className="h-4 w-4 mr-2" /> Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  data-testid="button-export-capex-pdf"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/capex/export-pdf`, "_blank")}
+                >
+                  <FileText className="h-4 w-4 mr-2" /> Download PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="button-export-capex-excel"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/capex/export-excel`, "_blank")}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Download Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {Object.keys(overrides).length > 0 && (
               <Badge variant="secondary" data-testid="badge-overrides-count">
                 {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}

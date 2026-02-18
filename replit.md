@@ -47,6 +47,7 @@ Unit conventions (US-based):
   - Summary includes total equipment cost, installed cost, contingency, engineering, and total project cost with cost-per-unit metrics
   - Frontend renders editable/lockable line items with inline editing, override badges, and recompute with locked value preservation
   - Navigation: "Generate CapEx" button appears on mass balance page when mass balance is finalized
+- **PDF & Excel Export**: Both mass balance and CapEx pages include an Export dropdown with PDF and Excel download options. Export service in `server/services/exportService.ts` generates professional multi-section PDFs (with table headers repeated on page breaks) and multi-sheet Excel workbooks. API endpoints at `/api/scenarios/:scenarioId/mass-balance/export-pdf`, `export-excel`, `/capex/export-pdf`, `export-excel`.
 
 ### Technical Implementation
 - **Frontend**: React 18 with TypeScript, Wouter for routing, TanStack Query for state, shadcn/ui and Tailwind CSS for UI, React Hook Form with Zod for forms, Vite for building.

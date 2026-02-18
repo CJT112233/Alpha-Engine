@@ -25,6 +25,8 @@ import { feedstockGroupLabels, feedstockGroupOrder } from "@shared/feedstock-lib
 import { outputGroupLabels, outputGroupOrder } from "@shared/output-criteria-library";
 import { llmComplete, getAvailableProviders, providerLabels, isProviderAvailable, type LLMProvider } from "./llm";
 import { DEFAULT_PROMPTS, PROMPT_KEYS, type PromptKey } from "@shared/default-prompts";
+import { exportMassBalancePDF, exportMassBalanceExcel, exportCapexPDF, exportCapexExcel } from "./services/exportService";
+import type { MassBalanceResults, CapexResults } from "@shared/schema";
 import {
   validateAndSanitizeOutputSpecs,
   validateFeedstocksForTypeA,
@@ -2898,6 +2900,58 @@ export async function registerRoutes(
   });
 
   // =========================================================================
+  // Mass Balance Export (PDF & Excel)
+  // =========================================================================
+
+  app.get("/api/scenarios/:scenarioId/mass-balance/export-pdf", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const runs = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const latestRun = runs?.[0];
+      if (!latestRun?.results) return res.status(404).json({ error: "No mass balance data found" });
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+      const results = latestRun.results as MassBalanceResults;
+      const projectType = results.projectType || (scenario as any).projectType || "B";
+      const pdfBuffer = await exportMassBalancePDF(results, scenario.name, scenario.project?.name || "Project", projectType);
+      const safeName = (scenario.name || "mass-balance").replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="MassBalance-${safeName}.pdf"`,
+        "Content-Length": pdfBuffer.length.toString(),
+      });
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error exporting mass balance PDF:", error);
+      res.status(500).json({ error: "Failed to export mass balance PDF" });
+    }
+  });
+
+  app.get("/api/scenarios/:scenarioId/mass-balance/export-excel", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const runs = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const latestRun = runs?.[0];
+      if (!latestRun?.results) return res.status(404).json({ error: "No mass balance data found" });
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+      const results = latestRun.results as MassBalanceResults;
+      const projectType = results.projectType || (scenario as any).projectType || "B";
+      const xlsxBuffer = exportMassBalanceExcel(results, scenario.name, scenario.project?.name || "Project", projectType);
+      const safeName = (scenario.name || "mass-balance").replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.set({
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="MassBalance-${safeName}.xlsx"`,
+        "Content-Length": xlsxBuffer.length.toString(),
+      });
+      res.send(xlsxBuffer);
+    } catch (error) {
+      console.error("Error exporting mass balance Excel:", error);
+      res.status(500).json({ error: "Failed to export mass balance Excel" });
+    }
+  });
+
+  // =========================================================================
   // CapEx Estimates
   // =========================================================================
 
@@ -3125,6 +3179,58 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating capex:", error);
       res.status(500).json({ error: "Failed to update CapEx estimate" });
+    }
+  });
+
+  // =========================================================================
+  // CapEx Export (PDF & Excel)
+  // =========================================================================
+
+  app.get("/api/scenarios/:scenarioId/capex/export-pdf", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const estimates = await storage.getCapexEstimatesByScenario(scenarioId);
+      const latestEstimate = estimates?.[0];
+      if (!latestEstimate?.results) return res.status(404).json({ error: "No CapEx data found" });
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+      const results = latestEstimate.results as CapexResults;
+      const projectType = results.projectType || (scenario as any).projectType || "B";
+      const pdfBuffer = await exportCapexPDF(results, scenario.name, scenario.project?.name || "Project", projectType);
+      const safeName = (scenario.name || "capex").replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="CapEx-${safeName}.pdf"`,
+        "Content-Length": pdfBuffer.length.toString(),
+      });
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error exporting CapEx PDF:", error);
+      res.status(500).json({ error: "Failed to export CapEx PDF" });
+    }
+  });
+
+  app.get("/api/scenarios/:scenarioId/capex/export-excel", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const estimates = await storage.getCapexEstimatesByScenario(scenarioId);
+      const latestEstimate = estimates?.[0];
+      if (!latestEstimate?.results) return res.status(404).json({ error: "No CapEx data found" });
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+      const results = latestEstimate.results as CapexResults;
+      const projectType = results.projectType || (scenario as any).projectType || "B";
+      const xlsxBuffer = exportCapexExcel(results, scenario.name, scenario.project?.name || "Project", projectType);
+      const safeName = (scenario.name || "capex").replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.set({
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="CapEx-${safeName}.xlsx"`,
+        "Content-Length": xlsxBuffer.length.toString(),
+      });
+      res.send(xlsxBuffer);
+    } catch (error) {
+      console.error("Error exporting CapEx Excel:", error);
+      res.status(500).json({ error: "Failed to export CapEx Excel" });
     }
   });
 
