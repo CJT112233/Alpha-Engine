@@ -1066,7 +1066,7 @@ export function validateTypeADesignDrivers(
             break;
           }
           case "pH": {
-            key = "phLevel";
+            key = "ph";
             displayName = "pH Range";
             value = industry.ph;
             unit = "";

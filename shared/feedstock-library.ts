@@ -994,6 +994,555 @@ export const FEEDSTOCK_LIBRARY: FeedstockProfile[] = [
   },
 ];
 
+export interface WastewaterInfluentProfile {
+  name: string;
+  aliases: string[];
+  category: string;
+  properties: Record<string, FeedstockProperty>;
+}
+
+export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
+  {
+    name: "High-Strength Food Processing Wastewater",
+    aliases: ["food processing wastewater", "food processing ww", "food plant wastewater", "food manufacturing wastewater", "food industry wastewater", "food processing", "food plant", "food manufacturing"],
+    category: "Food Processing",
+    properties: {
+      flow: {
+        value: "0.1-1.0",
+        unit: "MGD",
+        confidence: "low",
+        provenance: "Typical range for medium food processing facilities; highly site-specific",
+        group: "identity",
+        displayName: "Average Daily Flow",
+        sortOrder: 1,
+      },
+      peakFlow: {
+        value: "1.5-3.0x avg",
+        unit: "peaking factor",
+        confidence: "medium",
+        provenance: "Food processing plants often have batch operations with high peak-to-average ratios (Ludwigson, Industrial Pretreatment Design)",
+        group: "identity",
+        displayName: "Peak Flow Factor",
+        sortOrder: 2,
+      },
+      bod: {
+        value: "2,000-8,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "High-strength food processing wastewater BOD range (EPA 440/1-74-024; Ludwigson Ch. 3)",
+        group: "biochemical",
+        displayName: "BOD₅",
+        sortOrder: 3,
+      },
+      cod: {
+        value: "4,000-15,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "COD typically 1.5-2x BOD for food processing waste; varies with organic loading (Metcalf & Eddy; Ludwigson)",
+        group: "biochemical",
+        displayName: "COD",
+        sortOrder: 4,
+      },
+      tss: {
+        value: "500-3,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "Typical TSS range for food processing wastewater pre-screening (EPA industrial categories)",
+        group: "biochemical",
+        displayName: "TSS",
+        sortOrder: 5,
+      },
+      fog: {
+        value: "200-1,500",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "FOG highly variable by food type; fryer/rendering operations at upper end (Ludwigson Table 7)",
+        group: "biochemical",
+        displayName: "FOG (Fats, Oils, Grease)",
+        sortOrder: 6,
+      },
+      tkn: {
+        value: "50-200",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "TKN depends on protein content of food products; meat/dairy higher than produce (EPA 440)",
+        group: "biochemical",
+        displayName: "TKN",
+        sortOrder: 7,
+      },
+      ph: {
+        value: "4.5-9.0",
+        unit: "",
+        confidence: "medium",
+        provenance: "Food processing wastewater pH varies widely by product; acidic for fruit/vegetable, alkaline for dairy CIP (Ludwigson Ch. 4)",
+        group: "biochemical",
+        displayName: "pH Range",
+        sortOrder: 8,
+      },
+      temperature: {
+        value: "75-110",
+        unit: "°F",
+        confidence: "medium",
+        provenance: "Food processing wastewater often elevated from cooking, CIP, and hot water use",
+        group: "physical",
+        displayName: "Temperature",
+        sortOrder: 9,
+      },
+    },
+  },
+  {
+    name: "Meat & Poultry Processing Wastewater",
+    aliases: ["meat processing wastewater", "meat processing ww", "poultry processing wastewater", "poultry processing ww", "slaughterhouse wastewater", "meatpacking wastewater", "rendering wastewater", "meat processing", "poultry processing", "slaughterhouse", "meatpacking", "rendering plant"],
+    category: "Meat & Poultry Processing",
+    properties: {
+      flow: {
+        value: "0.2-2.0",
+        unit: "MGD",
+        confidence: "low",
+        provenance: "Typical range for medium to large meat/poultry processing plants",
+        group: "identity",
+        displayName: "Average Daily Flow",
+        sortOrder: 1,
+      },
+      peakFlow: {
+        value: "2.0-3.5x avg",
+        unit: "peaking factor",
+        confidence: "medium",
+        provenance: "Meat processing has shift-based operations with significant kill floor wash-down peaks",
+        group: "identity",
+        displayName: "Peak Flow Factor",
+        sortOrder: 2,
+      },
+      bod: {
+        value: "1,500-5,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "EPA 40 CFR 432 (Meat & Poultry Products); Ludwigson industrial pretreatment data",
+        group: "biochemical",
+        displayName: "BOD₅",
+        sortOrder: 3,
+      },
+      cod: {
+        value: "3,000-10,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "COD/BOD ratio typically 1.8-2.2 for meat processing wastewater (Metcalf & Eddy)",
+        group: "biochemical",
+        displayName: "COD",
+        sortOrder: 4,
+      },
+      tss: {
+        value: "800-3,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "High TSS from blood, tissue, feathers, and rendering residues (EPA 40 CFR 432)",
+        group: "biochemical",
+        displayName: "TSS",
+        sortOrder: 5,
+      },
+      fog: {
+        value: "500-2,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "Very high FOG from animal fats and rendering; DAF typically required (Ludwigson Table 7)",
+        group: "biochemical",
+        displayName: "FOG (Fats, Oils, Grease)",
+        sortOrder: 6,
+      },
+      tkn: {
+        value: "100-400",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "High nitrogen from blood and protein; ammonia fraction significant (EPA 40 CFR 432)",
+        group: "biochemical",
+        displayName: "TKN",
+        sortOrder: 7,
+      },
+      ph: {
+        value: "6.0-8.5",
+        unit: "",
+        confidence: "medium",
+        provenance: "Generally near neutral; CIP and blood processing can shift pH",
+        group: "biochemical",
+        displayName: "pH Range",
+        sortOrder: 8,
+      },
+      temperature: {
+        value: "80-120",
+        unit: "°F",
+        confidence: "medium",
+        provenance: "Scalding, rendering, and CIP operations produce elevated temperatures",
+        group: "physical",
+        displayName: "Temperature",
+        sortOrder: 9,
+      },
+    },
+  },
+  {
+    name: "Dairy Processing Wastewater",
+    aliases: ["dairy processing wastewater", "dairy processing ww", "dairy plant wastewater", "milk processing wastewater", "cheese processing wastewater", "creamery wastewater", "dairy processing", "dairy plant", "milk plant", "cheese plant", "creamery", "dairy wastewater"],
+    category: "Dairy Processing",
+    properties: {
+      flow: {
+        value: "0.05-0.5",
+        unit: "MGD",
+        confidence: "low",
+        provenance: "Typical for small to medium dairy processing facilities; highly variable",
+        group: "identity",
+        displayName: "Average Daily Flow",
+        sortOrder: 1,
+      },
+      peakFlow: {
+        value: "2.0-4.0x avg",
+        unit: "peaking factor",
+        confidence: "medium",
+        provenance: "Dairy plants have batch CIP cycles and product changeovers creating significant peaks",
+        group: "identity",
+        displayName: "Peak Flow Factor",
+        sortOrder: 2,
+      },
+      bod: {
+        value: "1,500-6,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "EPA 40 CFR 405 (Dairy Products); whey and product losses are primary BOD sources",
+        group: "biochemical",
+        displayName: "BOD₅",
+        sortOrder: 3,
+      },
+      cod: {
+        value: "2,500-10,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "COD/BOD ratio typically 1.5-1.8 for dairy wastewater (Metcalf & Eddy)",
+        group: "biochemical",
+        displayName: "COD",
+        sortOrder: 4,
+      },
+      tss: {
+        value: "300-2,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "TSS from casein, milk solids, and CIP residues (EPA 40 CFR 405)",
+        group: "biochemical",
+        displayName: "TSS",
+        sortOrder: 5,
+      },
+      fog: {
+        value: "200-1,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "Butterfat and milk fat in wastewater; cream and butter operations higher (Ludwigson)",
+        group: "biochemical",
+        displayName: "FOG (Fats, Oils, Grease)",
+        sortOrder: 6,
+      },
+      tkn: {
+        value: "50-150",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "Nitrogen from milk proteins (casein, whey); moderate compared to meat processing",
+        group: "biochemical",
+        displayName: "TKN",
+        sortOrder: 7,
+      },
+      ph: {
+        value: "3.5-11.0",
+        unit: "",
+        confidence: "medium",
+        provenance: "Wide pH swings from acidic whey and alkaline CIP chemicals; equalization critical (Ludwigson Ch. 4)",
+        group: "biochemical",
+        displayName: "pH Range",
+        sortOrder: 8,
+      },
+      temperature: {
+        value: "80-130",
+        unit: "°F",
+        confidence: "medium",
+        provenance: "Pasteurization, CIP, and hot water washing produce elevated wastewater temperatures",
+        group: "physical",
+        displayName: "Temperature",
+        sortOrder: 9,
+      },
+    },
+  },
+  {
+    name: "Brewery & Beverage Wastewater",
+    aliases: ["brewery wastewater", "brewery ww", "beverage wastewater", "beverage ww", "winery wastewater", "distillery wastewater", "soft drink wastewater", "brewery", "beverage plant", "winery", "distillery", "craft brewery", "brewing wastewater"],
+    category: "Brewery & Beverage",
+    properties: {
+      flow: {
+        value: "0.02-0.5",
+        unit: "MGD",
+        confidence: "low",
+        provenance: "Wide range from craft breweries (0.02 MGD) to large beverage plants; highly site-specific",
+        group: "identity",
+        displayName: "Average Daily Flow",
+        sortOrder: 1,
+      },
+      peakFlow: {
+        value: "2.0-3.0x avg",
+        unit: "peaking factor",
+        confidence: "medium",
+        provenance: "Batch brewing and CIP cycles create significant flow peaks",
+        group: "identity",
+        displayName: "Peak Flow Factor",
+        sortOrder: 2,
+      },
+      bod: {
+        value: "2,000-6,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "Brewery wastewater BOD from wort, trub, yeast, and product losses (EPA; Brewers Association data)",
+        group: "biochemical",
+        displayName: "BOD₅",
+        sortOrder: 3,
+      },
+      cod: {
+        value: "3,000-10,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "COD/BOD ratio typically 1.5-1.7 for brewery wastewater; ethanol and sugars readily biodegradable",
+        group: "biochemical",
+        displayName: "COD",
+        sortOrder: 4,
+      },
+      tss: {
+        value: "200-1,500",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "TSS from spent grain, trub, yeast, and filter media (typical brewery effluent data)",
+        group: "biochemical",
+        displayName: "TSS",
+        sortOrder: 5,
+      },
+      fog: {
+        value: "50-200",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "Relatively low FOG compared to food processing; mostly from grain oils and cleaning agents",
+        group: "biochemical",
+        displayName: "FOG (Fats, Oils, Grease)",
+        sortOrder: 6,
+      },
+      tkn: {
+        value: "25-80",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "Moderate nitrogen from yeast and grain proteins; lower than meat/dairy processing",
+        group: "biochemical",
+        displayName: "TKN",
+        sortOrder: 7,
+      },
+      ph: {
+        value: "4.0-10.0",
+        unit: "",
+        confidence: "medium",
+        provenance: "Acidic from fermentation waste; alkaline from CIP; equalization required (typical brewery data)",
+        group: "biochemical",
+        displayName: "pH Range",
+        sortOrder: 8,
+      },
+      temperature: {
+        value: "75-110",
+        unit: "°F",
+        confidence: "medium",
+        provenance: "Elevated from brewing, pasteurization, and CIP operations",
+        group: "physical",
+        displayName: "Temperature",
+        sortOrder: 9,
+      },
+    },
+  },
+  {
+    name: "General Industrial Wastewater",
+    aliases: ["industrial wastewater", "industrial ww", "industrial discharge", "industrial effluent", "factory wastewater", "manufacturing wastewater", "process wastewater", "industrial", "manufacturing"],
+    category: "General Industrial",
+    properties: {
+      flow: {
+        value: "0.05-1.0",
+        unit: "MGD",
+        confidence: "low",
+        provenance: "Highly variable by industry type and facility size",
+        group: "identity",
+        displayName: "Average Daily Flow",
+        sortOrder: 1,
+      },
+      peakFlow: {
+        value: "1.5-3.0x avg",
+        unit: "peaking factor",
+        confidence: "low",
+        provenance: "Depends on batch vs. continuous operations; shift-based facilities have higher peaks",
+        group: "identity",
+        displayName: "Peak Flow Factor",
+        sortOrder: 2,
+      },
+      bod: {
+        value: "500-3,000",
+        unit: "mg/L",
+        confidence: "low",
+        provenance: "Wide range depending on industry; food/organic industries higher than chemical/manufacturing",
+        group: "biochemical",
+        displayName: "BOD₅",
+        sortOrder: 3,
+      },
+      cod: {
+        value: "1,000-6,000",
+        unit: "mg/L",
+        confidence: "low",
+        provenance: "COD/BOD ratio varies widely by industry; refractory organics increase ratio",
+        group: "biochemical",
+        displayName: "COD",
+        sortOrder: 4,
+      },
+      tss: {
+        value: "200-2,000",
+        unit: "mg/L",
+        confidence: "low",
+        provenance: "TSS varies by industry; screening and primary sedimentation typically first steps",
+        group: "biochemical",
+        displayName: "TSS",
+        sortOrder: 5,
+      },
+      fog: {
+        value: "50-500",
+        unit: "mg/L",
+        confidence: "low",
+        provenance: "FOG significant in food/meat processing; lower in chemical/manufacturing industries",
+        group: "biochemical",
+        displayName: "FOG (Fats, Oils, Grease)",
+        sortOrder: 6,
+      },
+      tkn: {
+        value: "30-150",
+        unit: "mg/L",
+        confidence: "low",
+        provenance: "Nitrogen loading depends on raw materials and process chemistry",
+        group: "biochemical",
+        displayName: "TKN",
+        sortOrder: 7,
+      },
+      ph: {
+        value: "5.0-10.0",
+        unit: "",
+        confidence: "low",
+        provenance: "Industrial wastewater pH highly variable; equalization and neutralization typically required per 40 CFR 403",
+        group: "biochemical",
+        displayName: "pH Range",
+        sortOrder: 8,
+      },
+      temperature: {
+        value: "70-110",
+        unit: "°F",
+        confidence: "low",
+        provenance: "Process-dependent; some industries discharge above POTW temperature limits requiring cooling",
+        group: "physical",
+        displayName: "Temperature",
+        sortOrder: 9,
+      },
+    },
+  },
+  {
+    name: "Ethanol Plant Wastewater",
+    aliases: ["ethanol wastewater", "ethanol plant ww", "ethanol production wastewater", "corn ethanol wastewater", "biofuel wastewater", "ethanol plant", "ethanol production", "biofuel plant"],
+    category: "Ethanol Production",
+    properties: {
+      flow: {
+        value: "0.1-0.5",
+        unit: "MGD",
+        confidence: "low",
+        provenance: "Typical for medium ethanol production facilities; depends on production capacity",
+        group: "identity",
+        displayName: "Average Daily Flow",
+        sortOrder: 1,
+      },
+      peakFlow: {
+        value: "1.5-2.5x avg",
+        unit: "peaking factor",
+        confidence: "medium",
+        provenance: "Relatively steady flow from continuous distillation; peaks during equipment cleaning",
+        group: "identity",
+        displayName: "Peak Flow Factor",
+        sortOrder: 2,
+      },
+      bod: {
+        value: "5,000-30,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "Very high BOD from stillage, thin stillage, and CIP waste; one of highest-strength industrial WW categories",
+        group: "biochemical",
+        displayName: "BOD₅",
+        sortOrder: 3,
+      },
+      cod: {
+        value: "10,000-60,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "Extremely high COD from residual sugars, ethanol, and organic acids in stillage",
+        group: "biochemical",
+        displayName: "COD",
+        sortOrder: 4,
+      },
+      tss: {
+        value: "1,000-10,000",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "High solids from grain residues and yeast biomass in thin stillage",
+        group: "biochemical",
+        displayName: "TSS",
+        sortOrder: 5,
+      },
+      fog: {
+        value: "100-500",
+        unit: "mg/L",
+        confidence: "low",
+        provenance: "Moderate FOG from corn oil and grain lipids; corn oil extraction reduces FOG",
+        group: "biochemical",
+        displayName: "FOG (Fats, Oils, Grease)",
+        sortOrder: 6,
+      },
+      tkn: {
+        value: "200-800",
+        unit: "mg/L",
+        confidence: "medium",
+        provenance: "Very high nitrogen from yeast and grain proteins; ammonia significant after fermentation",
+        group: "biochemical",
+        displayName: "TKN",
+        sortOrder: 7,
+      },
+      ph: {
+        value: "3.5-5.0",
+        unit: "",
+        confidence: "medium",
+        provenance: "Acidic from fermentation byproducts and organic acids; pH adjustment required before discharge",
+        group: "biochemical",
+        displayName: "pH Range",
+        sortOrder: 8,
+      },
+      temperature: {
+        value: "100-150",
+        unit: "°F",
+        confidence: "medium",
+        provenance: "Very high temperatures from distillation columns and evaporators; cooling likely required",
+        group: "physical",
+        displayName: "Temperature",
+        sortOrder: 9,
+      },
+    },
+  },
+];
+
+export function matchWastewaterInfluentType(feedstockName: string): WastewaterInfluentProfile | undefined {
+  const lower = feedstockName.toLowerCase().trim();
+  for (const profile of WASTEWATER_INFLUENT_LIBRARY) {
+    if (profile.name.toLowerCase() === lower) return profile;
+    for (const alias of profile.aliases) {
+      if (lower.includes(alias) || alias.includes(lower)) return profile;
+    }
+  }
+  return undefined;
+}
+
 export function matchFeedstockType(feedstockName: string): FeedstockProfile | undefined {
   const lower = feedstockName.toLowerCase().trim();
   for (const profile of FEEDSTOCK_LIBRARY) {
@@ -1028,18 +1577,25 @@ export function enrichFeedstockSpecs(
   userProvidedParams: Record<string, { value: string; unit?: string; extractionSource?: string }>,
   projectType?: string | null,
 ): Record<string, EnrichedFeedstockSpec> {
-  const profile = matchFeedstockType(feedstockType);
   const specs: Record<string, EnrichedFeedstockSpec> = {};
   const isTypeA = projectType === "A";
 
-  if (profile) {
-    for (const [key, prop] of Object.entries(profile.properties)) {
-      if (isTypeA && SLUDGE_ONLY_KEYS.has(key)) {
-        continue;
-      }
-      if (isTypeA && SOLIDS_ONLY_KEYS.has(key) && prop.unit.includes("%")) {
-        continue;
-      }
+  let matchedProperties: Record<string, FeedstockProperty> | null = null;
+
+  if (isTypeA) {
+    const wwProfile = matchWastewaterInfluentType(feedstockType);
+    if (wwProfile) {
+      matchedProperties = wwProfile.properties;
+    }
+  } else {
+    const profile = matchFeedstockType(feedstockType);
+    if (profile) {
+      matchedProperties = profile.properties;
+    }
+  }
+
+  if (matchedProperties) {
+    for (const [key, prop] of Object.entries(matchedProperties)) {
       specs[key] = {
         value: prop.value,
         unit: prop.unit,
@@ -1132,19 +1688,28 @@ export function enrichFeedstockSpecs(
     "tds": "tds",
     "total dissolved solids": "tds",
     "total dissolved solids (tds)": "tds",
-    "ph": "phLevel",
-    "ph level": "phLevel",
-    "ph range": "phLevel",
+    "ph": "ph",
+    "ph level": "ph",
+    "ph range": "ph",
     "temperature": "temperature",
     "temp": "temperature",
     "nitrogen": "tkn",
     "phosphorus": "phosphorus",
     "total phosphorus": "phosphorus",
     "tp": "phosphorus",
+    "flow": "flow",
+    "average daily flow": "flow",
+    "average flow": "flow",
+    "daily flow": "flow",
+    "influent flow": "flow",
+    "peak flow": "peakFlow",
+    "peak flow factor": "peakFlow",
+    "peaking factor": "peakFlow",
+    "peak": "peakFlow",
   };
 
-  if (profile) {
-    for (const [key, prop] of Object.entries(profile.properties)) {
+  if (matchedProperties) {
+    for (const [key, prop] of Object.entries(matchedProperties)) {
       const displayLower = prop.displayName.toLowerCase();
       if (!paramKeyMap[displayLower]) {
         paramKeyMap[displayLower] = key;
@@ -1186,14 +1751,15 @@ export function enrichFeedstockSpecs(
         provenance: resolvedProvenance,
       };
     } else if (mappedKey) {
-      const BIOCHEMICAL_KEYS = new Set(["bod", "cod", "tss", "tds", "tkn", "phLevel", "fogContent", "phosphorus", "ammoniaN"]);
+      const BIOCHEMICAL_KEYS = new Set(["bod", "cod", "tss", "tds", "tkn", "ph", "fogContent", "phosphorus", "ammoniaN"]);
+      const IDENTITY_KEYS = new Set(["flow", "peakFlow"]);
       specs[mappedKey] = {
         value: paramData.value,
         unit: paramData.unit || "",
         source: resolvedSource,
         confidence: resolvedConfidence,
         provenance: resolvedProvenance,
-        group: BIOCHEMICAL_KEYS.has(mappedKey) ? "biochemical" : "physical",
+        group: IDENTITY_KEYS.has(mappedKey) ? "identity" : BIOCHEMICAL_KEYS.has(mappedKey) ? "biochemical" : "physical",
         displayName: paramName,
         sortOrder: 50,
       };

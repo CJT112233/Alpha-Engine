@@ -26,7 +26,7 @@ Unit conventions (US-based):
 - **Unified Project Intake Form (UPIF)**: Consolidated, standardized form for user review, supporting multi-feedstock projects and individual line-item confirmation. Confirmed fields are locked, preserving values during re-generation.
 - **Validation Guardrails**: A multi-step validation pipeline ensures data integrity and consistency before UPIF generation, identifying and categorizing warnings, unmapped specs, and performance targets. This includes specific guardrails for biosolids, wastewater, and gas quality.
 - **Clarifying Questions**: AI generates targeted questions based on missing or ambiguous information to improve UPIF accuracy.
-- **2-Step Project Type Classification**: AI classifies projects into types (Wastewater Treatment, RNG Greenfield, RNG Bolt-On, Hybrid) before extraction, using type-specific prompts for improved relevance.
+- **User-Selected Project Type**: Users select the project type (A: Wastewater Treatment, B: RNG Greenfield, C: RNG Bolt-On, D: Hybrid) when creating a scenario. AI classification has been removed — the user's selection drives type-specific prompts, validation, and enrichment.
 - **Reviewer Chat**: AI-powered chat allows users to suggest UPIF changes, with the system applying structured updates while respecting confirmed fields.
 - **Configurable Prompt Templates**: AI prompts are stored in the database and can be customized via a settings interface.
 - **Generation Stats**: Tracks timing and metadata for every AI-generated document (Classification, UPIF, Mass Balance, CapEx). Stats page at `/stats` shows date, document type, model used, project/scenario, generation time, and success/error status. Data stored in `generation_logs` table.
@@ -70,7 +70,8 @@ The project is migrating to a Databricks environment with a FastAPI (Python) bac
 
 ### AI/ML Integration
 - **Multi-LLM Support**: OpenAI (GPT-5), Anthropic (Claude Sonnet 4.6, Claude Opus 4.6).
-- **Feedstock Library**: Built-in knowledge base for common AD feedstocks (e.g., Potato Waste, Dairy Manure).
+- **Feedstock Library**: Built-in knowledge base for common AD feedstocks (e.g., Potato Waste, Dairy Manure) used for Types B/C/D. Defined in `shared/feedstock-library.ts`.
+- **Wastewater Influent Library**: Built-in knowledge base for industrial wastewater influent profiles (e.g., Food Processing WW, Meat/Poultry WW, Dairy Processing WW, Brewery WW, Ethanol Plant WW) with mg/L parameters (BOD, COD, TSS, FOG, TKN, pH, flow). Used for Type A projects. Defined in `shared/feedstock-library.ts`.
 - **Output Criteria Library**: Built-in knowledge base for output acceptance criteria (e.g., RNG Pipeline Injection, Solid Digestate Land Application, Liquid Effluent to WWTP).
 
 ### Document Processing
