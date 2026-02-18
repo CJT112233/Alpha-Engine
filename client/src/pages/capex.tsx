@@ -52,6 +52,43 @@ function formatCurrency(val: number): string {
   return "$" + val.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
+function parseNumericValue(str: string): number {
+  const cleaned = str.replace(/[$,%\s]/g, "").replace(/,/g, "");
+  const val = parseFloat(cleaned);
+  return isNaN(val) ? 0 : val;
+}
+
+function recalculateLineItem(item: CapexLineItem): CapexLineItem {
+  const installedCost = item.baseCostPerUnit * item.quantity * item.installationFactor;
+  const contingencyCost = installedCost * (item.contingencyPct / 100);
+  const totalCost = installedCost + contingencyCost;
+  return { ...item, installedCost, contingencyCost, totalCost };
+}
+
+function recalculateSummary(lineItems: CapexLineItem[], summary: CapexSummary): CapexSummary {
+  const totalEquipmentCost = lineItems.reduce((sum, li) => sum + li.baseCostPerUnit * li.quantity, 0);
+  const totalInstalledCost = lineItems.reduce((sum, li) => sum + li.installedCost, 0);
+  const totalContingency = lineItems.reduce((sum, li) => sum + li.contingencyCost, 0);
+  const totalDirectCost = totalInstalledCost + totalContingency;
+  const engineeringPct = summary.engineeringPct;
+  const engineeringCost = totalDirectCost * (engineeringPct / 100);
+  const totalProjectCost = totalDirectCost + engineeringCost;
+  const costPerUnit = summary.costPerUnit
+    ? { ...summary.costPerUnit, value: totalProjectCost }
+    : undefined;
+  return {
+    ...summary,
+    totalEquipmentCost,
+    totalInstalledCost,
+    totalContingency,
+    totalDirectCost,
+    engineeringPct,
+    engineeringCost,
+    totalProjectCost,
+    costPerUnit,
+  };
+}
+
 function EditableValue({
   fieldKey,
   displayValue,
@@ -74,6 +111,10 @@ function EditableValue({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(displayValue);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isEditing) setEditValue(displayValue);
+  }, [displayValue, isEditing]);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -336,8 +377,48 @@ export default function CapexPage() {
         originalValue,
       },
     };
-    patchMutation.mutate({ overrides: newOverrides });
-    toast({ title: "Value Updated", description: "Override saved. Lock the field to preserve it on recompute." });
+
+    if (!results) {
+      patchMutation.mutate({ overrides: newOverrides });
+      toast({ title: "Value Updated", description: "Override saved." });
+      return;
+    }
+
+    const numVal = parseNumericValue(newValue);
+    let updatedResults = { ...results, lineItems: [...results.lineItems], summary: { ...results.summary } };
+
+    const lineItemMatch = fieldKey.match(/^lineItems\.(.+?)\.(.+)$/);
+    if (lineItemMatch) {
+      const [, itemId, field] = lineItemMatch;
+      updatedResults.lineItems = updatedResults.lineItems.map((li) => {
+        if ((li.id || "") !== itemId) return li;
+        let updated = { ...li };
+        if (field === "baseCostPerUnit") updated.baseCostPerUnit = numVal;
+        else if (field === "installationFactor") updated.installationFactor = numVal;
+        else if (field === "contingencyPct") updated.contingencyPct = numVal;
+        else if (field === "installedCost") { updated.installedCost = numVal; return updated; }
+        else if (field === "totalCost") { updated.totalCost = numVal; return updated; }
+        else return updated;
+        return recalculateLineItem(updated);
+      });
+      updatedResults.summary = recalculateSummary(updatedResults.lineItems, updatedResults.summary);
+    } else if (fieldKey === "summary.engineeringPct") {
+      updatedResults.summary.engineeringPct = numVal;
+      updatedResults.summary = recalculateSummary(updatedResults.lineItems, updatedResults.summary);
+    } else if (fieldKey === "summary.totalEquipmentCost") {
+      updatedResults.summary.totalEquipmentCost = numVal;
+    } else if (fieldKey === "summary.totalInstalledCost") {
+      updatedResults.summary.totalInstalledCost = numVal;
+    } else if (fieldKey === "summary.totalDirectCost") {
+      updatedResults.summary.totalDirectCost = numVal;
+    } else if (fieldKey === "summary.totalProjectCost") {
+      updatedResults.summary.totalProjectCost = numVal;
+    } else if (fieldKey === "summary.costPerUnit" && updatedResults.summary.costPerUnit) {
+      updatedResults.summary.costPerUnit = { ...updatedResults.summary.costPerUnit, value: numVal };
+    }
+
+    patchMutation.mutate({ overrides: newOverrides, results: updatedResults });
+    toast({ title: "Value Updated", description: "Override saved. Totals recalculated." });
   };
 
   const handleFinalize = () => {
