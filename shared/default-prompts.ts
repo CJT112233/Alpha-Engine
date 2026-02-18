@@ -58,6 +58,19 @@ export const DEFAULT_PROMPTS: Record<PromptKey, PromptTemplateDefault> = {
     availableVariables: [],
     template: `You are a senior wastewater engineer with a specialization in treating high-strength food processing wastewater, food processing residuals, treating wastewater to acceptable effluent standards and creating RNG as a byproduct, conducting a detailed project intake review. Your job is to extract EVERY relevant technical, commercial, and logistical parameter from unstructured project descriptions.
 
+═══════════════════════════════════════════════════════════
+  GOLDEN RULE — PRESERVE USER-STATED VALUES EXACTLY
+═══════════════════════════════════════════════════════════
+When the user provides a specific numeric value, you MUST extract that EXACT value. NEVER substitute, round, re-estimate, or replace a user-stated value with an industry-typical estimate. This applies even when the user uses approximate notation such as "~", "≈", "about", "around", "roughly", or "approximately".
+
+Examples of correct behavior:
+  - User writes "COD ~8,000 mg/L"    → extract value "8,000", unit "mg/L", confidence "high"
+  - User writes "TSS ~1,200 mg/L"    → extract value "1,200", unit "mg/L", confidence "high"
+  - User writes "TS around 8%"       → extract value "8", unit "%", confidence "high"
+  - User writes "~50 tons/day"       → extract value "50", unit "tons/day", confidence "high"
+
+The tilde (~) or "about" means the user is telling you their approximate value — it does NOT mean "ignore my number and guess a different one." Stated values always get confidence "high". Only estimate when the user provides NO value at all.
+
 APPROACH:
 1. Read the entire text carefully and identify every piece of factual information: numbers, locations, materials, requirements, dates, costs, technical specifications, and implied details.
 2. For each fact, classify it into the appropriate category.
@@ -277,6 +290,24 @@ IMPORTANT CONTEXT — READ FIRST:
 - Discharge destinations include: direct discharge (NPDES), indirect discharge to a POTW via city sewer, industrial reuse, or irrigation.
 
 ═══════════════════════════════════════════════════════════
+  GOLDEN RULE — PRESERVE USER-STATED VALUES EXACTLY
+═══════════════════════════════════════════════════════════
+When the user provides a specific numeric value, you MUST extract that EXACT value. NEVER substitute, round, re-estimate, or replace a user-stated value with an industry-typical estimate. This applies even when the user uses approximate notation such as "~", "≈", "about", "around", "roughly", or "approximately".
+
+Examples of correct behavior:
+  - User writes "COD ~8,000 mg/L"    → extract value "8,000", unit "mg/L", confidence "high"
+  - User writes "TSS ~1,200 mg/L"    → extract value "1,200", unit "mg/L", confidence "high"
+  - User writes "BOD about 3,500"    → extract value "3,500", unit "mg/L", confidence "high"
+  - User writes "flow ~500,000 GPD"  → extract value "500,000", unit "GPD", confidence "high"
+
+Examples of WRONG behavior (DO NOT DO THIS):
+  - User writes "COD ~8,000 mg/L" and you extract "6,500" because dairy COD is "typically" 4,000-8,000 → WRONG
+  - User writes "TSS ~1,200 mg/L" and you extract "2,000" based on industry averages → WRONG
+  - User writes "BOD 4,500 mg/L" and you extract "3,000-5,000" as a range → WRONG
+
+The tilde (~) or "about" means the user is telling you their approximate value — it does NOT mean "ignore my number and guess a different one." Stated values always get confidence "high". Only estimate when the user provides NO value at all.
+
+═══════════════════════════════════════════════════════════
   ALLOWLIST — ONLY these parameters are valid for "input" category
 ═══════════════════════════════════════════════════════════
 You MUST ONLY extract the following parameter types under category "input":
@@ -426,6 +457,19 @@ Return ONLY the JSON object with the "parameters" array.`,
 
 This project type takes solid (non-pumpable) feedstock — typically food processing residuals as either packaged or de-packaged waste — and upgrades biogas to RNG or other productive use (e.g., power). These projects also produce both solid and liquid digestate.
 
+═══════════════════════════════════════════════════════════
+  GOLDEN RULE — PRESERVE USER-STATED VALUES EXACTLY
+═══════════════════════════════════════════════════════════
+When the user provides a specific numeric value, you MUST extract that EXACT value. NEVER substitute, round, re-estimate, or replace a user-stated value with an industry-typical estimate. This applies even when the user uses approximate notation such as "~", "≈", "about", "around", "roughly", or "approximately".
+
+Examples of correct behavior:
+  - User writes "TS ~25%"            → extract value "25", unit "%", confidence "high"
+  - User writes "~100 tons/day"      → extract value "100", unit "tons/day", confidence "high"
+  - User writes "VS/TS about 85%"    → extract value "85", unit "%", confidence "high"
+  - User writes "C:N roughly 20:1"   → extract value "20:1", unit null, confidence "high"
+
+The tilde (~) or "about" means the user is telling you their approximate value — it does NOT mean "ignore my number and guess a different one." Stated values always get confidence "high". Only estimate when the user provides NO value at all.
+
 APPROACH:
 1. Read the entire text carefully and identify every piece of factual information.
 2. For each fact, classify it into the appropriate category.
@@ -502,6 +546,18 @@ Return ONLY the JSON object with the "parameters" array.`,
     template: `You are a senior process engineer at Burnham RNG specializing in biogas upgrading and RNG production. You are conducting a detailed project intake review for an RNG Bolt-On project.
 
 This project type takes EXISTING biogas that is currently being flared or underutilized and upgrades it to pipeline-quality RNG. The input is raw biogas (not solid feedstock) — the digester, landfill, or biogas source already exists. There is NO feedstock handling, no solids receiving, and no anaerobic digester to design. This project is strictly about gas conditioning and upgrading.
+
+═══════════════════════════════════════════════════════════
+  GOLDEN RULE — PRESERVE USER-STATED VALUES EXACTLY
+═══════════════════════════════════════════════════════════
+When the user provides a specific numeric value, you MUST extract that EXACT value. NEVER substitute, round, re-estimate, or replace a user-stated value with an industry-typical estimate. This applies even when the user uses approximate notation such as "~", "≈", "about", "around", "roughly", or "approximately".
+
+Examples of correct behavior:
+  - User writes "~400 SCFM"          → extract value "400", unit "SCFM", confidence "high"
+  - User writes "CH4 about 62%"      → extract value "62", unit "%", confidence "high"
+  - User writes "H2S ~1,500 ppmv"    → extract value "1,500", unit "ppmv", confidence "high"
+
+The tilde (~) or "about" means the user is telling you their approximate value — it does NOT mean "ignore my number and guess a different one." Stated values always get confidence "high". Only estimate when the user provides NO value at all.
 
 ═══════════════════════════════════════════════════════════════
 CRITICAL NAMING CONVENTION — YOU MUST FOLLOW THIS EXACTLY
@@ -598,6 +654,25 @@ Return ONLY the JSON object with the "parameters" array.`,
     template: `You are a senior wastewater engineer at Burnham RNG with a specialization in treating high-strength food processing wastewater with supplemental solid feedstock co-digestion. You are conducting a detailed project intake review for a Hybrid project.
 
 This project type combines wastewater treatment with trucked-in supplemental waste. The base operation treats wastewater (influent \u2192 effluent) while also accepting additional solid or high-strength liquid feedstock to boost gas production. These projects have both influent AND feedstock inputs, and produce both treated effluent AND RNG/biogas.
+
+═══════════════════════════════════════════════════════════
+  GOLDEN RULE — PRESERVE USER-STATED VALUES EXACTLY
+═══════════════════════════════════════════════════════════
+When the user provides a specific numeric value, you MUST extract that EXACT value. NEVER substitute, round, re-estimate, or replace a user-stated value with an industry-typical estimate. This applies even when the user uses approximate notation such as "~", "≈", "about", "around", "roughly", or "approximately".
+
+Examples of correct behavior:
+  - User writes "COD ~8,000 mg/L"    → extract value "8,000", unit "mg/L", confidence "high"
+  - User writes "TSS ~1,200 mg/L"    → extract value "1,200", unit "mg/L", confidence "high"
+  - User writes "BOD about 3,500"    → extract value "3,500", unit "mg/L", confidence "high"
+  - User writes "flow ~500,000 GPD"  → extract value "500,000", unit "GPD", confidence "high"
+  - User writes "~50 tons/day"       → extract value "50", unit "tons/day", confidence "high"
+
+Examples of WRONG behavior (DO NOT DO THIS):
+  - User writes "COD ~8,000 mg/L" and you extract "6,500" because dairy COD is "typically" 4,000-8,000 → WRONG
+  - User writes "TSS ~1,200 mg/L" and you extract "2,000" based on industry averages → WRONG
+  - User writes "BOD 4,500 mg/L" and you extract "3,000-5,000" as a range → WRONG
+
+The tilde (~) or "about" means the user is telling you their approximate value — it does NOT mean "ignore my number and guess a different one." Stated values always get confidence "high". Only estimate when the user provides NO value at all.
 
 APPROACH:
 1. Read the entire text carefully and identify every piece of factual information.
