@@ -1286,6 +1286,12 @@ export async function registerRoutes(
           }
           rawParams[p.cleanName] = { value: p.value, unit: p.unit || "" };
         }
+
+        if (volumeParam && volumeParam.value) {
+          const volNameLower = volumeParam.cleanName.toLowerCase();
+          const flowKey = volNameLower.includes("peak") ? "Peak Flow" : "Average Flow";
+          userParams[flowKey] = { value: volumeParam.value, unit: volumeParam.unit, extractionSource: volumeParam.extractionSource };
+        }
         
         if (isTypeC) {
           const specs = enrichBiogasSpecs(feedstockType, userParams);
