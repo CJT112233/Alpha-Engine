@@ -69,7 +69,7 @@ The project is migrating to a Databricks environment with a FastAPI (Python) bac
 - Lucide React (icons)
 
 ### AI/ML Integration
-- **Multi-LLM Support**: OpenAI (GPT-5), Anthropic (Claude Sonnet 4.6, Claude Opus 4.6).
+- **Multi-LLM Support**: OpenAI (GPT-5), Anthropic (Claude Sonnet 4.5, Claude Opus 4.6).
 - **Feedstock Library**: Built-in knowledge base for common AD feedstocks (e.g., Potato Waste, Dairy Manure) used for Types B/C/D. Defined in `shared/feedstock-library.ts`.
 - **Wastewater Influent Library**: Built-in knowledge base for industrial wastewater influent profiles (e.g., Food Processing WW, Meat/Poultry WW, Dairy Processing WW, Brewery WW, Ethanol Plant WW) with mg/L parameters (BOD, COD, TSS, FOG, TKN, pH, flow). Used for Type A projects. Defined in `shared/feedstock-library.ts`.
 - **Output Criteria Library**: Built-in knowledge base for output acceptance criteria (e.g., RNG Pipeline Injection, Solid Digestate Land Application, Liquid Effluent to WWTP).

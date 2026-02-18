@@ -82,7 +82,7 @@ export function registerChatRoutes(app: Express): void {
 
       // Stream response from Anthropic
       const stream = anthropic.messages.stream({
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-4-5",
         max_tokens: 2048,
         messages: chatMessages,
       });

@@ -168,11 +168,14 @@ export async function generateMassBalanceWithAI(
 
   console.log(`Mass Balance AI: Response received from ${response.provider}, ${response.content.length} chars`);
 
+  let rawContent = response.content;
+  rawContent = rawContent.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+
   let parsed: any;
   try {
-    parsed = JSON.parse(response.content);
+    parsed = JSON.parse(rawContent);
   } catch (parseError) {
-    console.error("Mass Balance AI: Failed to parse JSON response:", response.content.substring(0, 500));
+    console.error("Mass Balance AI: Failed to parse JSON response:", rawContent.substring(0, 500));
     throw new Error(`AI returned invalid JSON. Parse error: ${(parseError as Error).message}`);
   }
 

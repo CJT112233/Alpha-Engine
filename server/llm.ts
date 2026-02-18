@@ -108,11 +108,11 @@ const anthropic = directAnthropic || integrationAnthropic || new Anthropic({ api
 
 /**
  * integrationSupportedModels: Set of Anthropic model IDs that are compatible with Replit's integration proxy.
- * Models NOT in this set (e.g., claude-opus-4-6) must use the direct API client.
+ * Models NOT in this set must use the direct API client.
  * This constraint exists because the integration only exposes a curated subset of available models.
  */
 const integrationSupportedModels = new Set([
-  "claude-opus-4-5", "claude-sonnet-4-5", "claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-1",
+  "claude-opus-4-6", "claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-1",
 ]);
 
 /**
@@ -170,7 +170,7 @@ export function getAvailableProviders(): LLMProvider[] {
 
 export const providerLabels: Record<LLMProvider, string> = {
   gpt5: "GPT-5",
-  claude: "Claude Sonnet 4.6",
+  claude: "Claude Sonnet 4.5",
   "claude-opus": "Claude Opus 4.6",
 };
 
@@ -178,14 +178,14 @@ export const providerLabels: Record<LLMProvider, string> = {
  * anthropicModelIds: Maps LLMProvider names to specific Claude model IDs for API calls.
  * 
  * Note on modelId fallback: In completeWithClaude(), if a provider lookup fails,
- * the modelId defaults to "claude-sonnet-4-6". This is safe because:
+ * the modelId defaults to "claude-sonnet-4-5". This is safe because:
  * - Sonnet is the mid-tier, most widely supported model
  * - It's available via both direct API and integration proxy
  * - It balances performance with cost (better than Haiku, cheaper than Opus)
  * - The fallback gracefully degrades service availability
  */
 const anthropicModelIds: Record<string, string> = {
-  claude: "claude-sonnet-4-6",
+  claude: "claude-sonnet-4-5",
   "claude-opus": "claude-opus-4-6",
 };
 
@@ -328,7 +328,7 @@ async function completeWithClaude(
   }
 
   // Map provider to Claude model ID - defaults to Sonnet if lookup fails
-  const modelId = anthropicModelIds[provider] || "claude-sonnet-4-6";
+  const modelId = anthropicModelIds[provider] || "claude-sonnet-4-5";
 
   // Select appropriate Anthropic client based on model support and availability
   let client: Anthropic;
@@ -356,12 +356,8 @@ async function completeWithClaude(
   const textBlocks = response.content.filter((b: any) => b.type === "text");
   let content = textBlocks.map((b: any) => b.text).join("\n").trim();
 
-  // Remove markdown code fences if Claude wrapped the response despite JSON instructions
   if (jsonMode) {
-    const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fenceMatch) {
-      content = fenceMatch[1].trim();
-    }
+    content = content.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
   }
 
   return {
