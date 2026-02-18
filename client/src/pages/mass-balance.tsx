@@ -47,6 +47,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { ElapsedTimer } from "@/components/elapsed-timer";
 import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData, ADProcessStage, MassBalanceOverrides } from "@shared/schema";
 
 function formatNum(val: number | undefined, decimals: number = 1): string {
@@ -948,17 +949,20 @@ export default function MassBalancePage() {
                 Generate a mass balance from the confirmed UPIF to see process stages and equipment sizing.
               </p>
             </div>
-            <Button
-              onClick={() => generateMutation.mutate()}
-              disabled={generateMutation.isPending}
-              data-testid="button-generate"
-            >
-              {generateMutation.isPending ? (
-                <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Generating with AI...</>
-              ) : (
-                <><Gauge className="h-4 w-4 mr-2" /> Generate Mass Balance</>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => generateMutation.mutate()}
+                disabled={generateMutation.isPending}
+                data-testid="button-generate"
+              >
+                {generateMutation.isPending ? (
+                  <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Generating with AI...</>
+                ) : (
+                  <><Gauge className="h-4 w-4 mr-2" /> Generate Mass Balance</>
+                )}
+              </Button>
+              <ElapsedTimer isRunning={generateMutation.isPending} />
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -991,6 +995,7 @@ export default function MassBalancePage() {
             >
               New Version
             </Button>
+            <ElapsedTimer isRunning={generateMutation.isPending || recomputeMutation.isPending} />
             {latestRun.status === "finalized" && (
               <Link href={`/scenarios/${scenarioId}/capex`}>
                 <Button variant="default" data-testid="button-go-to-capex">

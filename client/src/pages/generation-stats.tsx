@@ -13,7 +13,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, ArrowUpDown, Clock, FileText, Activity } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ArrowLeft, ArrowUpDown, Clock, FileText, Activity, BarChart3 } from "lucide-react";
 
 type SortField = "createdAt" | "documentType" | "modelUsed" | "durationMs" | "projectName" | "scenarioName";
 type SortDirection = "asc" | "desc";
@@ -99,6 +107,34 @@ export default function GenerationStatsPage() {
 
   const documentTypes = Array.from(new Set((logs || []).map(l => l.documentType)));
 
+  const aggregatedStats = (() => {
+    if (!logs || logs.length === 0) return [];
+    const successLogs = logs.filter(l => l.status === "success" && typeof l.durationMs === "number" && isFinite(l.durationMs) && l.durationMs > 0);
+    const grouped: Record<string, Record<string, number[]>> = {};
+    for (const log of successLogs) {
+      const model = log.modelUsed;
+      const docType = log.documentType;
+      if (!grouped[model]) grouped[model] = {};
+      if (!grouped[model][docType]) grouped[model][docType] = [];
+      grouped[model][docType].push(log.durationMs as number);
+    }
+    const rows: { model: string; docType: string; count: number; avg: number; min: number; max: number }[] = [];
+    for (const model of Object.keys(grouped).sort()) {
+      for (const docType of Object.keys(grouped[model]).sort()) {
+        const durations = grouped[model][docType];
+        rows.push({
+          model,
+          docType,
+          count: durations.length,
+          avg: Math.round(durations.reduce((s, d) => s + d, 0) / durations.length),
+          min: Math.min(...durations),
+          max: Math.max(...durations),
+        });
+      }
+    }
+    return rows;
+  })();
+
   const SortButton = ({ field, label }: { field: SortField; label: string }) => (
     <button
       onClick={() => toggleSort(field)}
@@ -162,6 +198,45 @@ export default function GenerationStatsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {aggregatedStats.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
+            <CardTitle className="text-base font-medium">Performance by Model</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table data-testid="table-aggregated-stats">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Model</TableHead>
+                    <TableHead>Document Type</TableHead>
+                    <TableHead className="text-center">Generations</TableHead>
+                    <TableHead className="text-right">Avg Time</TableHead>
+                    <TableHead className="text-right">Min Time</TableHead>
+                    <TableHead className="text-right">Max Time</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {aggregatedStats.map((row, i) => (
+                    <TableRow key={`${row.model}-${row.docType}`} data-testid={`row-agg-${i}`}>
+                      <TableCell className="font-medium whitespace-nowrap">{modelLabel(row.model)}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="text-xs">{row.docType}</Badge>
+                      </TableCell>
+                      <TableCell className="text-center">{row.count.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono">{formatDuration(row.avg)}</TableCell>
+                      <TableCell className="text-right font-mono text-muted-foreground">{formatDuration(row.min)}</TableCell>
+                      <TableCell className="text-right font-mono text-muted-foreground">{formatDuration(row.max)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">

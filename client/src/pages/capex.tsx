@@ -36,6 +36,7 @@ import {
   Calculator,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { ElapsedTimer } from "@/components/elapsed-timer";
 import type { CapexEstimate, CapexResults, CapexLineItem, CapexOverrides, CapexLocks, CapexSummary } from "@shared/schema";
 
 function formatCurrency(val: number): string {
@@ -358,17 +359,20 @@ export default function CapexPage() {
                 Mass balance must be finalized first.
               </p>
             </div>
-            <Button
-              onClick={() => generateMutation.mutate()}
-              disabled={generateMutation.isPending}
-              data-testid="button-generate"
-            >
-              {generateMutation.isPending ? (
-                <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Generating with AI...</>
-              ) : (
-                <><Calculator className="h-4 w-4 mr-2" /> Generate CapEx Estimate</>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => generateMutation.mutate()}
+                disabled={generateMutation.isPending}
+                data-testid="button-generate"
+              >
+                {generateMutation.isPending ? (
+                  <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Generating with AI...</>
+                ) : (
+                  <><Calculator className="h-4 w-4 mr-2" /> Generate CapEx Estimate</>
+                )}
+              </Button>
+              <ElapsedTimer isRunning={generateMutation.isPending} />
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -401,6 +405,7 @@ export default function CapexPage() {
             >
               New Version
             </Button>
+            <ElapsedTimer isRunning={generateMutation.isPending || recomputeMutation.isPending} />
             {Object.keys(overrides).length > 0 && (
               <Badge variant="secondary" data-testid="badge-overrides-count">
                 {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}
