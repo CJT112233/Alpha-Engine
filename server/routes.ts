@@ -3142,5 +3142,32 @@ export async function registerRoutes(
     }
   });
 
+  const calculatorFiles: Record<string, { file: string; label: string; type: string; description: string }> = {
+    A: { file: "server/services/massBalance.ts", label: "Type A: Wastewater Treatment Train", type: "A", description: "Complete wastewater treatment process with recycle streams. Stages include screening, equalization, anaerobic reactor, clarification, DAF, aerobic polishing, and sludge handling. Design criteria from WEF MOP 8 and Ten States Standards." },
+    B: { file: "server/services/massBalanceTypeB.ts", label: "Type B: RNG Greenfield Pipeline", type: "B", description: "Full AD pipeline from feedstock receiving through RNG production. 8 process stages with equipment sizing based on WEF MOP 8 design criteria." },
+    C: { file: "server/services/massBalanceTypeC.ts", label: "Type C: RNG Bolt-On Gas Train", type: "C", description: "Gas-only processing. Takes existing biogas flow and composition, applies conditioning (H2S removal, moisture removal, siloxane removal) then upgrades to pipeline-quality RNG. No digester sizing." },
+    D: { file: "server/services/massBalanceTypeD.ts", label: "Type D: Hybrid WW + AD + RNG", type: "D", description: "Combines wastewater treatment with sludge digestion and RNG production. Wastewater is treated (screening, primary clarification), sludge is thickened and fed to an anaerobic digester along with optional trucked co-digestion feedstocks, biogas is conditioned and upgraded to RNG." },
+  };
+
+  app.get("/api/calculators", (_req: Request, res: Response) => {
+    res.json(Object.entries(calculatorFiles).map(([key, val]) => ({ key, ...val })));
+  });
+
+  app.get("/api/calculators/:type", async (req: Request, res: Response) => {
+    const type = (req.params.type as string).toUpperCase();
+    const calc = calculatorFiles[type];
+    if (!calc) {
+      return res.status(404).json({ error: "Calculator not found" });
+    }
+    try {
+      const filePath = path.resolve(calc.file);
+      const source = await fs.promises.readFile(filePath, "utf-8");
+      res.json({ ...calc, key: type, source, lineCount: source.split("\n").length });
+    } catch (error) {
+      console.error(`Error reading calculator file ${calc.file}:`, error);
+      res.status(500).json({ error: "Failed to read calculator source" });
+    }
+  });
+
   return httpServer;
 }

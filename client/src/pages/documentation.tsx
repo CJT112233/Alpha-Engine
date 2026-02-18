@@ -63,6 +63,18 @@ function PromptLink({ name, promptKey, description }: { name: string; promptKey:
   );
 }
 
+function CalculatorLink({ name, type, description }: { name: string; type: string; description: string }) {
+  return (
+    <Link href={`/docs/calculators?type=${type}`} className="block p-3 rounded-md border hover-elevate transition-colors" data-testid={`link-calculator-${type}`}>
+      <div className="flex items-center gap-2">
+        <Wrench className="h-4 w-4 text-muted-foreground shrink-0" />
+        <span className="text-xs font-medium">{name}</span>
+      </div>
+      <p className="text-xs text-muted-foreground mt-1">{description}</p>
+    </Link>
+  );
+}
+
 function GuardrailItem({ code, name, description, severity }: { code: string; name: string; description: string; severity: "error" | "warning" | "info" }) {
   const severityColors = {
     error: "text-red-600 dark:text-red-400",
@@ -820,13 +832,8 @@ export default function Documentation() {
                     <div className="grid gap-2 grid-cols-2">
                       <PromptLink name="AI Prompt" promptKey="mass_balance_type_a"
                         description="AI-generated treatment train with removal efficiencies per WEF MOP 8." />
-                      <div className="p-3 rounded-md border">
-                        <div className="flex items-center gap-2">
-                          <Wrench className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-xs font-medium">Deterministic Calculator</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1 font-mono">server/services/massBalance.ts</p>
-                      </div>
+                      <CalculatorLink name="Deterministic Calculator" type="A"
+                        description="server/services/massBalance.ts" />
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -852,13 +859,8 @@ export default function Documentation() {
                     <div className="grid gap-2 grid-cols-2">
                       <PromptLink name="AI Prompt" promptKey="mass_balance_type_b"
                         description="Full AD pipeline mass balance with 8 process stages and equipment list." />
-                      <div className="p-3 rounded-md border">
-                        <div className="flex items-center gap-2">
-                          <Wrench className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-xs font-medium">Deterministic Calculator</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1 font-mono">server/services/massBalanceTypeB.ts</p>
-                      </div>
+                      <CalculatorLink name="Deterministic Calculator" type="B"
+                        description="server/services/massBalanceTypeB.ts" />
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -885,13 +887,8 @@ export default function Documentation() {
                     <div className="grid gap-2 grid-cols-2">
                       <PromptLink name="AI Prompt" promptKey="mass_balance_type_c"
                         description="Gas conditioning and upgrading mass balance for bolt-on projects." />
-                      <div className="p-3 rounded-md border">
-                        <div className="flex items-center gap-2">
-                          <Wrench className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-xs font-medium">Deterministic Calculator</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1 font-mono">server/services/massBalanceTypeC.ts</p>
-                      </div>
+                      <CalculatorLink name="Deterministic Calculator" type="C"
+                        description="server/services/massBalanceTypeC.ts" />
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -919,13 +916,8 @@ export default function Documentation() {
                     <div className="grid gap-2 grid-cols-2">
                       <PromptLink name="AI Prompt" promptKey="mass_balance_type_d"
                         description="Hybrid treatment + digestion + RNG mass balance with stream separation." />
-                      <div className="p-3 rounded-md border">
-                        <div className="flex items-center gap-2">
-                          <Wrench className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-xs font-medium">Deterministic Calculator</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1 font-mono">server/services/massBalanceTypeD.ts</p>
-                      </div>
+                      <CalculatorLink name="Deterministic Calculator" type="D"
+                        description="server/services/massBalanceTypeD.ts" />
                     </div>
                   </AccordionContent>
                 </AccordionItem>

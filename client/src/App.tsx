@@ -25,6 +25,7 @@ import CapexPage from "@/pages/capex";
 import GenerationStatsPage from "@/pages/generation-stats";
 import DocsFeedstockLibrary from "@/pages/docs-feedstock-library";
 import DocsPrompts from "@/pages/docs-prompts";
+import DocsCalculators from "@/pages/docs-calculators";
 
 function Router() {
   return (
@@ -38,6 +39,7 @@ function Router() {
       <Route path="/documentation" component={Documentation} />
       <Route path="/docs/feedstock-library" component={DocsFeedstockLibrary} />
       <Route path="/docs/prompts" component={DocsPrompts} />
+      <Route path="/docs/calculators" component={DocsCalculators} />
       <Route path="/scenarios/:scenarioId/mass-balance" component={MassBalancePage} />
       <Route path="/scenarios/:scenarioId/capex" component={CapexPage} />
       <Route path="/stats" component={GenerationStatsPage} />
