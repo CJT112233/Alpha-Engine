@@ -3255,10 +3255,10 @@ export async function registerRoutes(
   });
 
   const calculatorFiles: Record<string, { file: string; label: string; type: string; description: string }> = {
-    A: { file: "server/services/massBalance.ts", label: "Type A: Wastewater Treatment Train", type: "A", description: "Complete wastewater treatment process with recycle streams. Stages include screening, equalization, anaerobic reactor, clarification, DAF, aerobic polishing, and sludge handling. Design criteria from WEF MOP 8 and Ten States Standards." },
-    B: { file: "server/services/massBalanceTypeB.ts", label: "Type B: RNG Greenfield Pipeline", type: "B", description: "Full AD pipeline from feedstock receiving through RNG production. 8 process stages with equipment sizing based on WEF MOP 8 design criteria." },
-    C: { file: "server/services/massBalanceTypeC.ts", label: "Type C: RNG Bolt-On Gas Train", type: "C", description: "Gas-only processing. Takes existing biogas flow and composition, applies conditioning (H2S removal, moisture removal, siloxane removal) then upgrades to pipeline-quality RNG. No digester sizing." },
-    D: { file: "server/services/massBalanceTypeD.ts", label: "Type D: Hybrid WW + AD + RNG", type: "D", description: "Combines wastewater treatment with sludge digestion and RNG production. Wastewater is treated (screening, primary clarification), sludge is thickened and fed to an anaerobic digester along with optional trucked co-digestion feedstocks, biogas is conditioned and upgraded to RNG." },
+    A: { file: "server/services/massBalance.ts", label: "Type A: Wastewater Treatment", type: "A", description: "High-strength industrial wastewater from food processing (dairy, meat, potato, beverage, produce, etc.). Treats influent to meet effluent discharge standards. RNG may be a byproduct when organic loading justifies it." },
+    B: { file: "server/services/massBalanceTypeB.ts", label: "Type B: RNG Greenfield", type: "B", description: "Full anaerobic digestion pipeline from feedstock receiving through RNG production. Handles solid and semi-solid organic feedstocks (food waste, crop residuals). Complete process train: receiving, pretreatment, digestion, gas conditioning, upgrading." },
+    C: { file: "server/services/massBalanceTypeC.ts", label: "Type C: RNG Bolt-On", type: "C", description: "Biogas-only inputs. An existing facility already produces biogas; this project adds gas conditioning and upgrading equipment to convert raw biogas to pipeline-quality RNG. No digester sizing needed." },
+    D: { file: "server/services/massBalanceTypeD.ts", label: "Type D: Hybrid", type: "D", description: "Combines wastewater treatment (Type A) with co-digestion from trucked organic feedstocks for additional gas production and RNG production. Wastewater is treated, biogas is upgraded to RNG." },
   };
 
   app.get("/api/calculators", (_req: Request, res: Response) => {

@@ -639,10 +639,10 @@ const PROJECT_TYPE_LABELS: Record<string, string> = {
 };
 
 const PROJECT_TYPE_DESCRIPTIONS: Record<string, string> = {
-  A: "Accepts wastewater and reduces contaminants (BOD, COD, TSS, N, P). May produce RNG as a byproduct.",
-  B: "Takes solid food processing residuals and converts to RNG. Produces solid and liquid digestate.",
-  C: "Upgrades existing flared or underutilized biogas to pipeline-quality RNG. No feedstock handling.",
-  D: "Combines wastewater treatment with trucked-in supplemental waste for enhanced gas production.",
+  A: "High-strength industrial wastewater from food processing (dairy, meat, potato, beverage, produce, etc.). Treats influent to meet effluent discharge standards. RNG may be a byproduct when organic loading justifies it.",
+  B: "Full anaerobic digestion pipeline from feedstock receiving through RNG production. Handles solid and semi-solid organic feedstocks (food waste, crop residuals). Complete process train: receiving, pretreatment, digestion, gas conditioning, upgrading.",
+  C: "Biogas-only inputs. An existing facility already produces biogas; this project adds gas conditioning and upgrading equipment to convert raw biogas to pipeline-quality RNG. No digester sizing needed.",
+  D: "Combines wastewater treatment (Type A) with co-digestion from trucked organic feedstocks for additional gas production and RNG production. Wastewater is treated, biogas is upgraded to RNG.",
 };
 
 export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioStatus, projectType: propProjectType, projectTypeConfirmed: propProjectTypeConfirmed }: UpifReviewProps) {

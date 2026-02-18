@@ -19,10 +19,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
 const PROJECT_TYPES = [
-  { value: "A", label: "Type A", name: "Wastewater Treatment", icon: Droplets, description: "Municipal or industrial wastewater treatment plant" },
-  { value: "B", label: "Type B", name: "RNG Greenfield", icon: Flame, description: "New anaerobic digestion facility producing RNG" },
-  { value: "C", label: "Type C", name: "RNG Bolt-On", icon: Plug, description: "Upgrade existing biogas to pipeline-quality RNG" },
-  { value: "D", label: "Type D", name: "Hybrid", icon: Layers, description: "Combined wastewater treatment with RNG production" },
+  { value: "A", label: "Type A", name: "Wastewater Treatment", icon: Droplets, description: "High-strength industrial wastewater from food processing (dairy, meat, potato, beverage, produce, etc.). Treats influent to meet effluent discharge standards. RNG may be a byproduct when organic loading justifies it." },
+  { value: "B", label: "Type B", name: "RNG Greenfield", icon: Flame, description: "Full anaerobic digestion pipeline from feedstock receiving through RNG production. Handles solid and semi-solid organic feedstocks (food waste, crop residuals). Complete process train: receiving, pretreatment, digestion, gas conditioning, upgrading." },
+  { value: "C", label: "Type C", name: "RNG Bolt-On", icon: Plug, description: "Biogas-only inputs. An existing facility already produces biogas; this project adds gas conditioning and upgrading equipment to convert raw biogas to pipeline-quality RNG. No digester sizing needed." },
+  { value: "D", label: "Type D", name: "Hybrid", icon: Layers, description: "Combines wastewater treatment (Type A) with co-digestion from trucked organic feedstocks for additional gas production and RNG production. Wastewater is treated, biogas is upgraded to RNG." },
 ] as const;
 
 const createScenarioSchema = z.object({

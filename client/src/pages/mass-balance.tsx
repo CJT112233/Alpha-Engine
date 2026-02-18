@@ -779,7 +779,7 @@ function getProjectTypeLabel(pt: string | undefined): string {
     case "A": return "Type A \u2014 Wastewater Treatment";
     case "B": return "Type B \u2014 RNG Greenfield";
     case "C": return "Type C \u2014 RNG Bolt-On";
-    case "D": return "Type D \u2014 Hybrid (WW + RNG)";
+    case "D": return "Type D \u2014 Hybrid";
     default: return pt;
   }
 }
