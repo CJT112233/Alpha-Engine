@@ -765,6 +765,11 @@ const TYPE_A_DESIGN_DRIVER_SPECS: Array<{
     matchDisplayNames: [/\bfog\b/i, /fats[\s,]*oils[\s,]*(?:and\s*)?grease/i, /\bo&g\b/i, /\boil\s*(?:and|&)\s*grease/i],
   },
   {
+    label: "TKN",
+    matchKeys: ["tkn", "nitrogen", "totalKjeldahlNitrogen"],
+    matchDisplayNames: [/\btkn\b/i, /total kjeldahl nitrogen/i, /total nitrogen/i],
+  },
+  {
     label: "pH",
     matchKeys: ["ph", "phLevel"],
     matchDisplayNames: [/\bph\b/i, /ph[\s_-]?level/i, /ph[\s_-]?range/i],
@@ -848,22 +853,23 @@ interface IndustryDefaults {
   cod: string;
   tss: string;
   fog: string;
+  tkn: string;
   ph: string;
   peakFlowMultiplier: number;
 }
 
 const INDUSTRY_DEFAULTS: Record<string, IndustryDefaults> = {
-  dairy:    { bod: "2,000-6,000", cod: "4,000-10,000", tss: "500-2,000",   fog: "200-800",  ph: "4.0-7.0",  peakFlowMultiplier: 2.0 },
-  meat:     { bod: "1,500-5,000", cod: "3,000-8,000",  tss: "800-3,000",   fog: "100-500",  ph: "6.0-7.5",  peakFlowMultiplier: 2.5 },
-  poultry:  { bod: "1,200-4,000", cod: "2,500-7,000",  tss: "600-2,500",   fog: "100-400",  ph: "6.0-7.5",  peakFlowMultiplier: 2.0 },
-  produce:  { bod: "500-3,000",   cod: "1,000-5,000",  tss: "200-1,500",   fog: "50-200",   ph: "4.0-6.0",  peakFlowMultiplier: 2.0 },
-  potato:   { bod: "2,000-5,000", cod: "3,500-8,000",  tss: "1,000-3,000", fog: "50-200",   ph: "5.0-7.0",  peakFlowMultiplier: 2.0 },
-  beverage: { bod: "500-2,000",   cod: "1,000-4,000",  tss: "200-800",     fog: "20-100",   ph: "3.0-6.0",  peakFlowMultiplier: 1.5 },
-  brewery:  { bod: "1,000-3,000", cod: "2,000-6,000",  tss: "300-1,000",   fog: "20-80",    ph: "4.0-7.0",  peakFlowMultiplier: 1.5 },
-  winery:   { bod: "1,500-5,000", cod: "3,000-10,000", tss: "300-1,500",   fog: "20-80",    ph: "3.5-5.5",  peakFlowMultiplier: 3.0 },
-  seafood:  { bod: "1,000-4,000", cod: "2,000-7,000",  tss: "500-2,000",   fog: "100-400",  ph: "6.0-7.5",  peakFlowMultiplier: 2.0 },
-  bakery:   { bod: "1,000-3,000", cod: "2,000-5,000",  tss: "400-1,500",   fog: "100-500",  ph: "4.0-7.0",  peakFlowMultiplier: 1.5 },
-  default:  { bod: "1,000-4,000", cod: "2,000-7,000",  tss: "500-2,000",   fog: "100-400",  ph: "5.0-7.0",  peakFlowMultiplier: 2.0 },
+  dairy:    { bod: "2,000-6,000", cod: "4,000-10,000", tss: "500-2,000",   fog: "200-800",  tkn: "50-150",   ph: "4.0-7.0",  peakFlowMultiplier: 2.0 },
+  meat:     { bod: "1,500-5,000", cod: "3,000-8,000",  tss: "800-3,000",   fog: "100-500",  tkn: "80-200",   ph: "6.0-7.5",  peakFlowMultiplier: 2.5 },
+  poultry:  { bod: "1,200-4,000", cod: "2,500-7,000",  tss: "600-2,500",   fog: "100-400",  tkn: "80-250",   ph: "6.0-7.5",  peakFlowMultiplier: 2.0 },
+  produce:  { bod: "500-3,000",   cod: "1,000-5,000",  tss: "200-1,500",   fog: "50-200",   tkn: "20-80",    ph: "4.0-6.0",  peakFlowMultiplier: 2.0 },
+  potato:   { bod: "2,000-5,000", cod: "3,500-8,000",  tss: "1,000-3,000", fog: "50-200",   tkn: "30-100",   ph: "5.0-7.0",  peakFlowMultiplier: 2.0 },
+  beverage: { bod: "500-2,000",   cod: "1,000-4,000",  tss: "200-800",     fog: "20-100",   tkn: "15-50",    ph: "3.0-6.0",  peakFlowMultiplier: 1.5 },
+  brewery:  { bod: "1,000-3,000", cod: "2,000-6,000",  tss: "300-1,000",   fog: "20-80",    tkn: "25-80",    ph: "4.0-7.0",  peakFlowMultiplier: 1.5 },
+  winery:   { bod: "1,500-5,000", cod: "3,000-10,000", tss: "300-1,500",   fog: "20-80",    tkn: "20-60",    ph: "3.5-5.5",  peakFlowMultiplier: 3.0 },
+  seafood:  { bod: "1,000-4,000", cod: "2,000-7,000",  tss: "500-2,000",   fog: "100-400",  tkn: "60-150",   ph: "6.0-7.5",  peakFlowMultiplier: 2.0 },
+  bakery:   { bod: "1,000-3,000", cod: "2,000-5,000",  tss: "400-1,500",   fog: "100-500",  tkn: "20-60",    ph: "4.0-7.0",  peakFlowMultiplier: 1.5 },
+  default:  { bod: "1,000-4,000", cod: "2,000-7,000",  tss: "500-2,000",   fog: "100-400",  tkn: "30-100",   ph: "5.0-7.0",  peakFlowMultiplier: 2.0 },
 };
 
 function detectIndustryType(feedstocks: FeedstockEntry[]): IndustryDefaults {
@@ -941,7 +947,7 @@ export function validateTypeADesignDrivers(
     const industry = detectIndustryType(feedstocks);
     const industryLabel = feedstocks.map(fs => fs.feedstockType || "").filter(Boolean).join(", ") || "food processing wastewater";
 
-    const AUTO_POPULATE_DRIVERS = new Set(["Peak Flow", "BOD", "COD", "TSS", "FOG", "pH"]);
+    const AUTO_POPULATE_DRIVERS = new Set(["Peak Flow", "BOD", "COD", "TSS", "FOG", "TKN", "pH"]);
 
     updatedFeedstocks = feedstocks.map((fs, idx) => {
       if (idx !== 0) return fs;
@@ -999,6 +1005,13 @@ export function validateTypeADesignDrivers(
             unit = "mg/L";
             break;
           }
+          case "TKN": {
+            key = "tkn";
+            displayName = "TKN (Total Kjeldahl Nitrogen)";
+            value = industry.tkn;
+            unit = "mg/L";
+            break;
+          }
           case "pH": {
             key = "phLevel";
             displayName = "pH Range";
@@ -1052,7 +1065,7 @@ export function validateTypeADesignDrivers(
       warnings.push({
         field: "Core Design Drivers",
         section: "Type A Completeness",
-        message: `Missing core design driver(s): ${stillMissing.join(", ")}. Type A wastewater projects must surface Flow (avg + peak), BOD, COD, TSS, FOG, and pH in the Feedstock/Influent section.`,
+        message: `Missing core design driver(s): ${stillMissing.join(", ")}. Type A wastewater projects must surface Flow (avg + peak), BOD, COD, TSS, FOG, TKN, and pH in the Feedstock/Influent section.`,
         severity: "error",
       });
 

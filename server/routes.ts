@@ -14,7 +14,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { storage } from "./storage";
-import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema, type FeedstockEntry, type ConfirmedFields } from "@shared/schema";
+import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema, type FeedstockEntry, type ConfirmedFields, type InsertUpif } from "@shared/schema";
 import { z } from "zod";
 import { enrichFeedstockSpecs, enrichBiogasSpecs, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { enrichOutputSpecs, matchOutputType, type EnrichedOutputSpec } from "@shared/output-criteria-library";
@@ -1887,6 +1887,99 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error confirming scenario:", error);
       res.status(500).json({ error: "Failed to confirm scenario" });
+    }
+  });
+
+  app.get("/api/scenarios/:scenarioId/sibling-upifs", async (req: Request, res: Response) => {
+    try {
+      const scenario = await storage.getScenario(req.params.scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+
+      const siblings = await storage.getScenariosByProject(scenario.projectId);
+      const results: { scenarioId: string; scenarioName: string; isConfirmed: boolean; updatedAt: string }[] = [];
+
+      for (const sib of siblings) {
+        if (sib.id === req.params.scenarioId) continue;
+        const upif = await storage.getUpifByScenario(sib.id);
+        if (upif) {
+          results.push({
+            scenarioId: sib.id,
+            scenarioName: sib.name,
+            isConfirmed: !!upif.isConfirmed,
+            updatedAt: upif.updatedAt?.toString() || upif.createdAt?.toString() || "",
+          });
+        }
+      }
+      res.json(results);
+    } catch (error) {
+      console.error("Error fetching sibling UPIFs:", error);
+      res.status(500).json({ error: "Failed to fetch sibling UPIFs" });
+    }
+  });
+
+  app.post("/api/scenarios/:scenarioId/import-upif", async (req: Request, res: Response) => {
+    try {
+      const { sourceScenarioId } = req.body;
+      if (!sourceScenarioId || typeof sourceScenarioId !== "string") {
+        return res.status(400).json({ error: "sourceScenarioId is required" });
+      }
+
+      const targetScenario = await storage.getScenario(req.params.scenarioId);
+      if (!targetScenario) return res.status(404).json({ error: "Target scenario not found" });
+
+      if (targetScenario.status === "confirmed") {
+        return res.status(400).json({ error: "Cannot import into a confirmed scenario. Reset the scenario first." });
+      }
+
+      const sourceScenario = await storage.getScenario(sourceScenarioId);
+      if (!sourceScenario) return res.status(404).json({ error: "Source scenario not found" });
+
+      if (sourceScenario.projectId !== targetScenario.projectId) {
+        return res.status(403).json({ error: "Can only import UPIFs from scenarios within the same project" });
+      }
+
+      const sourceUpif = await storage.getUpifByScenario(sourceScenarioId);
+      if (!sourceUpif) return res.status(404).json({ error: "Source scenario has no UPIF to import" });
+
+      const existingUpif = await storage.getUpifByScenario(req.params.scenarioId);
+
+      const importData: Partial<InsertUpif> = {
+        feedstockType: sourceUpif.feedstockType,
+        feedstockVolume: sourceUpif.feedstockVolume,
+        feedstockUnit: sourceUpif.feedstockUnit,
+        feedstockParameters: sourceUpif.feedstockParameters,
+        outputRequirements: sourceUpif.outputRequirements,
+        location: sourceUpif.location,
+        constraints: sourceUpif.constraints,
+        feedstockSpecs: sourceUpif.feedstockSpecs,
+        outputSpecs: sourceUpif.outputSpecs,
+        feedstocks: sourceUpif.feedstocks,
+        validationWarnings: sourceUpif.validationWarnings,
+        unmappedSpecs: sourceUpif.unmappedSpecs,
+        performanceTargets: sourceUpif.performanceTargets,
+      };
+
+      let upif;
+      if (existingUpif) {
+        upif = await storage.updateUpif(req.params.scenarioId, {
+          ...importData,
+          isConfirmed: false,
+          confirmedAt: null,
+          confirmedFields: null,
+        });
+      } else {
+        upif = await storage.createUpif({
+          scenarioId: req.params.scenarioId,
+          ...importData,
+        } as InsertUpif);
+      }
+
+      await storage.updateScenarioStatus(req.params.scenarioId, "in_review");
+
+      res.json(upif);
+    } catch (error) {
+      console.error("Error importing UPIF:", error);
+      res.status(500).json({ error: "Failed to import UPIF" });
     }
   });
 

@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   Wrench,
   ExternalLink,
+  Import,
 } from "lucide-react";
 import type { Scenario, Project, TextEntry, Document, UpifRecord, MassBalanceRun, MassBalanceResults, CapexEstimate, CapexResults } from "@shared/schema";
 import { format } from "date-fns";
@@ -83,6 +84,10 @@ export default function ScenarioDetail() {
     queryKey: ["/api/llm-providers"],
   });
 
+  const { data: siblingUpifs } = useQuery<Array<{ scenarioId: string; scenarioName: string; isConfirmed: boolean; updatedAt: string }>>({
+    queryKey: ["/api/scenarios", id, "sibling-upifs"],
+  });
+
   const modelMutation = useMutation({
     mutationFn: async (model: string) => {
       return apiRequest("PATCH", `/api/scenarios/${id}/preferred-model`, { model });
@@ -117,6 +122,21 @@ export default function ScenarioDetail() {
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const importUpifMutation = useMutation({
+    mutationFn: async (sourceScenarioId: string) => {
+      const res = await apiRequest("POST", `/api/scenarios/${id}/import-upif`, { sourceScenarioId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", id, "upif"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", id] });
+      toast({ title: "UPIF Imported", description: "UPIF data has been copied from the selected scenario." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Import Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -294,30 +314,59 @@ export default function ScenarioDetail() {
           </TabsContent>
 
           <TabsContent value="upif" className="space-y-4">
-            {llmProviders && llmProviders.providers.length > 1 && (
-              <div className="flex items-center gap-3 justify-end flex-wrap" data-testid="model-selector-container">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Bot className="h-4 w-4" />
-                  <span>AI Model</span>
+            <div className="flex items-center gap-3 justify-end flex-wrap" data-testid="upif-toolbar">
+              {siblingUpifs && siblingUpifs.length > 0 && !isConfirmed && (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Import className="h-4 w-4" />
+                    <span>Import UPIF</span>
+                  </div>
+                  <Select
+                    onValueChange={(value) => {
+                      if (confirm("This will replace the current UPIF data with the selected scenario's UPIF. Continue?")) {
+                        importUpifMutation.mutate(value);
+                      }
+                    }}
+                    disabled={importUpifMutation.isPending}
+                  >
+                    <SelectTrigger className="w-[220px]" data-testid="select-import-upif">
+                      <SelectValue placeholder="Select a scenario..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {siblingUpifs.map((s) => (
+                        <SelectItem key={s.scenarioId} value={s.scenarioId} data-testid={`option-import-${s.scenarioId}`}>
+                          {s.scenarioName}{s.isConfirmed ? " (Confirmed)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <Select
-                  value={(scenario as any).preferredModel || "gpt5"}
-                  onValueChange={(value) => modelMutation.mutate(value)}
-                  disabled={modelMutation.isPending}
-                >
-                  <SelectTrigger className="w-[200px]" data-testid="select-llm-model">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {llmProviders.providers.map((p) => (
-                      <SelectItem key={p.id} value={p.id} data-testid={`option-model-${p.id}`}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+              )}
+              {llmProviders && llmProviders.providers.length > 1 && (
+                <>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Bot className="h-4 w-4" />
+                    <span>AI Model</span>
+                  </div>
+                  <Select
+                    value={(scenario as any).preferredModel || "gpt5"}
+                    onValueChange={(value) => modelMutation.mutate(value)}
+                    disabled={modelMutation.isPending}
+                  >
+                    <SelectTrigger className="w-[200px]" data-testid="select-llm-model">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {llmProviders.providers.map((p) => (
+                        <SelectItem key={p.id} value={p.id} data-testid={`option-model-${p.id}`}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+            </div>
             <UpifReview
               scenarioId={id!}
               upif={upif}
