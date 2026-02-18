@@ -50,7 +50,7 @@ function FlowStep({ step, title, description, icon: Icon, badges, isLast }: {
 
 function PromptLink({ name, promptKey, description }: { name: string; promptKey: string; description: string }) {
   return (
-    <Link href="/settings" className="block p-3 rounded-md border hover-elevate transition-colors" data-testid={`link-prompt-${promptKey}`}>
+    <Link href={`/docs/prompts?key=${promptKey}`} className="block p-3 rounded-md border hover-elevate transition-colors" data-testid={`link-prompt-${promptKey}`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Bot className="h-4 w-4 text-primary shrink-0" />
@@ -1059,8 +1059,8 @@ export default function Documentation() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                All AI prompts are stored in the database and can be customized via the{" "}
-                <Link href="/settings" className="text-primary hover:underline" data-testid="link-settings-inline">Settings</Link> page.
+                All AI prompts are available for review. Click any prompt link below to see the full text
+                of the instructions given to the AI.
                 The system supports three LLM providers, selectable per scenario.
               </p>
 

@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { FolderKanban, Plus, LayoutDashboard, Beaker, FileText, Settings, BarChart3 } from "lucide-react";
+import { FolderKanban, Plus, LayoutDashboard, Beaker, FileText, BarChart3 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -116,14 +116,6 @@ export function AppSidebar() {
               <Link href="/stats" data-testid="link-stats">
                 <BarChart3 className="h-4 w-4" />
                 <span>Generation Stats</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={location === "/settings"}>
-              <Link href="/settings" data-testid="link-settings">
-                <Settings className="h-4 w-4" />
-                <span>Settings</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

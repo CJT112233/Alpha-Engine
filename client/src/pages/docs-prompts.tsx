@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -138,7 +138,11 @@ function PromptDetail({ prompt }: { prompt: PromptTemplateDefault }) {
 type FilterCategory = "all" | "extraction" | "mass_balance" | "capex" | "workflow";
 
 export default function DocsPrompts() {
-  const [selectedKey, setSelectedKey] = useState<PromptKey | null>(null);
+  const searchParams = useSearch();
+  const keyParam = new URLSearchParams(searchParams).get("key") as PromptKey | null;
+  const initialKey = keyParam && DEFAULT_PROMPTS[keyParam] ? keyParam : null;
+
+  const [selectedKey, setSelectedKey] = useState<PromptKey | null>(initialKey);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState<FilterCategory>("all");
 
@@ -190,8 +194,7 @@ export default function DocsPrompts() {
             <p className="text-sm text-muted-foreground">
               These are the exact instructions given to the AI at each step of the process.
               They tell the AI what role to play, what information to look for, and how to format
-              its response. You can customize any of these prompts on the{" "}
-              <Link href="/settings" className="text-primary hover:underline">Settings</Link> page.
+              its response. Click any prompt to see the full text.
             </p>
           </div>
         </div>
