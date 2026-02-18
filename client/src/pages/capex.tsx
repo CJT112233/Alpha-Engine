@@ -157,11 +157,14 @@ function EditableValue({
 }
 
 function WarningsList({ warnings }: { warnings: CapexResults["warnings"] }) {
-  if (!warnings || warnings.length === 0) return null;
+  const validWarnings = (warnings || []).filter(
+    (w) => (w.field && w.field.trim()) || (w.message && w.message.trim())
+  );
+  if (validWarnings.length === 0) return null;
 
   return (
     <div className="space-y-2">
-      {warnings.map((w, i) => (
+      {validWarnings.map((w, i) => (
         <div
           key={i}
           className={`flex items-start gap-2 p-2 rounded-md text-sm ${
@@ -181,7 +184,11 @@ function WarningsList({ warnings }: { warnings: CapexResults["warnings"] }) {
             <Info className="h-4 w-4 mt-0.5 shrink-0" />
           )}
           <div>
-            <span className="font-medium">{w.field}:</span> {w.message}
+            {w.field && w.field.trim() ? (
+              <><span className="font-medium">{w.field}:</span> {w.message || ""}</>
+            ) : (
+              <span>{w.message || ""}</span>
+            )}
           </div>
         </div>
       ))}
@@ -568,7 +575,7 @@ export default function CapexPage() {
                     Assumptions
                   </TabsTrigger>
                   <TabsTrigger value="warnings" data-testid="tab-warnings">
-                    Warnings ({results.warnings?.length || 0})
+                    Warnings ({(results.warnings || []).filter((w) => (w.field && w.field.trim()) || (w.message && w.message.trim())).length})
                   </TabsTrigger>
                 </TabsList>
 
