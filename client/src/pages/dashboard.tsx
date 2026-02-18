@@ -170,7 +170,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {recentScenarios?.map((scenario) => (
+                  {recentScenarios?.slice(0, 5).map((scenario) => (
                     <Link key={scenario.id} href={`/scenarios/${scenario.id}`}>
                       <div
                         className="flex items-center justify-between p-3 rounded-md border hover-elevate cursor-pointer"
