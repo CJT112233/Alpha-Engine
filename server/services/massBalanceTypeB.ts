@@ -55,7 +55,7 @@ const AD_DESIGN_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
   gasUpgrading: {
     methaneRecovery: { value: 97, unit: "%", source: "Membrane/PSA typical" },
     productCH4: { value: 97, unit: "%", source: "Pipeline quality RNG" },
-    electricalDemand: { value: 0.25, unit: "kWh/Nm³ raw biogas", source: "Engineering practice" },
+    electricalDemand: { value: 8.8, unit: "kWh/1,000 scf raw biogas", source: "Engineering practice" },
     pressureOut: { value: 200, unit: "psig", source: "Pipeline injection" },
   },
 };
@@ -746,9 +746,9 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   const rngScfPerDay = rngM3PerDay * 35.3147;
   const rngScfm = rngScfPerDay / 1440;
   const rngMMBtuPerDay = rngScfPerDay * 1012 / 1_000_000;
-  const rngGJPerDay = rngMMBtuPerDay * 1.055;
   const tailgasM3PerDay = conditionedBiogasM3PerDay - rngM3PerDay;
-  const electricalDemandKW = biogasM3PerDay * AD_DESIGN_DEFAULTS.gasUpgrading.electricalDemand.value / 24;
+  const biogasScfdTotal = biogasM3PerDay * 35.3147;
+  const electricalDemandKW = biogasScfdTotal * AD_DESIGN_DEFAULTS.gasUpgrading.electricalDemand.value / (1000 * 24);
 
   const upgradingStage: ADProcessStage = {
     name: "Gas Upgrading to RNG",
