@@ -202,23 +202,42 @@ const anthropicModelIds: Record<string, string> = {
 export async function llmComplete(options: LLMCompletionOptions): Promise<LLMCompletionResult> {
   let { model, messages, maxTokens = 8192, jsonMode = false } = options;
 
+  const available = getAvailableProviders();
+  if (available.length === 0) {
+    throw new Error("No LLM provider is available. Configure an API key for OpenAI or Anthropic.");
+  }
+
   if (!isProviderAvailable(model)) {
-    const fallback = getAvailableProviders()[0];
-    if (!fallback) {
-      throw new Error("No LLM provider is available. Configure an API key for OpenAI or Anthropic.");
-    }
+    const fallback = available[0];
     console.log(`LLM: ${model} not available, falling back to ${fallback}`);
     model = fallback;
   }
 
-  try {
-    if (model === "claude" || model === "claude-opus") {
-      return await completeWithClaude(model, messages, maxTokens, jsonMode);
+  const tryProvider = async (provider: LLMProvider): Promise<LLMCompletionResult> => {
+    if (provider === "claude" || provider === "claude-opus") {
+      return await completeWithClaude(provider, messages, maxTokens, jsonMode);
     }
     return await completeWithOpenAI(messages, maxTokens, jsonMode);
+  };
+
+  try {
+    return await tryProvider(model);
   } catch (error: any) {
     console.error(`LLM error with ${model}:`, error?.message || error);
-    throw error;
+
+    const fallbackProviders = available.filter(p => p !== model);
+    for (const fallback of fallbackProviders) {
+      try {
+        console.log(`LLM: Retrying with fallback provider ${fallback} after ${model} failed`);
+        const result = await tryProvider(fallback);
+        console.log(`LLM: Fallback to ${fallback} succeeded`);
+        return result;
+      } catch (fallbackError: any) {
+        console.error(`LLM: Fallback ${fallback} also failed:`, fallbackError?.message || fallbackError);
+      }
+    }
+
+    throw new Error(`All LLM providers failed. Original error (${model}): ${error?.message || "Unknown error"}`);
   }
 }
 
