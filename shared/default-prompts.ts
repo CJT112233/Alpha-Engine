@@ -697,13 +697,13 @@ For each stage, apply appropriate removal efficiencies:
 - UV disinfection: no chemical removal effect
 
 EQUIPMENT SIZING GUIDELINES:
-- Screens: 2-6 mm opening, velocity 0.6-1.2 m/s through bars
-- Grit chambers: 1-3 min detention at peak flow, 0.3 m/s horizontal velocity
-- Primary clarifiers: 30-50 m³/m²/d surface overflow rate (SOR), 1.5-2.5 hr HRT
+- Screens: 2-6 mm opening, velocity 2-4 ft/s through bars
+- Grit chambers: 1-3 min detention at peak flow, 1.0 ft/s horizontal velocity
+- Primary clarifiers: 750-1,250 gpd/ft² surface overflow rate (SOR), 1.5-2.5 hr HRT
 - Aeration basins: F/M 0.2-0.5, MLSS 2,000-4,000 mg/L, HRT 4-8 hr, SRT 5-15 d
-- Secondary clarifiers: 16-28 m³/m²/d SOR, RAS ratio 25-75%
-- MBR: flux 15-25 LMH, MLSS 8,000-12,000 mg/L
-- Gravity filters: 5-10 m/h filtration rate
+- Secondary clarifiers: 400-700 gpd/ft² SOR, RAS ratio 25-75%
+- MBR: flux 9-15 gfd (gallons per ft² per day), MLSS 8,000-12,000 mg/L
+- Gravity filters: 2-4 gpm/ft² filtration rate
 - UV: 40-100 mJ/cm² dose depending on permit requirements
 
 RECYCLE STREAMS:
@@ -824,10 +824,10 @@ Stage 4: ANAEROBIC DIGESTION (CSTR)
   - Mechanical mixing: 5-8 W/m³ (draft tube or top-entry mixers)
   - Biogas collection dome
   - Biogas yield from VS destroyed:
-    • Food waste: 400-600 m³/tonne VS destroyed
-    • FOG: 800-1,000 m³/tonne VS destroyed
-    • Dairy manure: 200-300 m³/tonne VS destroyed
-    • Crop residues: 250-400 m³/tonne VS destroyed
+    • Food waste: 6,400-9,600 scf/ton VS destroyed
+    • FOG: 12,800-16,000 scf/ton VS destroyed
+    • Dairy manure: 3,200-4,800 scf/ton VS destroyed
+    • Crop residues: 4,000-6,400 scf/ton VS destroyed
   - Biogas composition: 55-65% CH₄, 35-45% CO₂, 500-3,000 ppmv H₂S, trace siloxanes
 
 Stage 5: SOLIDS-LIQUID SEPARATION (CENTRIFUGE)
@@ -846,7 +846,7 @@ Stage 6: LIQUID CLEANUP — DISSOLVED AIR FLOTATION (DAF)
   - Chemical conditioning: coagulant (FeCl₃ or alum) + polymer
   - Float (sludge) recycled to digester or hauled off-site
   - DAF effluent: clean enough for sewer discharge or irrigation
-  - Hydraulic loading: 2-4 gpm/ft² (80-160 L/m²/hr)
+  - Hydraulic loading: 2-4 gpm/ft²
 
 Stage 7: BIOGAS CONDITIONING
   - H₂S removal: iron sponge (< 500 ppm inlet), biological scrubber (500-5,000 ppm), chemical scrubber (> 5,000 ppm)
@@ -862,7 +862,7 @@ Stage 8: GAS UPGRADING TO RNG
   - Compression to pipeline pressure: 200-800 psig
   - RNG heating value: ~1,012 BTU/scf
   - Tail gas (CO₂-rich) to thermal oxidizer or flare
-  - Electrical demand: 0.2-0.3 kWh/Nm³ raw biogas
+  - Electrical demand: 6-9 kWh/1,000 scf raw biogas
 
 Stage 9: EMERGENCY/BACKUP GAS MANAGEMENT
   - Enclosed flare sized for 100-110% of maximum biogas production

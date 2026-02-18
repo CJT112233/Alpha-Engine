@@ -29,7 +29,7 @@ const AD_DESIGN_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
     vsDestruction: { value: 65, unit: "%", source: "WEF MOP 8" },
     temperature: { value: 37, unit: "°C", source: "Mesophilic standard" },
     mixingPower: { value: 6, unit: "W/m³", source: "WEF MOP 8" },
-    gasYield: { value: 0.8, unit: "m³/kg VS destroyed", source: "Engineering practice" },
+    gasYield: { value: 0.8, unit: "scf/lb VS destroyed", source: "Engineering practice" },
     ch4Content: { value: 60, unit: "%", source: "Typical AD biogas" },
     co2Content: { value: 38, unit: "%", source: "Typical AD biogas" },
     h2sContent: { value: 1500, unit: "ppmv", source: "Typical AD biogas" },
@@ -92,6 +92,10 @@ function roundTo(val: number, decimals: number = 1): number {
   const factor = Math.pow(10, decimals);
   return Math.round(val * factor) / factor;
 }
+
+function m3ToGal(m3: number): number { return m3 * 264.172; }
+function m3ToScf(m3: number): number { return m3 * 35.3147; }
+function m3PerMinToGpm(m3min: number): number { return m3min * 264.172; }
 
 function hasPackagedWaste(feedstocks: FeedstockEntry[]): boolean {
   const keywords = ["packaged", "package", "depackag", "wrapped", "containerized", "bagged"];
@@ -185,7 +189,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
 
   assumptions.push({ parameter: "Blended TS", value: `${roundTo(avgTS)}%`, source: "Weighted average" });
   assumptions.push({ parameter: "Blended VS/TS", value: `${roundTo(avgVS)}%`, source: "Weighted average" });
-  assumptions.push({ parameter: "Blended BMP", value: `${roundTo(avgBMP, 3)} m³ CH₄/kg VS`, source: "Weighted average" });
+  assumptions.push({ parameter: "Blended BMP", value: `${roundTo(avgBMP * 35.3147 / 2.2046, 3)} scf CH₄/lb VS`, source: "Weighted average" });
 
   // ══════════════════════════════════════════════════════════
   // STAGE 1: FEEDSTOCK RECEIVING & STORAGE
@@ -215,7 +219,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Covered receiving area with truck tipping floor and hopper for feedstock unloading",
     quantity: feedstocks.length > 2 ? 2 : 1,
     specs: {
-      volume: { value: String(roundTo(storageVolM3)), unit: "m³" },
+      volume: { value: String(roundTo(m3ToGal(storageVolM3))), unit: "gallons" },
       storageTime: { value: "3", unit: "days" },
       capacity: { value: String(roundTo(totalFeedTpd * 1.5)), unit: "tons/day" },
     },
@@ -321,7 +325,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     },
     designCriteria: AD_DESIGN_DEFAULTS.equalization,
     notes: [
-      `EQ tank volume: ${roundTo(eqVolumeM3).toLocaleString()} m³ (${roundTo(eqRetentionDays, 1)}-day retention)`,
+      `EQ tank volume: ${roundTo(m3ToGal(eqVolumeM3)).toLocaleString()} gallons (${roundTo(eqRetentionDays, 1)}-day retention)`,
       "Continuous mixing for homogenization and stratification prevention",
       `Pre-heated to ${AD_DESIGN_DEFAULTS.equalization.preheatTemp.value}°C via heat exchanger`,
       ...(needsDilution ? [`Dilution water: ${roundTo(dilutionWaterTpd)} tons/day to reduce TS from ${roundTo(avgTS)}% to ${targetEqTS}%`] : []),
@@ -338,7 +342,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Insulated blending and homogenization tank with continuous mixing",
     quantity: 1,
     specs: {
-      volume: { value: String(roundTo(eqVolumeM3)), unit: "m³" },
+      volume: { value: String(roundTo(m3ToGal(eqVolumeM3))), unit: "gallons" },
       retentionTime: { value: String(eqRetentionDays), unit: "days" },
       throughput: { value: String(roundTo(eqOutputTpd)), unit: "tons/day" },
     },
@@ -388,7 +392,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Progressive cavity pump for feeding slurry from EQ tank to digester",
     quantity: 2,
     specs: {
-      capacity: { value: String(roundTo(eqOutputTpd * 1000 / 24 / 60, 1)), unit: "m³/min" },
+      capacity: { value: String(roundTo(m3PerMinToGpm(eqOutputTpd * 1000 / 24 / 60), 1)), unit: "gpm" },
       headPressure: { value: "3", unit: "bar" },
     },
     designBasis: "Duty + standby (N+1 redundancy)",
@@ -426,7 +430,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   const actualOLR = roundTo(eqVSLoadKgPerDay / activeDigesterVolM3, 2);
 
   assumptions.push({ parameter: "VS Destruction", value: `${roundTo(vsDestruction * 100)}%`, source: "WEF MOP 8" });
-  assumptions.push({ parameter: "Biogas Yield", value: `${gasYield} m³/kg VS destroyed`, source: "Engineering practice" });
+  assumptions.push({ parameter: "Biogas Yield", value: `${roundTo(gasYield * 35.3147 / 2.2046, 2)} scf/lb VS destroyed`, source: "Engineering practice" });
   assumptions.push({ parameter: "Biogas CH₄", value: `${ch4Pct}%`, source: "Typical AD biogas" });
   assumptions.push({ parameter: "HRT", value: `${hrt} days`, source: "WEF MOP 8" });
 
@@ -448,7 +452,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       temperature: { value: AD_DESIGN_DEFAULTS.equalization.preheatTemp.value, unit: "°C" },
     },
     outputStream: {
-      biogasFlow: { value: roundTo(biogasM3PerDay), unit: "m³/day" },
+      biogasFlow: { value: roundTo(biogasScfPerDay), unit: "scfd" },
       biogasFlowSCFM: { value: roundTo(biogasScfm), unit: "scfm" },
       ch4Content: { value: ch4Pct, unit: "%" },
       co2Content: { value: co2Pct, unit: "%" },
@@ -458,8 +462,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     },
     designCriteria: AD_DESIGN_DEFAULTS.digester,
     notes: [
-      `${numDigesters} CSTR digester(s) at ${roundTo(perDigesterVol).toLocaleString()} m³ each (including ${roundTo(headspacePct * 100)}% headspace)`,
-      `Active volume: ${roundTo(activeDigesterVolM3).toLocaleString()} m³`,
+      `${numDigesters} CSTR digester(s) at ${roundTo(m3ToGal(perDigesterVol)).toLocaleString()} gallons each (including ${roundTo(headspacePct * 100)}% headspace)`,
+      `Active volume: ${roundTo(m3ToGal(activeDigesterVolM3)).toLocaleString()} gallons`,
       `Actual OLR: ${actualOLR} kg VS/m³·d`,
       `Actual HRT: ${actualHRT} days`,
     ],
@@ -473,9 +477,9 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Continuously Stirred Tank Reactor, mesophilic operation with gas collection dome",
     quantity: numDigesters,
     specs: {
-      volume: { value: String(roundTo(perDigesterVol)), unit: "m³" },
-      activeVolume: { value: String(roundTo(activeDigesterVolM3 / numDigesters)), unit: "m³" },
-      totalVolume: { value: String(roundTo(totalDigesterVolM3)), unit: "m³" },
+      volume: { value: String(roundTo(m3ToGal(perDigesterVol))), unit: "gallons" },
+      activeVolume: { value: String(roundTo(m3ToGal(activeDigesterVolM3 / numDigesters))), unit: "gallons" },
+      totalVolume: { value: String(roundTo(m3ToGal(totalDigesterVolM3))), unit: "gallons" },
       hrt: { value: String(actualHRT), unit: "days" },
       olr: { value: String(actualOLR), unit: "kg VS/m³·d" },
       temperature: { value: "37", unit: "°C" },
@@ -566,7 +570,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     quantity: 1,
     specs: {
       capacity: { value: String(roundTo(cakeTPD)), unit: "tons/day" },
-      storageVolume: { value: String(roundTo(cakeTPD * 3 / 1.1)), unit: "m³" },
+      storageVolume: { value: String(roundTo(m3ToGal(cakeTPD * 3 / 1.1))), unit: "gallons" },
     },
     designBasis: "3-day cake storage capacity",
     notes: "Covered storage with truck loadout capability",
@@ -638,7 +642,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Holding tank for centrate equalization before DAF treatment",
     quantity: 1,
     specs: {
-      volume: { value: String(roundTo(centrateTPD * 1000 / 1.0 * 0.5)), unit: "L" },
+      volume: { value: String(roundTo(centrateTPD * 1000 / 1.0 * 0.5 * 0.264172)), unit: "gallons" },
       retentionTime: { value: "0.5", unit: "days" },
     },
     designBasis: "0.5-day equalization for consistent DAF feed",
@@ -659,13 +663,13 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     name: "Biogas Conditioning",
     type: "gasConditioning",
     inputStream: {
-      biogasFlow: { value: roundTo(biogasM3PerDay), unit: "m³/day" },
+      biogasFlow: { value: roundTo(biogasScfPerDay), unit: "scfd" },
       biogasFlowSCFM: { value: roundTo(biogasScfm), unit: "scfm" },
       ch4Content: { value: ch4Pct, unit: "%" },
       h2sContent: { value: h2sPpmv, unit: "ppmv" },
     },
     outputStream: {
-      biogasFlow: { value: roundTo(conditionedBiogasM3PerDay), unit: "m³/day" },
+      biogasFlow: { value: roundTo(m3ToScf(conditionedBiogasM3PerDay)), unit: "scfd" },
       ch4Content: { value: ch4Pct, unit: "%" },
       h2sContent: { value: roundTo(outH2sPpmv, 1), unit: "ppmv" },
       moisture: { value: 0, unit: "saturated → dry" },
@@ -750,23 +754,23 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     name: "Gas Upgrading to RNG",
     type: "gasUpgrading",
     inputStream: {
-      biogasFlow: { value: roundTo(conditionedBiogasM3PerDay), unit: "m³/day" },
+      biogasFlow: { value: roundTo(m3ToScf(conditionedBiogasM3PerDay)), unit: "scfd" },
       ch4Content: { value: ch4Pct, unit: "%" },
     },
     outputStream: {
-      rngFlow: { value: roundTo(rngM3PerDay), unit: "m³/day" },
+      rngFlow: { value: roundTo(rngScfPerDay), unit: "scfd" },
       rngFlowSCFM: { value: roundTo(rngScfm), unit: "scfm" },
       rngCH4: { value: productCH4, unit: "%" },
       rngEnergy: { value: roundTo(rngMMBtuPerDay, 1), unit: "MMBtu/day" },
-      tailgasFlow: { value: roundTo(tailgasM3PerDay), unit: "m³/day" },
+      tailgasFlow: { value: roundTo(m3ToScf(tailgasM3PerDay)), unit: "scfd" },
       methaneRecovery: { value: roundTo(methaneRecovery * 100), unit: "%" },
     },
     designCriteria: AD_DESIGN_DEFAULTS.gasUpgrading,
     notes: [
       "Membrane or PSA upgrading system",
-      `Tail gas: ${roundTo(tailgasM3PerDay)} m³/day → thermal oxidizer or flare`,
+      `Tail gas: ${roundTo(m3ToScf(tailgasM3PerDay))} scfd → thermal oxidizer or flare`,
       `Electrical demand: ${roundTo(electricalDemandKW)} kW`,
-      `RNG energy output: ${roundTo(rngMMBtuPerDay, 1)} MMBtu/day (${roundTo(rngGJPerDay, 1)} GJ/day)`,
+      `RNG energy output: ${roundTo(rngMMBtuPerDay, 1)} MMBTU/day`,
     ],
   };
   adStages.push(upgradingStage);
@@ -848,11 +852,9 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     totalVSLoad: { value: roundTo(eqVSLoadKgPerDay).toLocaleString(), unit: "kg VS/day" },
     biogasProduction: { value: roundTo(biogasScfm).toLocaleString(), unit: "scfm" },
     methaneProduction: { value: roundTo(biogasScfm * ch4Pct / 100).toLocaleString(), unit: "scfm CH₄" },
-    rngProduction: { value: roundTo(rngMMBtuPerDay, 1).toLocaleString(), unit: "MMBtu/day" },
+    rngEnergy: { value: roundTo(rngMMBtuPerDay, 1).toLocaleString(), unit: "MMBTU/day" },
     rngFlowSCFM: { value: roundTo(rngScfm).toLocaleString(), unit: "scfm" },
-    rngEnergyGJ: { value: roundTo(rngGJPerDay, 1).toLocaleString(), unit: "GJ/day" },
     digesterVolume: { value: roundTo(digesterVolGallons, 0).toLocaleString(), unit: "gallons" },
-    digesterVolumeM3: { value: roundTo(totalDigesterVolM3).toLocaleString(), unit: "m³" },
     hrt: { value: String(actualHRT), unit: "days" },
     vsDestruction: { value: `${roundTo(vsDestruction * 100)}`, unit: "%" },
     solidDigestate: { value: roundTo(cakeTPD).toLocaleString(), unit: "tons/day" },

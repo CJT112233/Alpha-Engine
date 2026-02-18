@@ -17,7 +17,7 @@ const GAS_CONDITIONING_DEFAULTS: Record<string, Record<string, DesignCriterion>>
   gasUpgrading: {
     methaneRecovery: { value: 97, unit: "%", source: "Membrane/PSA typical" },
     productCH4: { value: 97, unit: "%", source: "Pipeline quality RNG" },
-    electricalDemand: { value: 0.25, unit: "kWh/Nm³ raw biogas", source: "Engineering practice" },
+    electricalDemand: { value: 8.8, unit: "kWh/1,000 scf raw biogas", source: "Engineering practice" },
     pressureOut: { value: 200, unit: "psig", source: "Pipeline injection" },
   },
 };
@@ -231,7 +231,6 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
   const rngScfPerDay = rngCH4ScfPerDay / (productCH4 / 100);
   const rngScfm = rngScfPerDay / 1440;
   const rngMMBtuPerDay = rngScfPerDay * 1012 / 1_000_000;
-  const rngGJPerDay = rngMMBtuPerDay * 1.055;
   const tailgasScfm = conditionedScfm - rngScfm;
   const electricalDemandKW = biogasM3PerDay * GAS_CONDITIONING_DEFAULTS.gasUpgrading.electricalDemand.value / 24;
 
@@ -319,7 +318,6 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
     rngProductionDaily: { value: roundTo(rngScfPerDay).toLocaleString(), unit: "scf/day" },
     rngCH4Purity: { value: productCH4.toString(), unit: "%" },
     rngEnergy: { value: roundTo(rngMMBtuPerDay, 1).toLocaleString(), unit: "MMBtu/day" },
-    rngEnergyGJ: { value: roundTo(rngGJPerDay, 1).toLocaleString(), unit: "GJ/day" },
     methaneRecovery: { value: roundTo(methaneRecovery * 100).toString(), unit: "%" },
     tailgasFlow: { value: roundTo(tailgasScfm).toLocaleString(), unit: "scfm" },
     electricalDemand: { value: roundTo(electricalDemandKW).toLocaleString(), unit: "kW" },

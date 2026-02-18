@@ -23,7 +23,7 @@ const AD_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
     vsDestruction: { value: 55, unit: "%", source: "WEF MOP 8 — mixed sludge" },
     temperature: { value: 35, unit: "°C", source: "Mesophilic standard" },
     mixingPower: { value: 5, unit: "W/m³", source: "WEF MOP 8" },
-    gasYield: { value: 0.9, unit: "m³/kg VS destroyed", source: "WEF MOP 8 — municipal sludge" },
+    gasYield: { value: 0.9, unit: "scf/lb VS destroyed", source: "WEF MOP 8 — municipal sludge" },
     ch4Content: { value: 63, unit: "%", source: "Typical WWTP biogas" },
     co2Content: { value: 35, unit: "%", source: "Typical WWTP biogas" },
     h2sContent: { value: 500, unit: "ppmv", source: "Typical WWTP biogas — lower than AD-only" },
@@ -31,7 +31,7 @@ const AD_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
   truckedFeedstock: {
     defaultTS: { value: 15, unit: "%", source: "Typical trucked feedstock" },
     defaultVS: { value: 80, unit: "% of TS", source: "Typical organic waste" },
-    defaultBMP: { value: 0.35, unit: "m³ CH₄/kg VS", source: "Engineering practice" },
+    defaultBMP: { value: 0.35, unit: "scf CH₄/lb VS", source: "Engineering practice" },
   },
   gasConditioning: {
     h2sRemovalEff: { value: 99.5, unit: "%", source: "Iron sponge/bioscrubber" },
@@ -41,7 +41,7 @@ const AD_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
   gasUpgrading: {
     methaneRecovery: { value: 97, unit: "%", source: "Membrane/PSA typical" },
     productCH4: { value: 97, unit: "%", source: "Pipeline quality RNG" },
-    electricalDemand: { value: 0.25, unit: "kWh/Nm³ raw biogas", source: "Engineering practice" },
+    electricalDemand: { value: 8.8, unit: "kWh/1,000 scf raw biogas", source: "Engineering practice" },
     pressureOut: { value: 200, unit: "psig", source: "Pipeline injection" },
   },
   dewateringPost: {
@@ -49,6 +49,9 @@ const AD_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
     captureRate: { value: 95, unit: "%", source: "WEF MOP 8" },
   },
 };
+
+function m3ToGal(m3: number): number { return m3 * 264.172; }
+function m3ToScf(m3: number): number { return m3 * 35.3147; }
 
 function roundTo(val: number, decimals: number = 1): number {
   const factor = Math.pow(10, decimals);
@@ -182,7 +185,7 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
       totalVSLoad: { value: roundTo(totalVSLoad), unit: "kg VS/day" },
     },
     outputStream: {
-      blendedSludgeVolume: { value: roundTo(sludgeVolM3PerDay), unit: "m³/day" },
+      blendedSludgeVolume: { value: roundTo(m3ToGal(sludgeVolM3PerDay)), unit: "gpd" },
       thickenedTS: { value: AD_DEFAULTS.sludgeThickening.thickenedSolids.value, unit: "% TS" },
       totalVS: { value: roundTo(totalVSLoad), unit: "kg VS/day" },
     },
@@ -204,7 +207,7 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
     specs: {
       feedTS: { value: String(roundTo((totalTSLoad / (sludgeVolM3PerDay * 1000 / thickenedTS)) * 100, 1)), unit: "% TS" },
       thickenedTS: { value: "5", unit: "% TS" },
-      throughput: { value: String(roundTo(sludgeVolM3PerDay)), unit: "m³/day" },
+      throughput: { value: String(roundTo(m3ToGal(sludgeVolM3PerDay))), unit: "gpd" },
     },
     designBasis: "95% solids capture, 5% cake TS",
     notes: "Polymer conditioning included",
@@ -232,19 +235,19 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
   const perDigesterVol = digesterVolM3 / numDigesters;
 
   assumptions.push({ parameter: "AD VS Destruction", value: `${roundTo(vsDestruction * 100)}%`, source: "WEF MOP 8 — mixed sludge" });
-  assumptions.push({ parameter: "AD Biogas Yield", value: `${gasYield} m³/kg VS destroyed`, source: "WEF MOP 8" });
+  assumptions.push({ parameter: "AD Biogas Yield", value: `${roundTo(gasYield * 35.3147 / 2.20462, 1)} scf/lb VS destroyed`, source: "WEF MOP 8" });
   assumptions.push({ parameter: "AD Biogas CH₄", value: `${ch4Pct}%`, source: "Typical WWTP biogas" });
 
   const digesterStage: ADProcessStage = {
     name: "Anaerobic Digestion",
     type: "digester",
     inputStream: {
-      sludgeVolume: { value: roundTo(sludgeVolM3PerDay), unit: "m³/day" },
+      sludgeVolume: { value: roundTo(m3ToGal(sludgeVolM3PerDay)), unit: "gpd" },
       vsLoad: { value: roundTo(totalVSLoad), unit: "kg VS/day" },
       tsLoad: { value: roundTo(totalTSLoad), unit: "kg TS/day" },
     },
     outputStream: {
-      biogasFlow: { value: roundTo(biogasM3PerDay), unit: "m³/day" },
+      biogasFlow: { value: roundTo(m3ToScf(biogasM3PerDay)), unit: "scfd" },
       biogasFlowSCFM: { value: roundTo(biogasScfm), unit: "scfm" },
       ch4Content: { value: ch4Pct, unit: "%" },
       h2sContent: { value: h2sPpmv, unit: "ppmv" },
@@ -252,7 +255,7 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
     },
     designCriteria: AD_DEFAULTS.digester,
     notes: [
-      `${numDigesters} digester(s) at ${roundTo(perDigesterVol).toLocaleString()} m³ each`,
+      `${numDigesters} digester(s) at ${roundTo(m3ToGal(perDigesterVol)).toLocaleString()} gallons each`,
       `Actual OLR: ${roundTo(totalVSLoad / digesterVolM3, 2)} kg VS/m³·d`,
       `Actual HRT: ${roundTo(digesterVolM3 / sludgeVolM3PerDay)} days`,
     ],
@@ -266,8 +269,8 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
     description: "Mesophilic anaerobic digester for WW sludge" + (truckedFeedstocks.length > 0 ? " + co-digestion" : ""),
     quantity: numDigesters,
     specs: {
-      volume: { value: String(roundTo(perDigesterVol)), unit: "m³" },
-      totalVolume: { value: String(roundTo(digesterVolM3)), unit: "m³" },
+      volume: { value: String(roundTo(m3ToGal(perDigesterVol))), unit: "gallons" },
+      totalVolume: { value: String(roundTo(m3ToGal(digesterVolM3))), unit: "gallons" },
       hrt: { value: String(hrt), unit: "days" },
       olr: { value: String(roundTo(totalVSLoad / digesterVolM3, 2)), unit: "kg VS/m³·d" },
       temperature: { value: "35", unit: "°C" },
@@ -286,12 +289,12 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
     name: "Biogas Conditioning",
     type: "gasConditioning",
     inputStream: {
-      biogasFlow: { value: roundTo(biogasM3PerDay), unit: "m³/day" },
+      biogasFlow: { value: roundTo(m3ToScf(biogasM3PerDay)), unit: "scfd" },
       ch4Content: { value: ch4Pct, unit: "%" },
       h2sContent: { value: h2sPpmv, unit: "ppmv" },
     },
     outputStream: {
-      biogasFlow: { value: roundTo(conditionedBiogasM3PerDay), unit: "m³/day" },
+      biogasFlow: { value: roundTo(m3ToScf(conditionedBiogasM3PerDay)), unit: "scfd" },
       h2sContent: { value: roundTo(outH2sPpmv, 1), unit: "ppmv" },
     },
     designCriteria: AD_DEFAULTS.gasConditioning,
@@ -338,7 +341,6 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
   const rngScfPerDay = rngM3PerDay * 35.3147;
   const rngScfm = rngScfPerDay / 1440;
   const rngMMBtuPerDay = rngScfPerDay * 1012 / 1_000_000;
-  const rngGJPerDay = rngMMBtuPerDay * 1.055;
   const tailgasM3PerDay = conditionedBiogasM3PerDay - rngM3PerDay;
   const electricalDemandKW = biogasM3PerDay * AD_DEFAULTS.gasUpgrading.electricalDemand.value / 24;
 
@@ -346,15 +348,15 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
     name: "Gas Upgrading to RNG",
     type: "gasUpgrading",
     inputStream: {
-      biogasFlow: { value: roundTo(conditionedBiogasM3PerDay), unit: "m³/day" },
+      biogasFlow: { value: roundTo(m3ToScf(conditionedBiogasM3PerDay)), unit: "scfd" },
       ch4Content: { value: ch4Pct, unit: "%" },
     },
     outputStream: {
-      rngFlow: { value: roundTo(rngM3PerDay), unit: "m³/day" },
+      rngFlow: { value: roundTo(m3ToScf(rngM3PerDay)), unit: "scfd" },
       rngFlowSCFM: { value: roundTo(rngScfm), unit: "scfm" },
       rngCH4: { value: productCH4, unit: "%" },
       rngEnergy: { value: roundTo(rngMMBtuPerDay, 1), unit: "MMBtu/day" },
-      tailgasFlow: { value: roundTo(tailgasM3PerDay), unit: "m³/day" },
+      tailgasFlow: { value: roundTo(m3ToScf(tailgasM3PerDay)), unit: "scfd" },
     },
     designCriteria: AD_DEFAULTS.gasUpgrading,
     notes: [
@@ -458,13 +460,12 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
     totalVSLoad: { value: roundTo(totalVSLoad).toLocaleString(), unit: "kg VS/day" },
     wwSludgeVS: { value: roundTo(wwVSKgPerDay).toLocaleString(), unit: "kg VS/day" },
     truckedFeedstockVS: { value: roundTo(truckedVSKgPerDay).toLocaleString(), unit: "kg VS/day" },
-    biogasProduction: { value: roundTo(biogasM3PerDay).toLocaleString(), unit: "m³/day" },
+    biogasProduction: { value: roundTo(m3ToScf(biogasM3PerDay)).toLocaleString(), unit: "scfd" },
     biogasFlowSCFM: { value: roundTo(biogasScfm).toLocaleString(), unit: "scfm" },
-    rngProduction: { value: roundTo(rngM3PerDay).toLocaleString(), unit: "m³/day" },
+    rngProduction: { value: roundTo(m3ToScf(rngM3PerDay)).toLocaleString(), unit: "scfd" },
     rngFlowSCFM: { value: roundTo(rngScfm).toLocaleString(), unit: "scfm" },
     rngEnergy: { value: roundTo(rngMMBtuPerDay, 1).toLocaleString(), unit: "MMBtu/day" },
-    rngEnergyGJ: { value: roundTo(rngGJPerDay, 1).toLocaleString(), unit: "GJ/day" },
-    digesterVolume: { value: roundTo(digesterVolM3).toLocaleString(), unit: "m³" },
+    digesterVolume: { value: roundTo(m3ToGal(digesterVolM3)).toLocaleString(), unit: "gallons" },
     biosolidsCake: { value: roundTo(cakeTPD).toLocaleString(), unit: "tons/day" },
     electricalDemand: { value: roundTo(electricalDemandKW).toLocaleString(), unit: "kW" },
   };

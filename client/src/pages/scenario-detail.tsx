@@ -384,6 +384,30 @@ export default function ScenarioDetail() {
           </TabsContent>
 
           <TabsContent value="mass-balance" className="space-y-4">
+            {llmProviders && llmProviders.providers.length > 1 && (
+              <div className="flex items-center gap-3 justify-end flex-wrap" data-testid="mb-model-selector">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Bot className="h-4 w-4" />
+                  <span>AI Model</span>
+                </div>
+                <Select
+                  value={(scenario as any).preferredModel || "gpt5"}
+                  onValueChange={(value) => modelMutation.mutate(value)}
+                  disabled={modelMutation.isPending}
+                >
+                  <SelectTrigger className="w-[200px]" data-testid="select-mb-llm-model">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {llmProviders.providers.map((p) => (
+                      <SelectItem key={p.id} value={p.id} data-testid={`option-mb-model-${p.id}`}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {mbLoading ? (
               <div className="space-y-4">
                 <Skeleton className="h-32 w-full" />

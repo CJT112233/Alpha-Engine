@@ -8,6 +8,15 @@ Project Factory is an AI-enabled system designed to convert unstructured project
 
 Preferred communication style: Simple, everyday language.
 Number formatting: Always display numbers with comma separators for thousands (e.g., 10,000 not 10000).
+Unit conventions (US-based):
+- Energy: MMBTU (never GJ or MJ)
+- Gas volumes: cubic feet (scf, scfm, scfh, scfd) — never m³ or Nm³
+- Liquid volumes: gallons (gal, gpd, gpm, MGD) — never m³ or liters for process volumes
+- Concentrations: mg/L (standard in US wastewater industry)
+- "RNG" must always be fully capitalized — never "Rng" or "rng" in display text
+- Solids mass: tons (US short tons) — never tonnes
+- Mixing power: W/m³ is acceptable (industry standard worldwide)
+- OLR: kg VS/m³·d is acceptable (industry standard worldwide)
 
 ## System Architecture
 
