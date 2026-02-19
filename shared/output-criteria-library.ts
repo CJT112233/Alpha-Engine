@@ -235,7 +235,7 @@ export const OUTPUT_CRITERIA_LIBRARY: OutputProfile[] = [
         sortOrder: 6,
       },
       regulatoryFramework: {
-        value: "EPA 40 CFR Part 503 + state environmental agency",
+        value: "State environmental agency permit + local regulations",
         unit: "",
         confidence: "high",
         provenance: "Federal minimum; states may impose stricter limits",
