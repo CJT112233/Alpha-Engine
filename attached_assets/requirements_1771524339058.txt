@@ -1,0 +1,13 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+databricks-sql-connector==3.6.0
+databricks-sdk==0.38.0
+python-multipart==0.0.18
+python-docx==1.1.2
+openpyxl==3.1.5
+pypdf==5.1.0
+reportlab==4.2.5
+pydantic==2.10.4
+openai>=1.0.0
+httpx==0.28.1
+aiofiles==24.1.0

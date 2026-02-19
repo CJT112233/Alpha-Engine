@@ -1,0 +1,16 @@
+command:
+  - uvicorn
+  - main:app
+  - --host=0.0.0.0
+  - --port=8000
+
+env:
+  - name: DATABRICKS_HOST
+    description: "Databricks workspace hostname"
+    value: "adb-582457799522203.3.azuredatabricks.net"
+  - name: DATABRICKS_HTTP_PATH
+    description: "SQL warehouse HTTP path"
+    value: "/sql/1.0/warehouses/7740505e6e4de417"
+  - name: DATABRICKS_CATALOG
+    description: "Unity Catalog catalog name"
+    value: "burnham_rng"
