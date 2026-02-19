@@ -1007,15 +1007,6 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
     aliases: ["food processing wastewater", "food processing ww", "food plant wastewater", "food manufacturing wastewater", "food industry wastewater", "food processing", "food plant", "food manufacturing"],
     category: "Food Processing",
     properties: {
-      flow: {
-        value: "0.1-1.0",
-        unit: "MGD",
-        confidence: "low",
-        provenance: "Typical range for medium food processing facilities; highly site-specific",
-        group: "identity",
-        displayName: "Average Daily Flow",
-        sortOrder: 1,
-      },
       peakFlow: {
         value: "1.5-3.0x avg",
         unit: "peaking factor",
@@ -1023,7 +1014,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "Food processing plants often have batch operations with high peak-to-average ratios (Ludwigson, Industrial Pretreatment Design)",
         group: "identity",
         displayName: "Peak Flow Factor",
-        sortOrder: 2,
+        sortOrder: 1,
       },
       bod: {
         value: "2,000-8,000",
@@ -1032,7 +1023,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "High-strength food processing wastewater BOD range (EPA 440/1-74-024; Ludwigson Ch. 3)",
         group: "biochemical",
         displayName: "BOD₅",
-        sortOrder: 3,
+        sortOrder: 2,
       },
       cod: {
         value: "4,000-15,000",
@@ -1095,15 +1086,6 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
     aliases: ["meat processing wastewater", "meat processing ww", "poultry processing wastewater", "poultry processing ww", "slaughterhouse wastewater", "meatpacking wastewater", "rendering wastewater", "meat processing", "poultry processing", "slaughterhouse", "meatpacking", "rendering plant"],
     category: "Meat & Poultry Processing",
     properties: {
-      flow: {
-        value: "0.2-2.0",
-        unit: "MGD",
-        confidence: "low",
-        provenance: "Typical range for medium to large meat/poultry processing plants",
-        group: "identity",
-        displayName: "Average Daily Flow",
-        sortOrder: 1,
-      },
       peakFlow: {
         value: "2.0-3.5x avg",
         unit: "peaking factor",
@@ -1111,7 +1093,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "Meat processing has shift-based operations with significant kill floor wash-down peaks",
         group: "identity",
         displayName: "Peak Flow Factor",
-        sortOrder: 2,
+        sortOrder: 1,
       },
       bod: {
         value: "1,500-5,000",
@@ -1120,7 +1102,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "EPA 40 CFR 432 (Meat & Poultry Products); Ludwigson industrial pretreatment data",
         group: "biochemical",
         displayName: "BOD₅",
-        sortOrder: 3,
+        sortOrder: 2,
       },
       cod: {
         value: "3,000-10,000",
@@ -1183,15 +1165,6 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
     aliases: ["dairy processing wastewater", "dairy processing ww", "dairy plant wastewater", "milk processing wastewater", "cheese processing wastewater", "creamery wastewater", "dairy processing", "dairy plant", "milk plant", "cheese plant", "creamery", "dairy wastewater"],
     category: "Dairy Processing",
     properties: {
-      flow: {
-        value: "0.05-0.5",
-        unit: "MGD",
-        confidence: "low",
-        provenance: "Typical for small to medium dairy processing facilities; highly variable",
-        group: "identity",
-        displayName: "Average Daily Flow",
-        sortOrder: 1,
-      },
       peakFlow: {
         value: "2.0-4.0x avg",
         unit: "peaking factor",
@@ -1199,7 +1172,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "Dairy plants have batch CIP cycles and product changeovers creating significant peaks",
         group: "identity",
         displayName: "Peak Flow Factor",
-        sortOrder: 2,
+        sortOrder: 1,
       },
       bod: {
         value: "1,500-6,000",
@@ -1208,7 +1181,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "EPA 40 CFR 405 (Dairy Products); whey and product losses are primary BOD sources",
         group: "biochemical",
         displayName: "BOD₅",
-        sortOrder: 3,
+        sortOrder: 2,
       },
       cod: {
         value: "2,500-10,000",
@@ -1271,15 +1244,6 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
     aliases: ["brewery wastewater", "brewery ww", "beverage wastewater", "beverage ww", "winery wastewater", "distillery wastewater", "soft drink wastewater", "brewery", "beverage plant", "winery", "distillery", "craft brewery", "brewing wastewater"],
     category: "Brewery & Beverage",
     properties: {
-      flow: {
-        value: "0.02-0.5",
-        unit: "MGD",
-        confidence: "low",
-        provenance: "Wide range from craft breweries (0.02 MGD) to large beverage plants; highly site-specific",
-        group: "identity",
-        displayName: "Average Daily Flow",
-        sortOrder: 1,
-      },
       peakFlow: {
         value: "2.0-3.0x avg",
         unit: "peaking factor",
@@ -1287,7 +1251,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "Batch brewing and CIP cycles create significant flow peaks",
         group: "identity",
         displayName: "Peak Flow Factor",
-        sortOrder: 2,
+        sortOrder: 1,
       },
       bod: {
         value: "2,000-6,000",
@@ -1296,7 +1260,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "Brewery wastewater BOD from wort, trub, yeast, and product losses (EPA; Brewers Association data)",
         group: "biochemical",
         displayName: "BOD₅",
-        sortOrder: 3,
+        sortOrder: 2,
       },
       cod: {
         value: "3,000-10,000",
@@ -1359,15 +1323,6 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
     aliases: ["industrial wastewater", "industrial ww", "industrial discharge", "industrial effluent", "factory wastewater", "manufacturing wastewater", "process wastewater", "industrial", "manufacturing"],
     category: "General Industrial",
     properties: {
-      flow: {
-        value: "0.05-1.0",
-        unit: "MGD",
-        confidence: "low",
-        provenance: "Highly variable by industry type and facility size",
-        group: "identity",
-        displayName: "Average Daily Flow",
-        sortOrder: 1,
-      },
       peakFlow: {
         value: "1.5-3.0x avg",
         unit: "peaking factor",
@@ -1375,7 +1330,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "Depends on batch vs. continuous operations; shift-based facilities have higher peaks",
         group: "identity",
         displayName: "Peak Flow Factor",
-        sortOrder: 2,
+        sortOrder: 1,
       },
       bod: {
         value: "500-3,000",
@@ -1384,7 +1339,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "Wide range depending on industry; food/organic industries higher than chemical/manufacturing",
         group: "biochemical",
         displayName: "BOD₅",
-        sortOrder: 3,
+        sortOrder: 2,
       },
       cod: {
         value: "1,000-6,000",
@@ -1447,15 +1402,6 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
     aliases: ["ethanol wastewater", "ethanol plant ww", "ethanol production wastewater", "corn ethanol wastewater", "biofuel wastewater", "ethanol plant", "ethanol production", "biofuel plant"],
     category: "Ethanol Production",
     properties: {
-      flow: {
-        value: "0.1-0.5",
-        unit: "MGD",
-        confidence: "low",
-        provenance: "Typical for medium ethanol production facilities; depends on production capacity",
-        group: "identity",
-        displayName: "Average Daily Flow",
-        sortOrder: 1,
-      },
       peakFlow: {
         value: "1.5-2.5x avg",
         unit: "peaking factor",
@@ -1463,7 +1409,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "Relatively steady flow from continuous distillation; peaks during equipment cleaning",
         group: "identity",
         displayName: "Peak Flow Factor",
-        sortOrder: 2,
+        sortOrder: 1,
       },
       bod: {
         value: "5,000-30,000",
@@ -1472,7 +1418,7 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
         provenance: "Very high BOD from stillage, thin stillage, and CIP waste; one of highest-strength industrial WW categories",
         group: "biochemical",
         displayName: "BOD₅",
-        sortOrder: 3,
+        sortOrder: 2,
       },
       cod: {
         value: "10,000-60,000",
@@ -1752,7 +1698,7 @@ export function enrichFeedstockSpecs(
       };
     } else if (mappedKey) {
       const BIOCHEMICAL_KEYS = new Set(["bod", "cod", "tss", "tds", "tkn", "ph", "fogContent", "phosphorus", "ammoniaN"]);
-      const IDENTITY_KEYS = new Set(["flow", "peakFlow"]);
+      const IDENTITY_KEYS = new Set(["peakFlow"]);
       specs[mappedKey] = {
         value: paramData.value,
         unit: paramData.unit || "",
