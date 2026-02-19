@@ -5,12 +5,17 @@ FastAPI application serving both the React frontend (static files)
 and the backend API. Deployed as a Databricks App with OAuth
 service principal authentication to Unity Catalog Delta tables.
 """
+import json
 import os
+import re
 import logging
+from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 from api.routes import api_router
 
 logging.basicConfig(
@@ -19,12 +24,82 @@ logging.basicConfig(
 )
 logger = logging.getLogger("project-factory")
 
+# ---------------------------------------------------------------------------
+# Snake_case → camelCase API response middleware
+# ---------------------------------------------------------------------------
+
+_SNAKE_RE = re.compile(r"_([a-z])")
+
+
+def _to_camel(snake: str) -> str:
+    """Convert snake_case string to camelCase."""
+    return _SNAKE_RE.sub(lambda m: m.group(1).upper(), snake)
+
+
+def _convert_keys(obj):
+    """Recursively convert all dict keys from snake_case to camelCase
+    and serialize datetime objects to ISO 8601 strings."""
+    if isinstance(obj, dict):
+        return {_to_camel(k): _convert_keys(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_convert_keys(item) for item in obj]
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    return obj
+
+
+class CamelCaseMiddleware(BaseHTTPMiddleware):
+    """Middleware that converts JSON API responses from snake_case to camelCase."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        # Only transform JSON responses from /api/ routes
+        if not request.url.path.startswith("/api/"):
+            return response
+
+        content_type = response.headers.get("content-type", "")
+        if "application/json" not in content_type:
+            return response
+
+        # Read the response body
+        body_chunks = []
+        async for chunk in response.body_iterator:
+            if isinstance(chunk, bytes):
+                body_chunks.append(chunk)
+            else:
+                body_chunks.append(chunk.encode("utf-8"))
+        body = b"".join(body_chunks)
+
+        try:
+            data = json.loads(body)
+            converted = _convert_keys(data)
+            new_body = json.dumps(converted, default=str)
+            headers = dict(response.headers)
+            headers.pop("content-length", None)  # Will be recalculated
+            return Response(
+                content=new_body,
+                status_code=response.status_code,
+                headers=headers,
+                media_type="application/json",
+            )
+        except (json.JSONDecodeError, TypeError):
+            # Not valid JSON or conversion failed — return original
+            return Response(
+                content=body,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                media_type=content_type,
+            )
+
+
 app = FastAPI(
     title="Project Factory",
     description="AI-enabled Unified Project Intake Form system for biogas/anaerobic digestion projects",
     version="1.0.0",
 )
 
+app.add_middleware(CamelCaseMiddleware)
 app.include_router(api_router)
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -69,10 +144,7 @@ async def startup_event():
     logger.info("HTTP Path: %s", http_path)
     logger.info("Catalog: %s", catalog)
 
-    required_vars = ["DATABRICKS_CLIENT_ID", "DATABRICKS_CLIENT_SECRET"]
-    missing = [v for v in required_vars if not os.environ.get(v)]
-    if missing:
-        logger.warning("Missing environment variables: %s", ", ".join(missing))
+    logger.info("Using Databricks App built-in service principal for authentication")
 
 
 if __name__ == "__main__":

@@ -7,17 +7,18 @@ Project Factory runs as a **Databricks App** with:
 - **Backend**: FastAPI (Python) with Databricks SQL Connector
 - **Data**: Delta tables in Unity Catalog (`burnham_rng` catalog)
 - **AI**: Databricks Model Serving endpoints (GPT-5, Claude Opus, Gemini Pro)
-- **Auth**: OAuth service principal (M2M) for SQL warehouse and model serving
+- **Auth**: Databricks App built-in service principal for SQL warehouse and model serving
 
 ## Prerequisites
 
 1. **Databricks Workspace** with Unity Catalog enabled
 2. **SQL Warehouse** (Serverless or Pro) with access to `burnham_rng` catalog
-3. **Service Principal** (`brng-replit-AI`) with:
+3. **Databricks App Service Principal** (automatically provisioned when the app is created) with:
    - `USE CATALOG` on `burnham_rng`
    - `USE SCHEMA` on `burnham_rng.project_intakes` and `burnham_rng.raw_documents`
    - `SELECT`, `INSERT`, `UPDATE`, `DELETE` on all tables
    - Access to Model Serving endpoints
+   - Note: The app's service principal name is visible in **Compute > Apps > your app > Settings**
 4. **Model Serving Endpoints** deployed:
    - `databricks-gpt-5-2-codex`
    - `databricks-claude-opus-4-6`
@@ -63,12 +64,7 @@ The following connection defaults are hardcoded in `app.yaml` and the service fi
 | `DATABRICKS_HTTP_PATH` | `/sql/1.0/warehouses/7740505e6e4de417` | SQL warehouse HTTP path |
 | `DATABRICKS_CATALOG` | `burnham_rng` | Unity Catalog catalog name |
 
-The following credentials must be provided via `app.yaml` or the Databricks App service principal:
-
-| Variable | Description |
-|----------|-------------|
-| `DATABRICKS_CLIENT_ID` | Service principal client ID |
-| `DATABRICKS_CLIENT_SECRET` | Service principal client secret |
+**Authentication** is handled automatically by the Databricks App's built-in service principal. No manual `DATABRICKS_CLIENT_ID` or `DATABRICKS_CLIENT_SECRET` is needed — the Databricks SDK resolves credentials from the app runtime environment.
 
 ## Step 4: Deploy as Databricks App
 
@@ -151,13 +147,13 @@ databricks_app/
 ## Troubleshooting
 
 ### Connection Issues
-- Verify the service principal has the correct permissions
+- Verify the app's built-in service principal has the correct permissions (see Prerequisites)
 - Check that the SQL warehouse is running
 - Ensure `DATABRICKS_HOST` does not include `https://`
 
 ### Model Serving Issues
 - Verify endpoints are deployed and running in the Serving tab
-- Check that the service principal has `CAN_QUERY` permission on each endpoint
+- Check that the app's built-in service principal has `CAN_QUERY` permission on each endpoint
 - Model endpoint names must match exactly (e.g., `databricks-gpt-5-2-codex`)
 
 ### Table Access Issues
