@@ -135,6 +135,57 @@ USING DELTA
 COMMENT 'Uploaded file metadata and extracted text for AI processing.';
 
 -- ============================================================================
+-- MASS BALANCE, CAPEX, AND GENERATION LOG TABLES
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS burnham_rng.project_intakes.mass_balance_runs (
+  id STRING NOT NULL,
+  scenario_id STRING NOT NULL,
+  version STRING NOT NULL,
+  status STRING NOT NULL,
+  input_snapshot STRING,
+  results STRING,
+  overrides STRING,
+  locks STRING,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL
+)
+USING DELTA
+COMMENT 'Versioned mass balance calculation results. scenario_id references scenarios.id. JSON fields stored as STRING. Status: draft, reviewed, finalized.';
+
+CREATE TABLE IF NOT EXISTS burnham_rng.project_intakes.capex_estimates (
+  id STRING NOT NULL,
+  scenario_id STRING NOT NULL,
+  mass_balance_run_id STRING NOT NULL,
+  version STRING NOT NULL,
+  status STRING NOT NULL,
+  input_snapshot STRING,
+  results STRING,
+  overrides STRING,
+  locks STRING,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL
+)
+USING DELTA
+COMMENT 'Versioned capital cost estimates. scenario_id references scenarios.id, mass_balance_run_id references mass_balance_runs.id. JSON fields stored as STRING.';
+
+CREATE TABLE IF NOT EXISTS burnham_rng.project_intakes.generation_logs (
+  id STRING NOT NULL,
+  document_type STRING NOT NULL,
+  model_used STRING NOT NULL,
+  project_id STRING,
+  project_name STRING,
+  scenario_id STRING,
+  scenario_name STRING,
+  duration_ms INT NOT NULL,
+  status STRING NOT NULL,
+  error_message STRING,
+  created_at TIMESTAMP NOT NULL
+)
+USING DELTA
+COMMENT 'Tracks timing and metadata for AI-generated documents (UPIF, Mass Balance, CapEx). Records model used, generation time, and success/error status.';
+
+-- ============================================================================
 -- OPTIMIZATION NOTES
 -- ============================================================================
 -- Delta Lake uses Z-order clustering instead of indexes. Run periodically:
@@ -145,3 +196,6 @@ COMMENT 'Uploaded file metadata and extracted text for AI processing.';
 -- OPTIMIZE burnham_rng.project_intakes.upif_chat_messages ZORDER BY (scenario_id);
 -- OPTIMIZE burnham_rng.raw_documents.documents ZORDER BY (scenario_id);
 -- OPTIMIZE burnham_rng.project_intakes.prompt_templates ZORDER BY (key);
+-- OPTIMIZE burnham_rng.project_intakes.mass_balance_runs ZORDER BY (scenario_id);
+-- OPTIMIZE burnham_rng.project_intakes.capex_estimates ZORDER BY (scenario_id);
+-- OPTIMIZE burnham_rng.project_intakes.generation_logs ZORDER BY (scenario_id, document_type);

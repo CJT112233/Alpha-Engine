@@ -2202,3 +2202,814 @@ def _wrap_text(text: str, max_width: float, font_name: str, font_size: int) -> l
     if current_line:
         lines.append(current_line)
     return lines if lines else [""]
+
+
+# =========================================================================
+# MASS BALANCE ROUTES
+# =========================================================================
+
+
+@router.get("/scenarios/{scenario_id}/mass-balance")
+async def get_mass_balance_runs(scenario_id: str):
+    try:
+        runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        return runs
+    except Exception as e:
+        logger.error("Error fetching mass balance runs: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch mass balance runs")
+
+
+@router.get("/mass-balance/{run_id}")
+async def get_mass_balance_run(run_id: str):
+    try:
+        run = storage.get_mass_balance_run(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Mass balance run not found")
+        return run
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error fetching mass balance run: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch mass balance run")
+
+
+def _determine_project_type(scenario: dict, upif: dict) -> str:
+    return scenario.get("project_type") or upif.get("project_type") or ""
+
+
+def _get_deterministic_calculator(project_type: str):
+    pt = project_type.lower().strip()
+    if pt == "b" or "type b" in pt or "greenfield" in pt:
+        from services.mass_balance_type_b import calculate_mass_balance_type_b
+        return calculate_mass_balance_type_b
+    elif pt == "c" or "type c" in pt or "bolt-on" in pt or "bolt on" in pt:
+        from services.mass_balance_type_c import calculate_mass_balance_type_c
+        return calculate_mass_balance_type_c
+    elif pt == "d" or "type d" in pt or "hybrid" in pt:
+        from services.mass_balance_type_d import calculate_mass_balance_type_d
+        return calculate_mass_balance_type_d
+    else:
+        from services.mass_balance_type_a import calculate_mass_balance_type_a
+        return calculate_mass_balance_type_a
+
+
+class MassBalanceGenerateRequest(BaseModel):
+    preferred_model: Optional[str] = None
+
+
+@router.post("/scenarios/{scenario_id}/mass-balance/generate")
+async def generate_mass_balance(scenario_id: str, body: Optional[MassBalanceGenerateRequest] = None):
+    import time
+    start_time = time.time()
+    model_used = "deterministic"
+    try:
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        if scenario.get("status") != "confirmed":
+            raise HTTPException(
+                status_code=400,
+                detail="Scenario must be confirmed before generating a mass balance. Confirm the UPIF first.",
+            )
+
+        upif = storage.get_upif_by_scenario(scenario_id)
+        if not upif:
+            raise HTTPException(
+                status_code=400,
+                detail="No UPIF found for this scenario. Generate and confirm a UPIF first.",
+            )
+
+        project_type = _determine_project_type(scenario, upif)
+        preferred_model = (body.preferred_model if body else None) or scenario.get("preferred_model") or "gpt5"
+        logger.info(
+            "Mass Balance Generate: scenarioId=%s, projectType=%s, preferredModel=%s",
+            scenario_id, project_type, preferred_model,
+        )
+
+        results = None
+        try:
+            from services.mass_balance_ai import generate_mass_balance_with_ai
+            ai_result = generate_mass_balance_with_ai(upif, project_type, preferred_model, storage)
+            results = ai_result["results"]
+            model_used = ai_result["provider_label"]
+            logger.info("Mass Balance: AI generation succeeded using %s", model_used)
+        except Exception as ai_error:
+            logger.warning("Mass Balance: AI generation failed, falling back to deterministic: %s", str(ai_error))
+            model_used = "deterministic (AI fallback)"
+            calculator = _get_deterministic_calculator(project_type)
+            results = calculator(upif)
+
+        existing_runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        next_version = str(len(existing_runs) + 1)
+
+        run = storage.create_mass_balance_run(
+            scenario_id=scenario_id,
+            version=next_version,
+            status="draft",
+            input_snapshot={
+                "upifId": upif.get("id"),
+                "feedstocks": upif.get("feedstocks"),
+                "outputSpecs": upif.get("output_specs"),
+                "projectType": project_type,
+            },
+            results=results,
+            overrides={},
+            locks={},
+        )
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        try:
+            project = storage.get_project(scenario.get("project_id", ""))
+            storage.create_generation_log(
+                document_type="Mass Balance",
+                model_used=model_used,
+                project_id=scenario.get("project_id"),
+                project_name=project.get("name") if project else None,
+                scenario_id=scenario_id,
+                scenario_name=scenario.get("name"),
+                duration_ms=duration_ms,
+                status="success",
+            )
+        except Exception as log_err:
+            logger.error("Failed to log generation: %s", str(log_err))
+
+        return run
+    except HTTPException:
+        raise
+    except Exception as error:
+        duration_ms = int((time.time() - start_time) * 1000)
+        try:
+            storage.create_generation_log(
+                document_type="Mass Balance",
+                model_used=model_used,
+                duration_ms=duration_ms,
+                status="error",
+                error_message=str(error),
+            )
+        except Exception:
+            pass
+        logger.error("Error generating mass balance: %s", str(error))
+        raise HTTPException(status_code=500, detail="Failed to generate mass balance")
+
+
+def _apply_override_to_results(obj: Any, path: list[str], value: str):
+    if not path or obj is None:
+        return
+    current = obj
+    for i in range(len(path) - 1):
+        segment = path[i]
+        if isinstance(current, list):
+            try:
+                idx = int(segment)
+                current = current[idx]
+            except (ValueError, IndexError):
+                match = next((item for item in current if isinstance(item, dict) and item.get("id") == segment), None)
+                if match:
+                    current = match
+                else:
+                    return
+        elif isinstance(current, dict):
+            current = current.get(segment)
+        else:
+            return
+        if current is None:
+            return
+
+    last_key = path[-1]
+    if isinstance(current, dict):
+        existing = current.get(last_key)
+        if isinstance(existing, dict) and "value" in existing:
+            try:
+                num_val = float(value.replace(",", ""))
+                existing["value"] = num_val
+            except (ValueError, AttributeError):
+                existing["value"] = value
+        else:
+            try:
+                num_val = float(value.replace(",", ""))
+                current[last_key] = num_val
+            except (ValueError, AttributeError):
+                current[last_key] = value
+
+
+class OverridesUpdate(BaseModel):
+    overrides: dict
+
+
+class LocksUpdate(BaseModel):
+    locks: dict
+
+
+class StatusUpdate(BaseModel):
+    status: str
+
+
+@router.patch("/mass-balance/{run_id}/overrides")
+async def update_mass_balance_overrides(run_id: str, body: OverridesUpdate):
+    try:
+        run = storage.get_mass_balance_run(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Mass balance run not found")
+
+        merged = {**(run.get("overrides") or {}), **body.overrides}
+        updated = storage.update_mass_balance_run(run_id, {"overrides": merged})
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating overrides: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to update overrides")
+
+
+@router.patch("/mass-balance/{run_id}/locks")
+async def update_mass_balance_locks(run_id: str, body: LocksUpdate):
+    try:
+        run = storage.get_mass_balance_run(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Mass balance run not found")
+
+        merged = {**(run.get("locks") or {}), **body.locks}
+        updated = storage.update_mass_balance_run(run_id, {"locks": merged})
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating locks: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to update locks")
+
+
+@router.post("/mass-balance/{run_id}/recompute")
+async def recompute_mass_balance(run_id: str):
+    try:
+        run = storage.get_mass_balance_run(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Mass balance run not found")
+
+        upif = storage.get_upif_by_scenario(run["scenario_id"])
+        if not upif:
+            raise HTTPException(status_code=400, detail="Source UPIF no longer exists")
+
+        scenario = storage.get_scenario(run["scenario_id"])
+        project_type = _determine_project_type(scenario or {}, upif)
+        preferred_model = (scenario or {}).get("preferred_model") or "gpt5"
+
+        results = None
+        try:
+            from services.mass_balance_ai import generate_mass_balance_with_ai
+            ai_result = generate_mass_balance_with_ai(upif, project_type, preferred_model, storage)
+            results = ai_result["results"]
+            logger.info("Mass Balance Recompute: AI succeeded using %s", ai_result["provider_label"])
+        except Exception as ai_error:
+            logger.warning("Mass Balance Recompute: AI failed, falling back to deterministic: %s", str(ai_error))
+            calculator = _get_deterministic_calculator(project_type)
+            results = calculator(upif)
+
+        locked_keys = [k for k, v in (run.get("locks") or {}).items() if v]
+        existing_overrides = run.get("overrides") or {}
+        if locked_keys:
+            for key in locked_keys:
+                override = existing_overrides.get(key)
+                if not override:
+                    continue
+                parts = key.split(".")
+                _apply_override_to_results(results, parts, override.get("value", ""))
+
+        updated = storage.update_mass_balance_run(run_id, {"results": results, "status": "draft"})
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error recomputing mass balance: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to recompute mass balance")
+
+
+@router.patch("/mass-balance/{run_id}/status")
+async def update_mass_balance_status(run_id: str, body: StatusUpdate):
+    try:
+        run = storage.get_mass_balance_run(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Mass balance run not found")
+
+        valid_statuses = ["draft", "reviewed", "finalized"]
+        if body.status not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status. Must be: {', '.join(valid_statuses)}",
+            )
+
+        updated = storage.update_mass_balance_run(run_id, {"status": body.status})
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating status: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to update status")
+
+
+# =========================================================================
+# Mass Balance Export (PDF & Excel)
+# =========================================================================
+
+
+@router.get("/scenarios/{scenario_id}/mass-balance/export-pdf")
+async def export_mass_balance_pdf_route(scenario_id: str):
+    try:
+        runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        latest = runs[0] if runs else None
+        if not latest or not latest.get("results"):
+            raise HTTPException(status_code=404, detail="No mass balance data found")
+
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        results = latest["results"]
+        project_type = results.get("projectType") or scenario.get("project_type") or "B"
+        project = storage.get_project(scenario.get("project_id", ""))
+
+        from services.export_service import export_mass_balance_pdf
+        pdf_bytes = export_mass_balance_pdf(
+            results, scenario.get("name", ""), project.get("name", "Project") if project else "Project", project_type,
+        )
+
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", scenario.get("name", "mass-balance"))
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="MassBalance-{safe_name}.pdf"',
+                "Content-Length": str(len(pdf_bytes)),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error exporting mass balance PDF: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to export mass balance PDF")
+
+
+@router.get("/scenarios/{scenario_id}/mass-balance/export-excel")
+async def export_mass_balance_excel_route(scenario_id: str):
+    try:
+        runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        latest = runs[0] if runs else None
+        if not latest or not latest.get("results"):
+            raise HTTPException(status_code=404, detail="No mass balance data found")
+
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        results = latest["results"]
+        project_type = results.get("projectType") or scenario.get("project_type") or "B"
+        project = storage.get_project(scenario.get("project_id", ""))
+
+        from services.export_service import export_mass_balance_excel
+        xlsx_bytes = export_mass_balance_excel(
+            results, scenario.get("name", ""), project.get("name", "Project") if project else "Project", project_type,
+        )
+
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", scenario.get("name", "mass-balance"))
+        return Response(
+            content=xlsx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="MassBalance-{safe_name}.xlsx"',
+                "Content-Length": str(len(xlsx_bytes)),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error exporting mass balance Excel: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to export mass balance Excel")
+
+
+# =========================================================================
+# CapEx Estimates
+# =========================================================================
+
+
+@router.get("/scenarios/{scenario_id}/capex")
+async def get_capex_estimates(scenario_id: str):
+    try:
+        estimates = storage.get_capex_estimates_by_scenario(scenario_id)
+        return estimates
+    except Exception as e:
+        logger.error("Error fetching capex estimates: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch capex estimates")
+
+
+class CapexGenerateRequest(BaseModel):
+    preferred_model: Optional[str] = None
+
+
+@router.post("/scenarios/{scenario_id}/capex/generate")
+async def generate_capex(scenario_id: str, body: Optional[CapexGenerateRequest] = None):
+    import time
+    start_time = time.time()
+    model_used = "unknown"
+
+    try:
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        mb_runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        latest_mb = mb_runs[0] if mb_runs else None
+        if not latest_mb:
+            raise HTTPException(
+                status_code=400,
+                detail="No mass balance found. Generate and finalize a mass balance first.",
+            )
+        if latest_mb.get("status") != "finalized":
+            raise HTTPException(
+                status_code=400,
+                detail="Mass balance must be finalized before generating CapEx. Please finalize the mass balance first.",
+            )
+
+        mb_results = latest_mb.get("results") or {}
+        equipment = mb_results.get("equipment") or []
+        if not equipment:
+            raise HTTPException(
+                status_code=400,
+                detail="Mass balance has no equipment list. Cannot generate CapEx.",
+            )
+
+        upif = storage.get_upif_by_scenario(scenario_id)
+        upif_data = {}
+        if upif:
+            upif_data = {
+                "projectType": upif.get("project_type"),
+                "location": upif.get("location"),
+                "feedstocks": upif.get("feedstocks"),
+                "outputRequirements": upif.get("output_requirements"),
+                "constraints": upif.get("constraints"),
+            }
+
+        project_type = mb_results.get("projectType") or upif_data.get("projectType") or scenario.get("project_type") or "A"
+        preferred_model = (body.preferred_model if body else None) or scenario.get("preferred_model") or "gpt5"
+
+        from services.capex_ai import generate_capex_with_ai
+        ai_result = generate_capex_with_ai(upif_data, mb_results, project_type, preferred_model, storage)
+        model_used = ai_result["provider_label"]
+
+        existing_estimates = storage.get_capex_estimates_by_scenario(scenario_id)
+        version = str(len(existing_estimates) + 1)
+
+        estimate = storage.create_capex_estimate(
+            scenario_id=scenario_id,
+            mass_balance_run_id=latest_mb["id"],
+            version=version,
+            status="draft",
+            input_snapshot={
+                "massBalanceId": latest_mb["id"],
+                "massBalanceVersion": latest_mb.get("version"),
+                "projectType": project_type,
+                "equipmentCount": len(equipment),
+                "model": model_used,
+            },
+            results=ai_result["results"],
+            overrides={},
+            locks={},
+        )
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        try:
+            project = storage.get_project(scenario.get("project_id", ""))
+            storage.create_generation_log(
+                document_type="CapEx",
+                model_used=model_used,
+                project_id=scenario.get("project_id"),
+                project_name=project.get("name") if project else None,
+                scenario_id=scenario_id,
+                scenario_name=scenario.get("name"),
+                duration_ms=duration_ms,
+                status="success",
+            )
+        except Exception as log_err:
+            logger.error("Failed to log generation: %s", str(log_err))
+
+        return estimate
+    except HTTPException:
+        raise
+    except Exception as error:
+        duration_ms = int((time.time() - start_time) * 1000)
+        try:
+            storage.create_generation_log(
+                document_type="CapEx",
+                model_used=model_used,
+                duration_ms=duration_ms,
+                status="error",
+                error_message=str(error),
+            )
+        except Exception:
+            pass
+        logger.error("Error generating capex: %s", str(error))
+        raise HTTPException(status_code=500, detail=f"Failed to generate CapEx estimate: {str(error)}")
+
+
+@router.post("/capex/{estimate_id}/recompute")
+async def recompute_capex(estimate_id: str):
+    import time
+    start_time = time.time()
+    model_used = "unknown"
+
+    try:
+        existing = storage.get_capex_estimate(estimate_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="CapEx estimate not found")
+
+        scenario = storage.get_scenario(existing["scenario_id"])
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        mb_run = storage.get_mass_balance_run(existing["mass_balance_run_id"])
+        if not mb_run:
+            raise HTTPException(status_code=400, detail="Associated mass balance run not found")
+
+        mb_results = mb_run.get("results") or {}
+        upif = storage.get_upif_by_scenario(existing["scenario_id"])
+        upif_data = {}
+        if upif:
+            upif_data = {
+                "projectType": upif.get("project_type"),
+                "location": upif.get("location"),
+                "feedstocks": upif.get("feedstocks"),
+                "outputRequirements": upif.get("output_requirements"),
+                "constraints": upif.get("constraints"),
+            }
+
+        project_type = mb_results.get("projectType") or upif_data.get("projectType") or scenario.get("project_type") or "A"
+        preferred_model = scenario.get("preferred_model") or "gpt5"
+
+        from services.capex_ai import generate_capex_with_ai
+        ai_result = generate_capex_with_ai(upif_data, mb_results, project_type, preferred_model, storage)
+        model_used = ai_result["provider_label"]
+
+        old_locks = existing.get("locks") or {}
+        old_overrides = existing.get("overrides") or {}
+        new_results = ai_result["results"]
+
+        for path_str, is_locked in old_locks.items():
+            if not is_locked:
+                continue
+            override = old_overrides.get(path_str)
+            if not override:
+                continue
+
+            import re as _re
+            li_match = _re.match(r"^lineItems\.(.+?)\.(.+)$", path_str)
+            if li_match:
+                item_id, field = li_match.group(1), li_match.group(2)
+                line_items = new_results.get("lineItems") or []
+                line_item = next(
+                    (li for li in line_items if li.get("id") == item_id or li.get("equipmentId") == item_id),
+                    None,
+                )
+                if line_item and field in line_item:
+                    try:
+                        line_item[field] = float(override.get("value", "0"))
+                    except (ValueError, TypeError):
+                        line_item[field] = override.get("value", "")
+
+            sum_match = _re.match(r"^summary\.(.+)$", path_str)
+            if sum_match:
+                field = sum_match.group(1)
+                summary = new_results.get("summary") or {}
+                if field in summary:
+                    try:
+                        summary[field] = float(override.get("value", "0"))
+                    except (ValueError, TypeError):
+                        summary[field] = override.get("value", "")
+
+        updated = storage.update_capex_estimate(estimate_id, {
+            "results": new_results,
+            "overrides": old_overrides,
+            "locks": old_locks,
+            "input_snapshot": {
+                **(existing.get("input_snapshot") or {}),
+                "lastRecompute": datetime.utcnow().isoformat(),
+                "model": model_used,
+            },
+        })
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        try:
+            project = storage.get_project(scenario.get("project_id", ""))
+            storage.create_generation_log(
+                document_type="CapEx",
+                model_used=model_used,
+                project_id=scenario.get("project_id"),
+                project_name=project.get("name") if project else None,
+                scenario_id=existing["scenario_id"],
+                scenario_name=scenario.get("name"),
+                duration_ms=duration_ms,
+                status="success",
+            )
+        except Exception as log_err:
+            logger.error("Failed to log generation: %s", str(log_err))
+
+        return updated
+    except HTTPException:
+        raise
+    except Exception as error:
+        duration_ms = int((time.time() - start_time) * 1000)
+        try:
+            storage.create_generation_log(
+                document_type="CapEx",
+                model_used=model_used,
+                duration_ms=duration_ms,
+                status="error",
+                error_message=str(error),
+            )
+        except Exception:
+            pass
+        logger.error("Error recomputing capex: %s", str(error))
+        raise HTTPException(status_code=500, detail=f"Failed to recompute CapEx: {str(error)}")
+
+
+class CapexUpdate(BaseModel):
+    results: Optional[dict] = None
+    overrides: Optional[dict] = None
+    locks: Optional[dict] = None
+    status: Optional[str] = None
+
+
+@router.patch("/capex/{estimate_id}")
+async def update_capex(estimate_id: str, body: CapexUpdate):
+    try:
+        existing = storage.get_capex_estimate(estimate_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="CapEx estimate not found")
+
+        updates: dict[str, Any] = {}
+        if body.results is not None:
+            updates["results"] = body.results
+        if body.overrides is not None:
+            updates["overrides"] = body.overrides
+        if body.locks is not None:
+            updates["locks"] = body.locks
+        if body.status is not None:
+            valid_statuses = ["draft", "reviewed", "finalized"]
+            if body.status not in valid_statuses:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid status. Must be: {', '.join(valid_statuses)}",
+                )
+            updates["status"] = body.status
+
+        updated = storage.update_capex_estimate(estimate_id, updates)
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating capex: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to update CapEx estimate")
+
+
+# =========================================================================
+# CapEx Export (PDF & Excel)
+# =========================================================================
+
+
+@router.get("/scenarios/{scenario_id}/capex/export-pdf")
+async def export_capex_pdf_route(scenario_id: str):
+    try:
+        estimates = storage.get_capex_estimates_by_scenario(scenario_id)
+        latest = estimates[0] if estimates else None
+        if not latest or not latest.get("results"):
+            raise HTTPException(status_code=404, detail="No CapEx data found")
+
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        results = latest["results"]
+        project_type = results.get("projectType") or scenario.get("project_type") or "B"
+        project = storage.get_project(scenario.get("project_id", ""))
+
+        from services.export_service import export_capex_pdf
+        pdf_bytes = export_capex_pdf(
+            results, scenario.get("name", ""), project.get("name", "Project") if project else "Project", project_type,
+        )
+
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", scenario.get("name", "capex"))
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="CapEx-{safe_name}.pdf"',
+                "Content-Length": str(len(pdf_bytes)),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error exporting CapEx PDF: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to export CapEx PDF")
+
+
+@router.get("/scenarios/{scenario_id}/capex/export-excel")
+async def export_capex_excel_route(scenario_id: str):
+    try:
+        estimates = storage.get_capex_estimates_by_scenario(scenario_id)
+        latest = estimates[0] if estimates else None
+        if not latest or not latest.get("results"):
+            raise HTTPException(status_code=404, detail="No CapEx data found")
+
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        results = latest["results"]
+        project_type = results.get("projectType") or scenario.get("project_type") or "B"
+        project = storage.get_project(scenario.get("project_id", ""))
+
+        from services.export_service import export_capex_excel
+        xlsx_bytes = export_capex_excel(
+            results, scenario.get("name", ""), project.get("name", "Project") if project else "Project", project_type,
+        )
+
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", scenario.get("name", "capex"))
+        return Response(
+            content=xlsx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="CapEx-{safe_name}.xlsx"',
+                "Content-Length": str(len(xlsx_bytes)),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error exporting CapEx Excel: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to export CapEx Excel")
+
+
+# =========================================================================
+# Generation Stats
+# =========================================================================
+
+
+@router.get("/generation-stats")
+async def get_generation_stats():
+    try:
+        logs = storage.get_all_generation_logs()
+        return logs
+    except Exception as e:
+        logger.error("Error fetching generation stats: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch generation stats")
+
+
+# =========================================================================
+# Calculator Info
+# =========================================================================
+
+
+CALCULATOR_FILES = {
+    "A": {
+        "file": "databricks_app/services/mass_balance_type_a.py",
+        "label": "Type A: Wastewater Treatment",
+        "type": "A",
+        "description": "High-strength industrial wastewater from food processing (dairy, meat, potato, beverage, produce, etc.). Treats influent to meet effluent discharge standards. RNG may be a byproduct when organic loading justifies it.",
+    },
+    "B": {
+        "file": "databricks_app/services/mass_balance_type_b.py",
+        "label": "Type B: RNG Greenfield",
+        "type": "B",
+        "description": "Full anaerobic digestion pipeline from feedstock receiving through RNG production. Handles solid and semi-solid organic feedstocks (food waste, crop residuals). Complete process train: receiving, pretreatment, digestion, gas conditioning, upgrading.",
+    },
+    "C": {
+        "file": "databricks_app/services/mass_balance_type_c.py",
+        "label": "Type C: RNG Bolt-On",
+        "type": "C",
+        "description": "Biogas-only inputs. An existing facility already produces biogas; this project adds gas conditioning and upgrading equipment to convert raw biogas to pipeline-quality RNG. No digester sizing needed.",
+    },
+    "D": {
+        "file": "databricks_app/services/mass_balance_type_d.py",
+        "label": "Type D: Hybrid",
+        "type": "D",
+        "description": "Combines wastewater treatment (Type A) with co-digestion from trucked organic feedstocks for additional gas production and RNG production. Wastewater is treated, biogas is upgraded to RNG.",
+    },
+}
+
+
+@router.get("/calculators")
+async def get_calculators():
+    return [{"key": key, **val} for key, val in CALCULATOR_FILES.items()]
+
+
+@router.get("/calculators/{calc_type}")
+async def get_calculator(calc_type: str):
+    calc = CALCULATOR_FILES.get(calc_type.upper())
+    if not calc:
+        raise HTTPException(status_code=404, detail="Calculator not found")
+    try:
+        with open(calc["file"], "r") as f:
+            source = f.read()
+        return {**calc, "key": calc_type.upper(), "source": source, "lineCount": source.count("\n") + 1}
+    except Exception as e:
+        logger.error("Error reading calculator file %s: %s", calc["file"], str(e))
+        raise HTTPException(status_code=500, detail="Failed to read calculator source")

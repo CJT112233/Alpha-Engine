@@ -59,6 +59,14 @@ Unit conventions (US-based):
 ### Databricks Migration
 The project is migrating to a Databricks environment with a FastAPI (Python) backend, Delta tables in Unity Catalog for data storage, and Databricks Model Serving for AI integration. The React frontend remains the same, served statically.
 
+**Ported Databricks Services (Python equivalents of Node.js features):**
+- **Mass Balance**: AI generation (`databricks_app/services/mass_balance_ai.py`) + deterministic calculators for all 4 types (`mass_balance_type_a.py` through `mass_balance_type_d.py`). AI-first with deterministic fallback.
+- **CapEx**: AI generation (`databricks_app/services/capex_ai.py`) from finalized mass balance equipment lists.
+- **Export**: PDF (ReportLab) and Excel (openpyxl) export for both mass balance and CapEx (`databricks_app/services/export_service.py`).
+- **Storage**: CRUD for mass_balance_runs, capex_estimates, generation_logs tables (`databricks_app/services/storage.py`).
+- **Prompts**: 8 type-specific prompt templates (mass_balance_type_a/b/c/d, capex_type_a/b/c/d) in `databricks_app/knowledge_base/default_prompts.py`.
+- **API Routes**: All mass balance, CapEx, export, generation stats, and calculator endpoints in `databricks_app/api/routes.py`.
+
 ## External Dependencies
 
 ### Database
@@ -93,6 +101,7 @@ The project is migrating to a Databricks environment with a FastAPI (Python) bac
 ### Databricks Specific
 - Databricks Model Serving (for AI)
 - ReportLab (PDF generation in Databricks environment)
+- openpyxl (Excel generation in Databricks environment)
 
 ## Validation Pipeline
 
