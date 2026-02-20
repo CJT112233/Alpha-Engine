@@ -25,8 +25,8 @@ import { feedstockGroupLabels, feedstockGroupOrder } from "@shared/feedstock-lib
 import { outputGroupLabels, outputGroupOrder } from "@shared/output-criteria-library";
 import { llmComplete, getAvailableProviders, providerLabels, isProviderAvailable, type LLMProvider } from "./llm";
 import { DEFAULT_PROMPTS, PROMPT_KEYS, type PromptKey } from "@shared/default-prompts";
-import { exportMassBalancePDF, exportMassBalanceExcel, exportCapexPDF, exportCapexExcel } from "./services/exportService";
-import type { MassBalanceResults, CapexResults } from "@shared/schema";
+import { exportMassBalancePDF, exportMassBalanceExcel, exportCapexPDF, exportCapexExcel, exportOpexPDF, exportOpexExcel } from "./services/exportService";
+import type { MassBalanceResults, CapexResults, OpexResults } from "@shared/schema";
 import {
   validateAndSanitizeOutputSpecs,
   validateFeedstocksForTypeA,
@@ -3349,6 +3349,177 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error exporting CapEx Excel:", error);
       res.status(500).json({ error: "Failed to export CapEx Excel" });
+    }
+  });
+
+  // =========================================================================
+  // OpEx Estimates
+  // =========================================================================
+
+  app.get("/api/scenarios/:scenarioId/opex", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const estimates = await storage.getOpexEstimatesByScenario(scenarioId);
+      res.json(estimates);
+    } catch (error) {
+      console.error("Error fetching OpEx estimates:", error);
+      res.status(500).json({ error: "Failed to fetch OpEx estimates" });
+    }
+  });
+
+  app.post("/api/scenarios/:scenarioId/opex/generate", async (req: Request, res: Response) => {
+    req.setTimeout(300000);
+    res.setTimeout(300000);
+    const startTime = Date.now();
+    let modelUsed = "unknown";
+    const scenarioId = (req.params.scenarioId as string);
+
+    try {
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+
+      const mbRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const latestMB = mbRuns[0];
+      if (!latestMB) {
+        return res.status(400).json({ error: "No mass balance found. Generate and finalize a mass balance first." });
+      }
+      if (latestMB.status !== "finalized") {
+        return res.status(400).json({ error: "Mass balance must be finalized before generating OpEx." });
+      }
+
+      const mbResults = latestMB.results as MassBalanceResults;
+      if (!mbResults || !mbResults.equipment || mbResults.equipment.length === 0) {
+        return res.status(400).json({ error: "Mass balance has no equipment list. Cannot generate OpEx." });
+      }
+
+      const capexEstimates = await storage.getCapexEstimatesByScenario(scenarioId);
+      const latestCapex = capexEstimates[0];
+      const capexResults = latestCapex?.results as CapexResults | null;
+
+      const upif = await storage.getUpifByScenario(scenarioId);
+      const upifData = upif ? {
+        projectType: (upif as any).projectType,
+        location: upif.location,
+        feedstocks: upif.feedstocks,
+        outputRequirements: upif.outputRequirements,
+        constraints: upif.constraints,
+      } : {} as any;
+
+      const projectType = mbResults.projectType || upifData.projectType || (scenario as any).projectType || "A";
+      const preferredModel = (scenario.preferredModel || "gpt5") as import("./llm").LLMProvider;
+
+      const { generateOpexWithAI } = await import("./services/opexAI");
+      const aiResult = await generateOpexWithAI(upifData, mbResults, capexResults, projectType, preferredModel, storage);
+      modelUsed = aiResult.providerLabel;
+
+      const existingEstimates = await storage.getOpexEstimatesByScenario(scenarioId);
+      const version = String(existingEstimates.length + 1);
+
+      const estimate = await storage.createOpexEstimate({
+        scenarioId,
+        massBalanceRunId: latestMB.id,
+        capexEstimateId: latestCapex?.id || null,
+        version,
+        status: "draft",
+        inputSnapshot: {
+          massBalanceId: latestMB.id,
+          massBalanceVersion: latestMB.version,
+          capexEstimateId: latestCapex?.id || null,
+          projectType,
+          equipmentCount: mbResults.equipment.length,
+          model: modelUsed,
+        },
+        results: aiResult.results,
+        overrides: {},
+        locks: {},
+      });
+
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "OpEx",
+        modelUsed,
+        projectId: scenario.projectId,
+        projectName: scenario.project?.name || null,
+        scenarioId,
+        scenarioName: scenario.name,
+        durationMs,
+        status: "success",
+      }).catch(e => console.error("Failed to log generation:", e));
+
+      res.json(estimate);
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "OpEx",
+        modelUsed,
+        durationMs,
+        status: "error",
+        errorMessage: (error as any)?.message || "Unknown error",
+      }).catch(e => console.error("Failed to log generation:", e));
+
+      console.error("Error generating opex:", error);
+      res.status(500).json({ error: `Failed to generate OpEx estimate: ${(error as Error).message}` });
+    }
+  });
+
+  app.patch("/api/opex/:id", async (req: Request, res: Response) => {
+    try {
+      const id = req.params.id as string;
+      const updates = req.body;
+      const updated = await storage.updateOpexEstimate(id, updates);
+      if (!updated) return res.status(404).json({ error: "OpEx estimate not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating OpEx estimate:", error);
+      res.status(500).json({ error: "Failed to update OpEx estimate" });
+    }
+  });
+
+  app.get("/api/scenarios/:scenarioId/opex/export-pdf", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const estimates = await storage.getOpexEstimatesByScenario(scenarioId);
+      const latestEstimate = estimates?.[0];
+      if (!latestEstimate?.results) return res.status(404).json({ error: "No OpEx data found" });
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+      const results = latestEstimate.results as OpexResults;
+      const projectType = results.projectType || (scenario as any).projectType || "B";
+      const pdfBuffer = await exportOpexPDF(results, scenario.name, scenario.project?.name || "Project", projectType);
+      const safeName = (scenario.name || "opex").replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="OpEx-${safeName}.pdf"`,
+        "Content-Length": pdfBuffer.length.toString(),
+      });
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error exporting OpEx PDF:", error);
+      res.status(500).json({ error: "Failed to export OpEx PDF" });
+    }
+  });
+
+  app.get("/api/scenarios/:scenarioId/opex/export-excel", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const estimates = await storage.getOpexEstimatesByScenario(scenarioId);
+      const latestEstimate = estimates?.[0];
+      if (!latestEstimate?.results) return res.status(404).json({ error: "No OpEx data found" });
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+      const results = latestEstimate.results as OpexResults;
+      const projectType = results.projectType || (scenario as any).projectType || "B";
+      const xlsxBuffer = exportOpexExcel(results, scenario.name, scenario.project?.name || "Project", projectType);
+      const safeName = (scenario.name || "opex").replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.set({
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="OpEx-${safeName}.xlsx"`,
+        "Content-Length": xlsxBuffer.length.toString(),
+      });
+      res.send(xlsxBuffer);
+    } catch (error) {
+      console.error("Error exporting OpEx Excel:", error);
+      res.status(500).json({ error: "Failed to export OpEx Excel" });
     }
   });
 

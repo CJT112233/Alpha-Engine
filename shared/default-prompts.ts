@@ -15,7 +15,7 @@
  * - reviewer_chat: Enables UPIF chat refinement with locked field protection
  * - pdf_summary: Generates one-paragraph project summary for PDF exports
  */
-export type PromptKey = "extraction" | "classification" | "extraction_type_a" | "extraction_type_b" | "extraction_type_c" | "extraction_type_d" | "clarify" | "reviewer_chat" | "pdf_summary" | "mass_balance_type_a" | "mass_balance_type_b" | "mass_balance_type_c" | "mass_balance_type_d" | "capex_type_a" | "capex_type_b" | "capex_type_c" | "capex_type_d" | "vendor_list";
+export type PromptKey = "extraction" | "classification" | "extraction_type_a" | "extraction_type_b" | "extraction_type_c" | "extraction_type_d" | "clarify" | "reviewer_chat" | "pdf_summary" | "mass_balance_type_a" | "mass_balance_type_b" | "mass_balance_type_c" | "mass_balance_type_d" | "capex_type_a" | "capex_type_b" | "capex_type_c" | "capex_type_d" | "opex_type_a" | "opex_type_b" | "opex_type_c" | "opex_type_d" | "vendor_list";
 
 /**
  * Interface defining the structure of a default prompt template.
@@ -1812,7 +1812,398 @@ RULES:
 
 Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
   },
+
+  opex_type_a: {
+    key: "opex_type_a",
+    name: "OpEx Estimate — Type A (Wastewater Treatment)",
+    description: "Generates annual operating cost estimates for wastewater treatment projects based on mass balance, equipment list, and CapEx data.",
+    isSystemPrompt: true,
+    availableVariables: ["{{EQUIPMENT_DATA}}", "{{UPIF_DATA}}", "{{CAPEX_DATA}}"],
+    template: `You are a senior process engineer and cost estimator specializing in industrial wastewater treatment operations. Generate a detailed annual operating expenditure (OpEx) estimate based on the confirmed mass balance equipment list, project specifications, and capital cost estimate.
+
+PROJECT & EQUIPMENT DATA:
+{{EQUIPMENT_DATA}}
+
+PROJECT CONTEXT:
+{{UPIF_DATA}}
+
+CAPITAL COST REFERENCE:
+{{CAPEX_DATA}}
+
+Estimate annual operating costs for the following categories:
+
+LABOR:
+- Operations staff (operators, shift supervisors)
+- Maintenance technicians
+- Laboratory/compliance personnel
+- Management/administration
+- Use typical US municipal/industrial WW staffing rates
+
+ENERGY & UTILITIES:
+- Electricity (aeration, pumping, building HVAC, lighting)
+- Natural gas or heating fuel
+- Potable/process water
+
+CHEMICALS:
+- Coagulants, flocculants, polymers
+- pH adjustment (acid/caustic)
+- Disinfection (chlorine, UV lamp replacement)
+- Nutrient removal chemicals (carbon source, alum, ferric)
+
+MAINTENANCE & REPAIRS:
+- Routine preventive maintenance (typically 2-4% of total equipment CapEx/year)
+- Spare parts and consumables
+- Equipment rebuild/replacement reserves
+
+SOLIDS DISPOSAL:
+- Sludge hauling and disposal (landfill or land application)
+- Dewatered cake transport
+
+LABORATORY & MONITORING:
+- Compliance sampling and analysis
+- Online instrument calibration and supplies
+- NPDES permit fees
+
+INSURANCE & REGULATORY:
+- Property and liability insurance
+- Environmental compliance costs
+
+ADMINISTRATIVE & OVERHEAD:
+- Office supplies, IT
+- Training and safety programs
+
+Return JSON in this exact format:
+{
+  "projectType": "A",
+  "lineItems": [
+    {
+      "id": "opex-unique-id",
+      "category": "Labor",
+      "description": "Plant operators (3 FTE, 24/7 coverage)",
+      "annualCost": 240000,
+      "unitCost": 80000,
+      "unitBasis": "per FTE per year",
+      "scalingBasis": "3 operators",
+      "costBasis": "BLS median WW operator salary, 2025",
+      "source": "BLS/industry average",
+      "notes": "Includes benefits at 35% of base salary",
+      "isOverridden": false,
+      "isLocked": false
+    }
+  ],
+  "summary": {
+    "totalAnnualOpex": 1500000,
+    "totalLaborCost": 500000,
+    "totalEnergyCost": 300000,
+    "totalChemicalCost": 150000,
+    "totalMaintenanceCost": 200000,
+    "totalDisposalCost": 100000,
+    "totalOtherCost": 250000,
+    "revenueOffsets": 0,
+    "netAnnualOpex": 1500000,
+    "opexPerUnit": { "value": 2.50, "unit": "$/1,000 gal", "basis": "Design flow capacity" },
+    "opexAsPercentOfCapex": 8.5
+  },
+  "assumptions": [
+    { "parameter": "Electricity Rate", "value": "$0.08/kWh", "source": "EIA national average" },
+    { "parameter": "Operator Salary", "value": "$65,000-$85,000/yr", "source": "BLS" }
+  ],
+  "warnings": [],
+  "costYear": "2025",
+  "currency": "USD",
+  "methodology": "Bottom-up operating cost estimate"
+}
+
+RULES:
+- All costs in USD, annual basis.
+- Use realistic US utility rates, labor rates, and chemical costs for 2025.
+- Maintenance costs should reference the CapEx equipment values where applicable.
+- Include revenue offsets if applicable (e.g., biosolids sales, water reuse credits) as negative values.
+- opexPerUnit should reflect $/1,000 gallons for WW projects.
+- opexAsPercentOfCapex should be calculated from total annual OpEx / total project CapEx * 100.
+- OpEx line item IDs: descriptive lowercase with hyphens prefixed with "opex-".
+
+Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
+  },
+
+  opex_type_b: {
+    key: "opex_type_b",
+    name: "OpEx Estimate — Type B (RNG Greenfield)",
+    description: "Generates annual operating cost estimates for RNG greenfield anaerobic digestion projects.",
+    isSystemPrompt: true,
+    availableVariables: ["{{EQUIPMENT_DATA}}", "{{UPIF_DATA}}", "{{CAPEX_DATA}}"],
+    template: `You are a senior process engineer and cost estimator specializing in renewable natural gas (RNG) and anaerobic digestion facility operations. Generate a detailed annual operating expenditure (OpEx) estimate for a greenfield RNG project.
+
+PROJECT & EQUIPMENT DATA:
+{{EQUIPMENT_DATA}}
+
+PROJECT CONTEXT:
+{{UPIF_DATA}}
+
+CAPITAL COST REFERENCE:
+{{CAPEX_DATA}}
+
+Estimate annual operating costs for the following categories:
+
+LABOR:
+- Plant manager, operators, maintenance technicians
+- Feedstock receiving/logistics personnel
+- Laboratory/compliance personnel
+- Use typical US AD/RNG facility staffing rates
+
+ENERGY & UTILITIES:
+- Parasitic electricity load (mixing, pumping, gas compression, upgrading)
+- Heating (digester temperature maintenance, building heat)
+- Process water
+
+FEEDSTOCK & LOGISTICS:
+- Feedstock procurement/tipping fee adjustments
+- Transportation and hauling
+- Feedstock testing and analysis
+
+CHEMICALS & CONSUMABLES:
+- Iron chloride / H₂S scavengers
+- Antifoam agents
+- pH adjustment chemicals
+- Membrane/media replacement for gas upgrading
+- Activated carbon for siloxane/VOC removal
+
+MAINTENANCE & REPAIRS:
+- Routine preventive maintenance (typically 3-5% of equipment CapEx/year)
+- Spare parts and consumables
+- Major equipment overhaul reserves (membranes, CHP, compressors)
+
+DIGESTATE MANAGEMENT:
+- Digestate hauling and land application
+- Dewatering polymer costs
+- Solid digestate disposal or composting
+
+INSURANCE & REGULATORY:
+- Property and liability insurance
+- Air quality permits, environmental compliance
+- RIN/LCFS credit verification and reporting
+
+ADMINISTRATIVE & OVERHEAD:
+- RNG pipeline interconnect fees
+- Gas quality monitoring and reporting
+- Office, IT, training
+
+REVENUE OFFSETS (show as negative costs):
+- RNG sales revenue (estimate based on production rate × market price)
+- Tipping fees received for feedstock acceptance
+- RIN/LCFS credit revenue
+- Digestate/compost sales
+
+Return JSON in this exact format:
+{
+  "projectType": "B",
+  "lineItems": [
+    {
+      "id": "opex-unique-id",
+      "category": "Labor",
+      "description": "Plant operators (4 FTE)",
+      "annualCost": 320000,
+      "unitCost": 80000,
+      "unitBasis": "per FTE per year",
+      "scalingBasis": "4 operators for 24/7 coverage",
+      "costBasis": "Industry average, 2025",
+      "source": "industry survey",
+      "notes": "Includes benefits at 35% of base salary",
+      "isOverridden": false,
+      "isLocked": false
+    }
+  ],
+  "summary": {
+    "totalAnnualOpex": 2000000,
+    "totalLaborCost": 600000,
+    "totalEnergyCost": 400000,
+    "totalChemicalCost": 200000,
+    "totalMaintenanceCost": 300000,
+    "totalDisposalCost": 150000,
+    "totalOtherCost": 350000,
+    "revenueOffsets": -1500000,
+    "netAnnualOpex": 500000,
+    "opexPerUnit": { "value": 5.00, "unit": "$/MMBTU RNG", "basis": "Annual RNG production" },
+    "opexAsPercentOfCapex": 7.5
+  },
+  "assumptions": [
+    { "parameter": "Electricity Rate", "value": "$0.08/kWh", "source": "EIA" },
+    { "parameter": "RNG Price", "value": "$15-25/MMBTU", "source": "Market estimate" }
+  ],
+  "warnings": [],
+  "costYear": "2025",
+  "currency": "USD",
+  "methodology": "Bottom-up operating cost estimate"
+}
+
+RULES:
+- All costs in USD, annual basis.
+- Revenue offsets should be shown as NEGATIVE annualCost values with category "Revenue Offset".
+- Maintenance costs should reference CapEx equipment values where applicable.
+- opexPerUnit should reflect $/MMBTU of RNG produced.
+- opexAsPercentOfCapex = total annual OpEx / total project CapEx * 100.
+- Use US gas volumes (scf, MMBTU) not metric units.
+- OpEx line item IDs: descriptive lowercase with hyphens prefixed with "opex-".
+
+Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
+  },
+
+  opex_type_c: {
+    key: "opex_type_c",
+    name: "OpEx Estimate — Type C (RNG Bolt-On)",
+    description: "Generates annual operating cost estimates for RNG bolt-on gas upgrading projects.",
+    isSystemPrompt: true,
+    availableVariables: ["{{EQUIPMENT_DATA}}", "{{UPIF_DATA}}", "{{CAPEX_DATA}}"],
+    template: `You are a senior process engineer and cost estimator specializing in biogas upgrading to renewable natural gas (RNG). Generate a detailed annual operating expenditure (OpEx) estimate for a bolt-on RNG gas upgrading project (no digester — biogas-only input through conditioning and upgrading to pipeline-quality RNG).
+
+PROJECT & EQUIPMENT DATA:
+{{EQUIPMENT_DATA}}
+
+PROJECT CONTEXT:
+{{UPIF_DATA}}
+
+CAPITAL COST REFERENCE:
+{{CAPEX_DATA}}
+
+Estimate annual operating costs for the following categories:
+
+LABOR:
+- Gas plant operators (often part-time or shared staff)
+- Maintenance technicians
+- Use typical US gas processing staffing rates
+
+ENERGY & UTILITIES:
+- Electricity for gas compression, upgrading system, cooling
+- Instrument air
+- Process cooling water
+
+CHEMICALS & CONSUMABLES:
+- Activated carbon (H₂S, siloxane, VOC removal)
+- Iron sponge or other desulfurization media
+- Membrane replacement (if membrane upgrading)
+- PSA adsorbent replacement (if PSA upgrading)
+- Amine solution makeup (if amine scrubbing)
+
+MAINTENANCE & REPAIRS:
+- Compressor maintenance and overhaul
+- Gas upgrading system maintenance
+- Instrumentation calibration
+- Spare parts (typically 3-5% of equipment CapEx/year)
+
+INSURANCE & REGULATORY:
+- Property and liability insurance
+- Air quality permits
+- RIN/LCFS credit verification
+
+ADMINISTRATIVE:
+- Pipeline interconnect fees (utility)
+- Gas quality monitoring and custody transfer metering
+- Reporting and compliance
+
+REVENUE OFFSETS (show as negative costs):
+- RNG sales revenue
+- RIN/LCFS credit revenue
+- Carbon credit revenue
+
+Return JSON in the same format as other OpEx types with:
+- "projectType": "C"
+- opexPerUnit in $/MMBTU of RNG produced
+- Revenue offsets as negative annualCost values
+
+RULES:
+- All costs in USD, annual basis.
+- Bolt-on projects typically have lower labor needs (2-3 FTE or part-time).
+- Focus on gas conditioning and upgrading costs — no digester or feedstock costs.
+- Use US gas volumes (scf, MMBTU) not metric units.
+- OpEx line item IDs: descriptive lowercase with hyphens prefixed with "opex-".
+
+Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
+  },
+
+  opex_type_d: {
+    key: "opex_type_d",
+    name: "OpEx Estimate — Type D (Hybrid)",
+    description: "Generates annual operating cost estimates for hybrid wastewater + RNG projects.",
+    isSystemPrompt: true,
+    availableVariables: ["{{EQUIPMENT_DATA}}", "{{UPIF_DATA}}", "{{CAPEX_DATA}}"],
+    template: `You are a senior process engineer and cost estimator specializing in hybrid wastewater treatment and renewable natural gas (RNG) facilities. Generate a detailed annual operating expenditure (OpEx) estimate for a hybrid project that combines wastewater treatment with sludge digestion and biogas upgrading to RNG, and optional co-digestion with trucked feedstocks.
+
+PROJECT & EQUIPMENT DATA:
+{{EQUIPMENT_DATA}}
+
+PROJECT CONTEXT:
+{{UPIF_DATA}}
+
+CAPITAL COST REFERENCE:
+{{CAPEX_DATA}}
+
+Estimate annual operating costs covering BOTH the wastewater treatment AND RNG production operations:
+
+LABOR:
+- WW plant operators
+- AD/RNG plant operators
+- Maintenance technicians (shared or dedicated)
+- Laboratory/compliance personnel
+- Management and administration
+
+ENERGY & UTILITIES:
+- WW treatment electricity (aeration, pumping, UV)
+- AD/RNG electricity (mixing, gas compression, upgrading)
+- Digester heating (natural gas or recovered heat)
+- Process and potable water
+
+CHEMICALS:
+- WW treatment chemicals (coagulants, polymers, disinfection)
+- AD process chemicals (H₂S scavengers, antifoam, nutrients)
+- Gas upgrading consumables (membranes, carbon, amine)
+
+FEEDSTOCK & LOGISTICS:
+- Co-digestion feedstock receiving and handling
+- Feedstock testing and analysis
+- Hauling and transportation
+
+MAINTENANCE & REPAIRS:
+- WW equipment maintenance (3-4% of WW CapEx/year)
+- AD/RNG equipment maintenance (3-5% of AD/RNG CapEx/year)
+- Spare parts and overhaul reserves
+
+SOLIDS & DIGESTATE MANAGEMENT:
+- WAS/sludge thickening and dewatering
+- Digestate hauling and land application
+- Cake disposal costs
+
+INSURANCE & REGULATORY:
+- Insurance (property and liability)
+- NPDES permit compliance
+- Air quality permits
+- RIN/LCFS credit verification
+
+ADMINISTRATIVE & OVERHEAD:
+- Pipeline interconnect fees
+- Gas quality and effluent quality monitoring
+- Office, IT, training
+
+REVENUE OFFSETS (show as negative costs):
+- RNG sales revenue
+- RIN/LCFS credit revenue
+- Tipping fees for co-digestion feedstock
+- Water reuse credits (if applicable)
+
+Return JSON in the same format as other OpEx types with:
+- "projectType": "D"
+- opexPerUnit can use either $/1,000 gal or $/MMBTU RNG depending on primary driver
+- Revenue offsets as negative annualCost values
+
+RULES:
+- All costs in USD, annual basis.
+- Clearly separate WW treatment costs from AD/RNG costs in the line items.
+- Use US units throughout (gallons, MMBTU, scf, tons).
+- Maintenance costs should reference CapEx equipment values where applicable.
+- OpEx line item IDs: descriptive lowercase with hyphens prefixed with "opex-".
+
+Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
+  },
 };
 
 // Ordered list of all prompt keys for iteration and reference throughout the system.
-export const PROMPT_KEYS: PromptKey[] = ["extraction", "classification", "extraction_type_a", "extraction_type_b", "extraction_type_c", "extraction_type_d", "clarify", "reviewer_chat", "pdf_summary", "mass_balance_type_a", "mass_balance_type_b", "mass_balance_type_c", "mass_balance_type_d", "capex_type_a", "capex_type_b", "capex_type_c", "capex_type_d", "vendor_list"];
+export const PROMPT_KEYS: PromptKey[] = ["extraction", "classification", "extraction_type_a", "extraction_type_b", "extraction_type_c", "extraction_type_d", "clarify", "reviewer_chat", "pdf_summary", "mass_balance_type_a", "mass_balance_type_b", "mass_balance_type_c", "mass_balance_type_d", "capex_type_a", "capex_type_b", "capex_type_c", "capex_type_d", "opex_type_a", "opex_type_b", "opex_type_c", "opex_type_d", "vendor_list"];

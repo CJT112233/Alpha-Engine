@@ -22,6 +22,7 @@ import ScenariosList from "@/pages/scenarios-list";
 import Documentation from "@/pages/documentation";
 import MassBalancePage from "@/pages/mass-balance";
 import CapexPage from "@/pages/capex";
+import OpexPage from "@/pages/opex";
 import GenerationStatsPage from "@/pages/generation-stats";
 import DocsFeedstockLibrary from "@/pages/docs-feedstock-library";
 import DocsPrompts from "@/pages/docs-prompts";
@@ -42,6 +43,7 @@ function Router() {
       <Route path="/docs/calculators" component={DocsCalculators} />
       <Route path="/scenarios/:scenarioId/mass-balance" component={MassBalancePage} />
       <Route path="/scenarios/:scenarioId/capex" component={CapexPage} />
+      <Route path="/scenarios/:scenarioId/opex" component={OpexPage} />
       <Route path="/stats" component={GenerationStatsPage} />
       <Route component={NotFound} />
     </Switch>

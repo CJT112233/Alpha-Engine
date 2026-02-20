@@ -37,6 +37,8 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  Wallet,
+  ArrowRight,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { ElapsedTimer } from "@/components/elapsed-timer";
@@ -296,7 +298,22 @@ export default function CapexPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "capex"] });
-      toast({ title: "CapEx Estimate Generated", description: "Cost estimate complete." });
+      toast({ title: "CapEx Estimate Generated", description: "Cost estimate complete. Generating OpEx in background..." });
+      fetch(`/api/scenarios/${scenarioId}/opex/generate`, { method: "POST", credentials: "include" })
+        .then(async (res) => {
+          if (res.ok) {
+            queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "opex"] });
+            toast({ title: "OpEx Estimate Ready", description: "Annual operating cost estimate generated automatically." });
+          } else {
+            const text = await res.text().catch(() => "");
+            console.warn("OpEx auto-generation failed:", text);
+            toast({ title: "OpEx Note", description: "Auto-generation skipped. You can generate OpEx manually from the OpEx tab.", variant: "default" });
+          }
+        })
+        .catch((err) => {
+          console.warn("OpEx auto-generation error:", err);
+          toast({ title: "OpEx Note", description: "Auto-generation skipped. You can generate OpEx manually from the OpEx tab.", variant: "default" });
+        });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -552,6 +569,11 @@ export default function CapexPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <Link href={`/scenarios/${scenarioId}/opex`}>
+              <Button variant="outline" data-testid="button-view-opex">
+                <Wallet className="h-4 w-4 mr-2" /> OpEx <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            </Link>
             {Object.keys(overrides).length > 0 && (
               <Badge variant="secondary" data-testid="badge-overrides-count">
                 {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}

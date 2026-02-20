@@ -3080,6 +3080,213 @@ async def export_capex_excel_route(scenario_id: str):
 
 
 # =========================================================================
+# OpEx Estimates
+# =========================================================================
+
+
+@router.get("/scenarios/{scenario_id}/opex")
+async def get_opex_estimates(scenario_id: str):
+    try:
+        estimates = storage.get_opex_estimates_by_scenario(scenario_id)
+        return estimates
+    except Exception as e:
+        logger.error("Error fetching OpEx estimates: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch OpEx estimates")
+
+
+@router.post("/scenarios/{scenario_id}/opex/generate")
+async def generate_opex(scenario_id: str):
+    import time as _time
+    start_time = _time.time()
+    model_used = "unknown"
+
+    try:
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        mb_runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        latest_mb = mb_runs[0] if mb_runs else None
+        if not latest_mb:
+            raise HTTPException(status_code=400, detail="No mass balance found. Generate and finalize a mass balance first.")
+        if latest_mb.get("status") != "finalized":
+            raise HTTPException(status_code=400, detail="Mass balance must be finalized before generating OpEx.")
+
+        mb_results = latest_mb.get("results") or {}
+        equipment = mb_results.get("equipment") or []
+        if not equipment:
+            raise HTTPException(status_code=400, detail="Mass balance has no equipment list. Cannot generate OpEx.")
+
+        capex_estimates = storage.get_capex_estimates_by_scenario(scenario_id)
+        latest_capex = capex_estimates[0] if capex_estimates else None
+        capex_results = latest_capex.get("results") if latest_capex else None
+
+        upif = storage.get_upif_by_scenario(scenario_id)
+        upif_data = {}
+        if upif:
+            upif_data = {
+                "projectType": upif.get("project_type") or upif.get("projectType"),
+                "location": upif.get("location"),
+                "feedstocks": upif.get("feedstocks"),
+                "outputRequirements": upif.get("output_requirements") or upif.get("outputRequirements"),
+                "constraints": upif.get("constraints"),
+            }
+
+        project_type = mb_results.get("projectType") or upif_data.get("projectType") or scenario.get("project_type") or "A"
+        preferred_model = scenario.get("preferred_model") or "gpt5"
+
+        from services.opex_ai import generate_opex_with_ai
+        ai_result = await generate_opex_with_ai(upif_data, mb_results, capex_results, project_type, preferred_model, storage)
+        model_used = ai_result.get("provider_label", "unknown")
+
+        existing_estimates = storage.get_opex_estimates_by_scenario(scenario_id)
+        version = str(len(existing_estimates) + 1)
+
+        estimate = storage.create_opex_estimate(
+            scenario_id=scenario_id,
+            mass_balance_run_id=latest_mb["id"],
+            capex_estimate_id=latest_capex["id"] if latest_capex else None,
+            version=version,
+            status="draft",
+            input_snapshot={
+                "massBalanceId": latest_mb["id"],
+                "massBalanceVersion": latest_mb.get("version"),
+                "capexEstimateId": latest_capex["id"] if latest_capex else None,
+                "projectType": project_type,
+                "equipmentCount": len(equipment),
+                "model": model_used,
+            },
+            results=ai_result["results"],
+            overrides={},
+            locks={},
+        )
+
+        duration_ms = int((_time.time() - start_time) * 1000)
+        project = storage.get_project(scenario.get("project_id", ""))
+        try:
+            storage.create_generation_log(
+                document_type="OpEx",
+                model_used=model_used,
+                duration_ms=duration_ms,
+                status="success",
+                project_id=scenario.get("project_id"),
+                project_name=project.get("name") if project else None,
+                scenario_id=scenario_id,
+                scenario_name=scenario.get("name"),
+            )
+        except Exception:
+            pass
+
+        return estimate
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        duration_ms = int((_time.time() - start_time) * 1000)
+        try:
+            storage.create_generation_log(
+                document_type="OpEx",
+                model_used=model_used,
+                duration_ms=duration_ms,
+                status="error",
+                error_message=str(e),
+            )
+        except Exception:
+            pass
+        logger.error("Error generating OpEx: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to generate OpEx estimate: {str(e)}")
+
+
+@router.patch("/opex/{estimate_id}")
+async def update_opex_estimate(estimate_id: str, request: Request):
+    try:
+        body = await request.json()
+        updated = storage.update_opex_estimate(estimate_id, body)
+        if not updated:
+            raise HTTPException(status_code=404, detail="OpEx estimate not found")
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating OpEx estimate: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to update OpEx estimate")
+
+
+@router.get("/scenarios/{scenario_id}/opex/export-pdf")
+async def export_opex_pdf_route(scenario_id: str):
+    try:
+        estimates = storage.get_opex_estimates_by_scenario(scenario_id)
+        latest = estimates[0] if estimates else None
+        if not latest or not latest.get("results"):
+            raise HTTPException(status_code=404, detail="No OpEx data found")
+
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        results = latest["results"]
+        project_type = results.get("projectType") or scenario.get("project_type") or "B"
+        project = storage.get_project(scenario.get("project_id", ""))
+
+        from services.export_service import export_opex_pdf
+        pdf_bytes = export_opex_pdf(
+            results, scenario.get("name", ""), project.get("name", "Project") if project else "Project", project_type,
+        )
+
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", scenario.get("name", "opex"))
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="OpEx-{safe_name}.pdf"',
+                "Content-Length": str(len(pdf_bytes)),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error exporting OpEx PDF: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to export OpEx PDF")
+
+
+@router.get("/scenarios/{scenario_id}/opex/export-excel")
+async def export_opex_excel_route(scenario_id: str):
+    try:
+        estimates = storage.get_opex_estimates_by_scenario(scenario_id)
+        latest = estimates[0] if estimates else None
+        if not latest or not latest.get("results"):
+            raise HTTPException(status_code=404, detail="No OpEx data found")
+
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        results = latest["results"]
+        project_type = results.get("projectType") or scenario.get("project_type") or "B"
+        project = storage.get_project(scenario.get("project_id", ""))
+
+        from services.export_service import export_opex_excel
+        xlsx_bytes = export_opex_excel(
+            results, scenario.get("name", ""), project.get("name", "Project") if project else "Project", project_type,
+        )
+
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", scenario.get("name", "opex"))
+        return Response(
+            content=xlsx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="OpEx-{safe_name}.xlsx"',
+                "Content-Length": str(len(xlsx_bytes)),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error exporting OpEx Excel: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to export OpEx Excel")
+
+
+# =========================================================================
 # Generation Stats
 # =========================================================================
 

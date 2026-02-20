@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 import * as XLSX from "xlsx";
-import type { MassBalanceResults, TreatmentStage, ADProcessStage, EquipmentItem, CapexResults, CapexLineItem, CapexSummary, VendorList } from "@shared/schema";
+import type { MassBalanceResults, TreatmentStage, ADProcessStage, EquipmentItem, CapexResults, CapexLineItem, CapexSummary, OpexResults, OpexLineItem, OpexSummary, VendorList } from "@shared/schema";
 
 function sanitize(text: string): string {
   if (!text) return "";
@@ -469,6 +469,170 @@ export function exportCapexExcel(
     ws["!cols"] = [
       { wch: 18 }, { wch: 20 }, { wch: 30 }, { wch: 6 },
       { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 10 },
+      { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 25 },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, "Line Items");
+  }
+
+  if (results.assumptions && results.assumptions.length > 0) {
+    const assData: string[][] = [
+      ["Assumptions"],
+      [],
+      ["Parameter", "Value", "Source"],
+      ...results.assumptions.map(a => [a.parameter, a.value, a.source]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(assData);
+    ws["!cols"] = [{ wch: 30 }, { wch: 25 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, ws, "Assumptions");
+  }
+
+  return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+}
+
+export function exportOpexPDF(
+  results: OpexResults,
+  scenarioName: string,
+  projectName: string,
+  projectType: string
+): Promise<Buffer> {
+  return new Promise((resolve) => {
+    const doc = new PDFDocument({ size: "letter", margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+
+    const leftMargin = 50;
+    const contentWidth = 512;
+    const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
+
+    doc.font("Helvetica-Bold").fontSize(18).fillColor("#1E3A5F")
+      .text("Annual Operating Cost Estimate", leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica").fontSize(10).fillColor("#666666")
+      .text(`Project: ${sanitize(projectName)}`, leftMargin, 75, { align: "center", width: contentWidth })
+      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 88, { align: "center", width: contentWidth })
+      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 101, { align: "center", width: contentWidth })
+      .text(`Cost Year: ${results.costYear || "Current"} | Currency: ${results.currency || "USD"}`, leftMargin, 114, { align: "center", width: contentWidth })
+      .text(`Generated: ${new Date().toLocaleDateString("en-US")}`, leftMargin, 127, { align: "center", width: contentWidth });
+
+    let y = 155;
+
+    const summary = results.summary;
+    if (summary) {
+      y = addSectionHeader(doc, "Cost Summary", y, leftMargin, contentWidth);
+      const sumRows: string[][] = [
+        ["Total Annual OpEx", fmtCurrency(summary.totalAnnualOpex)],
+        ["Labor", fmtCurrency(summary.totalLaborCost)],
+        ["Energy", fmtCurrency(summary.totalEnergyCost)],
+        ["Chemicals", fmtCurrency(summary.totalChemicalCost)],
+        ["Maintenance", fmtCurrency(summary.totalMaintenanceCost)],
+        ["Disposal", fmtCurrency(summary.totalDisposalCost)],
+        ["Other", fmtCurrency(summary.totalOtherCost)],
+        ["Revenue Offsets", fmtCurrency(summary.revenueOffsets)],
+        ["Net Annual OpEx", fmtCurrency(summary.netAnnualOpex)],
+      ];
+      if (summary.opexAsPercentOfCapex !== undefined) {
+        sumRows.push(["OpEx as % of CapEx", `${fmtNum(summary.opexAsPercentOfCapex)}%`]);
+      }
+      if (summary.opexPerUnit) {
+        sumRows.push([`OpEx per Unit (${summary.opexPerUnit.basis})`, `${fmtCurrency(summary.opexPerUnit.value)} / ${summary.opexPerUnit.unit}`]);
+      }
+      y = drawTable(doc, ["Item", "Amount"], sumRows, leftMargin, y, [300, 212], { headerBg: "#1E3A5F" });
+      y += 15;
+    }
+
+    if (results.lineItems && results.lineItems.length > 0) {
+      y = addSectionHeader(doc, "Line Items", y, leftMargin, contentWidth);
+      const liHeaders = ["Category", "Description", "Annual Cost ($)", "Unit Cost", "Unit Basis", "Scaling Basis", "Source"];
+      const liRows = results.lineItems.map(li => [
+        sanitize(li.category),
+        sanitize(li.description),
+        fmtCurrency(li.annualCost),
+        li.unitCost !== undefined ? fmtCurrency(li.unitCost) : "-",
+        sanitize(li.unitBasis || "-"),
+        sanitize(li.scalingBasis || "-"),
+        sanitize(li.source),
+      ]);
+      const liWidths = [72, 100, 72, 64, 64, 68, 72];
+      y = drawTable(doc, liHeaders, liRows, leftMargin, y, liWidths, { fontSize: 7 });
+      y += 15;
+    }
+
+    if (results.assumptions && results.assumptions.length > 0) {
+      y = addSectionHeader(doc, "Assumptions", y, leftMargin, contentWidth);
+      const assHeaders = ["Parameter", "Value", "Source"];
+      const assRows = results.assumptions.map(a => [sanitize(a.parameter), sanitize(a.value), sanitize(a.source)]);
+      y = drawTable(doc, assHeaders, assRows, leftMargin, y, [180, 162, 170]);
+    }
+
+    if (results.methodology) {
+      if (y > 700) { doc.addPage(); y = 50; }
+      y = addSectionHeader(doc, "Methodology", y, leftMargin, contentWidth);
+      doc.font("Helvetica").fontSize(9).fillColor("#333333")
+        .text(sanitize(results.methodology), leftMargin, y, { width: contentWidth, lineGap: 2 });
+    }
+
+    doc.end();
+  });
+}
+
+export function exportOpexExcel(
+  results: OpexResults,
+  scenarioName: string,
+  projectName: string,
+  projectType: string
+): Buffer {
+  const wb = XLSX.utils.book_new();
+  const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
+
+  const summary = results.summary;
+  if (summary) {
+    const sumData: (string | number)[][] = [
+      ["Annual Operating Cost Estimate - Summary"],
+      [`Project: ${projectName}`, `Scenario: ${scenarioName}`, `Type: ${projectType} - ${typeLabels[projectType] || ""}`],
+      [`Cost Year: ${results.costYear || "Current"}`, `Currency: ${results.currency || "USD"}`],
+      [],
+      ["Item", "Amount ($)"],
+      ["Total Annual OpEx", summary.totalAnnualOpex],
+      ["Labor", summary.totalLaborCost],
+      ["Energy", summary.totalEnergyCost],
+      ["Chemicals", summary.totalChemicalCost],
+      ["Maintenance", summary.totalMaintenanceCost],
+      ["Disposal", summary.totalDisposalCost],
+      ["Other", summary.totalOtherCost],
+      ["Revenue Offsets", summary.revenueOffsets],
+      ["Net Annual OpEx", summary.netAnnualOpex],
+    ];
+    if (summary.opexAsPercentOfCapex !== undefined) {
+      sumData.push(["OpEx as % of CapEx", summary.opexAsPercentOfCapex]);
+    }
+    if (summary.opexPerUnit) {
+      sumData.push([`OpEx per Unit (${summary.opexPerUnit.basis} - ${summary.opexPerUnit.unit})`, summary.opexPerUnit.value]);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(sumData);
+    ws["!cols"] = [{ wch: 40 }, { wch: 20 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, ws, "Summary");
+  }
+
+  if (results.lineItems && results.lineItems.length > 0) {
+    const liData: (string | number)[][] = [
+      ["Line Items"],
+      [],
+      ["Category", "Description", "Annual Cost ($)", "Unit Cost ($)", "Unit Basis", "Scaling Basis", "Cost Basis", "Source", "Notes"],
+      ...results.lineItems.map(li => [
+        li.category,
+        li.description,
+        li.annualCost,
+        li.unitCost ?? "",
+        li.unitBasis ?? "",
+        li.scalingBasis ?? "",
+        li.costBasis,
+        li.source,
+        li.notes,
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(liData);
+    ws["!cols"] = [
+      { wch: 18 }, { wch: 30 }, { wch: 15 }, { wch: 15 },
       { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 25 },
     ];
     XLSX.utils.book_append_sheet(wb, ws, "Line Items");

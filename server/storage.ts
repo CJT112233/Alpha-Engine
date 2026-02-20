@@ -19,6 +19,7 @@ import {
   promptTemplates,
   massBalanceRuns,
   capexEstimates,
+  opexEstimates,
   generationLogs,
   type Project,
   type InsertProject,
@@ -40,6 +41,8 @@ import {
   type InsertMassBalanceRun,
   type CapexEstimate,
   type InsertCapexEstimate,
+  type OpexEstimate,
+  type InsertOpexEstimate,
   type GenerationLog,
   type InsertGenerationLog,
 } from "@shared/schema";
@@ -118,6 +121,12 @@ export interface IStorage {
   getCapexEstimate(id: string): Promise<CapexEstimate | undefined>;
   createCapexEstimate(estimate: InsertCapexEstimate): Promise<CapexEstimate>;
   updateCapexEstimate(id: string, updates: Partial<InsertCapexEstimate>): Promise<CapexEstimate | undefined>;
+
+  // OpEx Estimates
+  getOpexEstimatesByScenario(scenarioId: string): Promise<OpexEstimate[]>;
+  getOpexEstimate(id: string): Promise<OpexEstimate | undefined>;
+  createOpexEstimate(estimate: InsertOpexEstimate): Promise<OpexEstimate>;
+  updateOpexEstimate(id: string, updates: Partial<InsertOpexEstimate>): Promise<OpexEstimate | undefined>;
 
   // Generation Logs
   getAllGenerationLogs(): Promise<GenerationLog[]>;
@@ -470,6 +479,37 @@ export class DatabaseStorage implements IStorage {
       .update(capexEstimates)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(capexEstimates.id, id))
+      .returning();
+    return result[0];
+  }
+
+  // ============================================================================
+  // OPEX ESTIMATES
+  // ============================================================================
+
+  async getOpexEstimatesByScenario(scenarioId: string): Promise<OpexEstimate[]> {
+    return db
+      .select()
+      .from(opexEstimates)
+      .where(eq(opexEstimates.scenarioId, scenarioId))
+      .orderBy(desc(opexEstimates.createdAt));
+  }
+
+  async getOpexEstimate(id: string): Promise<OpexEstimate | undefined> {
+    const result = await db.select().from(opexEstimates).where(eq(opexEstimates.id, id));
+    return result[0];
+  }
+
+  async createOpexEstimate(estimate: InsertOpexEstimate): Promise<OpexEstimate> {
+    const result = await db.insert(opexEstimates).values(estimate).returning();
+    return result[0];
+  }
+
+  async updateOpexEstimate(id: string, updates: Partial<InsertOpexEstimate>): Promise<OpexEstimate | undefined> {
+    const result = await db
+      .update(opexEstimates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(opexEstimates.id, id))
       .returning();
     return result[0];
   }

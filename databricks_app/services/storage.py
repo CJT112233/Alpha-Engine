@@ -129,6 +129,10 @@ class DatabricksStorage:
         return self._t("project_intakes", "capex_estimates")
 
     @property
+    def _opex_estimates(self):
+        return self._t("project_intakes", "opex_estimates")
+
+    @property
     def _generation_logs(self):
         return self._t("project_intakes", "generation_logs")
 
@@ -963,6 +967,109 @@ class DatabricksStorage:
                 if not row:
                     return None
                 return _deserialize_fields(_row_to_dict(cur, row), self.JSON_FIELDS_CAPEX)
+
+    # ========================================================================
+    # OPEX ESTIMATES
+    # ========================================================================
+
+    JSON_FIELDS_OPEX = ["input_snapshot", "results", "overrides", "locks"]
+
+    def get_opex_estimates_by_scenario(self, scenario_id: str) -> list:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT * FROM {self._opex_estimates} "
+                    "WHERE scenario_id = ? ORDER BY created_at DESC",
+                    (scenario_id,),
+                )
+                rows = cur.fetchall()
+                return [
+                    _deserialize_fields(_row_to_dict(cur, r), self.JSON_FIELDS_OPEX)
+                    for r in rows
+                ]
+
+    def get_opex_estimate(self, estimate_id: str) -> Optional[dict]:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT * FROM {self._opex_estimates} WHERE id = ?",
+                    (estimate_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return _deserialize_fields(_row_to_dict(cur, row), self.JSON_FIELDS_OPEX)
+
+    def create_opex_estimate(
+        self,
+        scenario_id: str,
+        mass_balance_run_id: str,
+        capex_estimate_id: str = None,
+        version: str = "1",
+        status: str = "draft",
+        input_snapshot=None,
+        results=None,
+        overrides=None,
+        locks=None,
+    ) -> dict:
+        estimate_id = str(uuid.uuid4())
+        now = datetime.utcnow()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO {self._opex_estimates} "
+                    "(id, scenario_id, mass_balance_run_id, capex_estimate_id, version, status, "
+                    "input_snapshot, results, overrides, locks, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        estimate_id, scenario_id, mass_balance_run_id, capex_estimate_id,
+                        version, status,
+                        _serialize_json(input_snapshot),
+                        _serialize_json(results),
+                        _serialize_json(overrides),
+                        _serialize_json(locks),
+                        now, now,
+                    ),
+                )
+                cur.execute(
+                    f"SELECT * FROM {self._opex_estimates} WHERE id = ?",
+                    (estimate_id,),
+                )
+                row = cur.fetchone()
+                return _deserialize_fields(_row_to_dict(cur, row), self.JSON_FIELDS_OPEX)
+
+    def update_opex_estimate(self, estimate_id: str, updates: dict) -> Optional[dict]:
+        if not updates:
+            return self.get_opex_estimate(estimate_id)
+        set_parts = []
+        values = []
+        for key in ["status", "version", "capex_estimate_id"]:
+            if key in updates:
+                set_parts.append(f"{key} = ?")
+                values.append(updates[key])
+        for key in ["input_snapshot", "results", "overrides", "locks"]:
+            if key in updates:
+                set_parts.append(f"{key} = ?")
+                values.append(_serialize_json(updates[key]))
+        set_parts.append("updated_at = ?")
+        values.append(datetime.utcnow())
+        values.append(estimate_id)
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE {self._opex_estimates} "
+                    f"SET {', '.join(set_parts)} WHERE id = ?",
+                    tuple(values),
+                )
+                cur.execute(
+                    f"SELECT * FROM {self._opex_estimates} WHERE id = ?",
+                    (estimate_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return _deserialize_fields(_row_to_dict(cur, row), self.JSON_FIELDS_OPEX)
 
     # ========================================================================
     # GENERATION LOGS

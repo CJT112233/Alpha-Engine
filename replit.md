@@ -47,7 +47,14 @@ Unit conventions (US-based):
   - Summary includes total equipment cost, installed cost, contingency, engineering, and total project cost with cost-per-unit metrics
   - Frontend renders editable/lockable line items with inline editing, override badges, and recompute with locked value preservation
   - Navigation: "Generate CapEx" button appears on mass balance page when mass balance is finalized
-- **PDF & Excel Export**: Both mass balance and CapEx pages include an Export dropdown with PDF and Excel download options. Export service in `server/services/exportService.ts` generates professional multi-section PDFs (with table headers repeated on page breaks) and multi-sheet Excel workbooks. API endpoints at `/api/scenarios/:scenarioId/mass-balance/export-pdf`, `export-excel`, `/capex/export-pdf`, `export-excel`.
+- **AI-Powered OpEx Estimation**: Annual operating cost estimates generated from finalized mass balance equipment lists and CapEx data using AI with type-specific prompts. Auto-triggered in background after CapEx generation. Results stored in `opex_estimates` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/opex`.
+  - Supports all four project types with type-specific prompts (opex_type_a through opex_type_d)
+  - AI generation service in server/services/opexAI.ts and databricks_app/services/opex_ai.py
+  - Categories: Labor, Energy, Chemical, Maintenance, Disposal, Other, Revenue Offset (negative for revenue)
+  - Summary includes total annual OpEx, category breakdowns, revenue offsets, net annual OpEx, OpEx per unit, OpEx as % of CapEx
+  - Frontend renders editable/lockable line items with inline editing, override badges, category color coding
+  - Navigation: "OpEx" button appears on CapEx page; auto-generates after CapEx generation completes
+- **PDF & Excel Export**: Mass balance, CapEx, and OpEx pages include Export dropdowns with PDF and Excel download options. Export service in `server/services/exportService.ts` generates professional multi-section PDFs (with table headers repeated on page breaks) and multi-sheet Excel workbooks. API endpoints at `/api/scenarios/:scenarioId/mass-balance/export-pdf`, `export-excel`, `/capex/export-pdf`, `export-excel`, `/opex/export-pdf`, `export-excel`.
 
 ### Technical Implementation
 - **Frontend**: React 18 with TypeScript, Wouter for routing, TanStack Query for state, shadcn/ui and Tailwind CSS for UI, React Hook Form with Zod for forms, Vite for building.
@@ -62,10 +69,11 @@ The project is migrating to a Databricks environment with a FastAPI (Python) bac
 **Ported Databricks Services (Python equivalents of Node.js features):**
 - **Mass Balance**: AI generation (`databricks_app/services/mass_balance_ai.py`) + deterministic calculators for all 4 types (`mass_balance_type_a.py` through `mass_balance_type_d.py`). AI-first with deterministic fallback.
 - **CapEx**: AI generation (`databricks_app/services/capex_ai.py`) from finalized mass balance equipment lists.
-- **Export**: PDF (ReportLab) and Excel (openpyxl) export for both mass balance and CapEx (`databricks_app/services/export_service.py`).
-- **Storage**: CRUD for mass_balance_runs, capex_estimates, generation_logs tables (`databricks_app/services/storage.py`).
-- **Prompts**: 8 type-specific prompt templates (mass_balance_type_a/b/c/d, capex_type_a/b/c/d) in `databricks_app/knowledge_base/default_prompts.py`.
-- **API Routes**: All mass balance, CapEx, export, generation stats, and calculator endpoints in `databricks_app/api/routes.py`.
+- **OpEx**: AI generation (`databricks_app/services/opex_ai.py`) from finalized mass balance and CapEx data. Auto-triggered after CapEx.
+- **Export**: PDF (ReportLab) and Excel (openpyxl) export for mass balance, CapEx, and OpEx (`databricks_app/services/export_service.py`).
+- **Storage**: CRUD for mass_balance_runs, capex_estimates, opex_estimates, generation_logs tables (`databricks_app/services/storage.py`).
+- **Prompts**: 12 type-specific prompt templates (mass_balance_type_a/b/c/d, capex_type_a/b/c/d, opex_type_a/b/c/d) in `databricks_app/knowledge_base/default_prompts.py`.
+- **API Routes**: All mass balance, CapEx, OpEx, export, generation stats, and calculator endpoints in `databricks_app/api/routes.py`.
 
 ## External Dependencies
 

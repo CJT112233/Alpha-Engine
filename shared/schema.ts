@@ -479,6 +479,83 @@ export type InsertCapexEstimate = z.infer<typeof insertCapexEstimateSchema>;
 export type CapexEstimate = typeof capexEstimates.$inferSelect;
 
 /**
+ * OpEx line item: Individual annual operating cost category.
+ */
+export type OpexLineItem = {
+  id: string;
+  category: string;
+  description: string;
+  annualCost: number;
+  unitCost?: number;
+  unitBasis?: string;
+  scalingBasis?: string;
+  percentOfRevenue?: number;
+  costBasis: string;
+  source: string;
+  notes: string;
+  isOverridden: boolean;
+  isLocked: boolean;
+};
+
+export type OpexSummary = {
+  totalAnnualOpex: number;
+  totalLaborCost: number;
+  totalEnergyCost: number;
+  totalChemicalCost: number;
+  totalMaintenanceCost: number;
+  totalDisposalCost: number;
+  totalOtherCost: number;
+  revenueOffsets: number;
+  netAnnualOpex: number;
+  opexPerUnit?: { value: number; unit: string; basis: string };
+  opexAsPercentOfCapex?: number;
+};
+
+export type OpexResults = {
+  projectType?: string;
+  lineItems: OpexLineItem[];
+  summary: OpexSummary;
+  assumptions: Array<{ parameter: string; value: string; source: string }>;
+  warnings: Array<{ field: string; message: string; severity: "error" | "warning" | "info" }>;
+  costYear: string;
+  currency: string;
+  methodology: string;
+};
+
+export type OpexOverrides = Record<string, {
+  value: string;
+  unit: string;
+  overriddenBy: string;
+  reason: string;
+  originalValue: string;
+}>;
+
+export type OpexLocks = Record<string, boolean>;
+
+/**
+ * OpEx Estimates table: Versioned annual operating cost estimates for scenarios.
+ * Generated from confirmed mass balance and CapEx data using AI.
+ */
+export const opexEstimates = pgTable("opex_estimates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  scenarioId: varchar("scenario_id").notNull().references(() => scenarios.id, { onDelete: "cascade" }),
+  massBalanceRunId: varchar("mass_balance_run_id").notNull().references(() => massBalanceRuns.id, { onDelete: "cascade" }),
+  capexEstimateId: varchar("capex_estimate_id").references(() => capexEstimates.id, { onDelete: "set null" }),
+  version: text("version").notNull().default("1"),
+  status: text("status").notNull().default("draft"),
+  inputSnapshot: jsonb("input_snapshot"),
+  results: jsonb("results").$type<OpexResults>(),
+  overrides: jsonb("overrides").$type<OpexOverrides>(),
+  locks: jsonb("locks").$type<OpexLocks>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertOpexEstimateSchema = createInsertSchema(opexEstimates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOpexEstimate = z.infer<typeof insertOpexEstimateSchema>;
+export type OpexEstimate = typeof opexEstimates.$inferSelect;
+
+/**
  * Generation Logs table: Tracks timing and metadata for AI-generated documents.
  * Records how long each generation takes, which model was used, and links to the project/scenario.
  */
