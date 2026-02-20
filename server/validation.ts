@@ -817,6 +817,13 @@ const FLOW_AVG_PATTERNS = [
   /\binfluent\s*flow\b/i,
 ];
 
+const FLOW_MIN_PATTERNS = [
+  /\bmin(?:imum)?\s*(?:daily\s*)?flow/i,
+  /\blow\s*(?:daily\s*)?flow/i,
+  /\bflow\s*\(min/i, /\bflow\s*-\s*min/i,
+  /\bmin\s*flow/i,
+];
+
 const FLOW_PEAK_PATTERNS = [
   /\bpeak\s*(?:daily\s*)?flow/i, /\bpeak\s*(?:hourly\s*)?flow/i,
   /\bpdf\b/i, /\bphf\b/i, /\bpwwf\b/i, /\bmdwf\b/i,
@@ -842,8 +849,9 @@ function specMatchesDriver(
 function detectFlowInSpecs(
   feedstocks: FeedstockEntry[],
   extractedParams: Array<{ name: string; value?: string | null; unit?: string | null; category?: string }>,
-): { hasAvgFlow: boolean; hasPeakFlow: boolean } {
+): { hasAvgFlow: boolean; hasMinFlow: boolean; hasPeakFlow: boolean } {
   let hasAvgFlow = false;
+  let hasMinFlow = false;
   let hasPeakFlow = false;
   let hasGenericFlow = false;
 
@@ -852,6 +860,7 @@ function detectFlowInSpecs(
       for (const [, spec] of Object.entries(fs.feedstockSpecs)) {
         const dn = spec.displayName;
         if (FLOW_PEAK_PATTERNS.some(p => p.test(dn))) hasPeakFlow = true;
+        else if (FLOW_MIN_PATTERNS.some(p => p.test(dn))) hasMinFlow = true;
         else if (FLOW_AVG_PATTERNS.some(p => p.test(dn))) hasAvgFlow = true;
         else if (FLOW_GENERIC_PATTERN.test(dn)) hasGenericFlow = true;
       }
@@ -870,6 +879,7 @@ function detectFlowInSpecs(
   for (const p of feedstockParams) {
     const text = `${p.name} ${p.value || ""}`;
     if (FLOW_PEAK_PATTERNS.some(pat => pat.test(text))) hasPeakFlow = true;
+    else if (FLOW_MIN_PATTERNS.some(pat => pat.test(text))) hasMinFlow = true;
     else if (FLOW_AVG_PATTERNS.some(pat => pat.test(text))) hasAvgFlow = true;
     else if (FLOW_GENERIC_PATTERN.test(text)) hasGenericFlow = true;
   }
@@ -878,7 +888,7 @@ function detectFlowInSpecs(
     hasAvgFlow = true;
   }
 
-  return { hasAvgFlow, hasPeakFlow };
+  return { hasAvgFlow, hasMinFlow, hasPeakFlow };
 }
 
 interface IndustryDefaults {
@@ -954,10 +964,11 @@ export function validateTypeADesignDrivers(
     targetFeedstockIndices.push(0);
   }
 
-  const { hasAvgFlow, hasPeakFlow } = detectFlowInSpecs(feedstocks, extractedParams);
+  const { hasAvgFlow, hasMinFlow, hasPeakFlow } = detectFlowInSpecs(feedstocks, extractedParams);
   const missingDrivers: string[] = [];
 
   if (!hasAvgFlow) missingDrivers.push("Average Flow");
+  if (!hasMinFlow) missingDrivers.push("Min Flow");
   if (!hasPeakFlow) missingDrivers.push("Peak Flow");
 
   const feedstockParams = extractedParams.filter(p => {
@@ -996,7 +1007,7 @@ export function validateTypeADesignDrivers(
 
   let updatedFeedstocks = [...feedstocks];
 
-  const AUTO_POPULATE_DRIVERS = new Set(["Peak Flow", "BOD", "COD", "TSS", "FOG", "TKN", "pH"]);
+  const AUTO_POPULATE_DRIVERS = new Set(["Min Flow", "Peak Flow", "BOD", "COD", "TSS", "FOG", "TKN", "pH"]);
   const driversToPopulate = missingDrivers.filter(d => AUTO_POPULATE_DRIVERS.has(d));
 
   if (driversToPopulate.length > 0) {
@@ -1016,6 +1027,20 @@ export function validateTypeADesignDrivers(
         let unit: string;
 
         switch (missing) {
+          case "Min Flow": {
+            const avgFlowMin = fs.feedstockVolume ? parseFloat(fs.feedstockVolume.replace(/,/g, "")) : null;
+            const avgUnitMin = fs.feedstockUnit || "GPD";
+            if (avgFlowMin && !isNaN(avgFlowMin)) {
+              value = Math.round(avgFlowMin * 0.6).toLocaleString();
+              unit = avgUnitMin;
+            } else {
+              value = "0.6x average";
+              unit = "multiplier";
+            }
+            key = "minFlowRate";
+            displayName = "Min Flow Rate";
+            break;
+          }
           case "Peak Flow": {
             const avgFlow = fs.feedstockVolume ? parseFloat(fs.feedstockVolume.replace(/,/g, "")) : null;
             const avgUnit = fs.feedstockUnit || "GPD";
@@ -1116,7 +1141,7 @@ export function validateTypeADesignDrivers(
     warnings.push({
       field: "Core Design Drivers",
       section: `${typeLabel} Completeness`,
-      message: `Missing core design driver(s): ${stillMissing.join(", ")}. Wastewater projects must surface Flow (avg + peak), BOD, COD, TSS, FOG, TKN, and pH in the Feedstock/Influent section.`,
+      message: `Missing core design driver(s): ${stillMissing.join(", ")}. Wastewater projects must surface Flow (avg + min + peak), BOD, COD, TSS, FOG, TKN, and pH in the Feedstock/Influent section.`,
       severity: "error",
     });
 
@@ -1134,7 +1159,7 @@ export function validateTypeADesignDrivers(
     warnings.push({
       field: "Core Design Drivers",
       section: `${typeLabel} Completeness`,
-      message: "All core design drivers present: Flow (avg + peak), BOD, COD, TSS, FOG, TKN, pH.",
+      message: "All core design drivers present: Flow (avg + min + peak), BOD, COD, TSS, FOG, TKN, pH.",
       severity: "info",
     });
   }

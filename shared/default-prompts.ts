@@ -157,13 +157,17 @@ Focus on questions that would help clarify:
 - Operational constraints (hours of operation, existing infrastructure, budget range)
 - Liquid handling pathway (discharge to WWTP, land application, on-site treatment)
 
+TYPE A (WASTEWATER) PRIORITY — FLOW RANGE:
+For Type A (wastewater treatment) projects, if the user provides an average flow rate but does NOT provide minimum and/or maximum (peak) flow rates, you MUST include a question asking about the flow range. This is critical for equipment sizing. Example: "You've provided an average flow of X GPD. What are the minimum and maximum (peak) daily flow rates? If you don't have exact data, estimates or seasonal patterns would help us size equipment properly."
+
 RULES:
 1. Ask exactly 3 questions - no more, no less.
 2. Each question should target a DIFFERENT aspect of the project.
 3. Questions should be specific and actionable - not vague or generic.
 4. Tailor questions to what is actually MISSING from the provided inputs. Don't ask about things already clearly stated.
 5. Keep questions concise (1-2 sentences each).
-6. Return ONLY valid JSON in this exact format:
+6. For Type A projects: if average flow is given but min/max flow is missing, one of the 3 questions MUST ask about flow range.
+7. Return ONLY valid JSON in this exact format:
 
 {
   "questions": [
@@ -313,13 +317,14 @@ The tilde (~) or "about" means the user is telling you their approximate value �
 You MUST ONLY extract the following parameter types under category "input":
   - Influent Type (industry/source description)
   - Flow Rate (average daily flow in GPD, MGD, m³/d, or similar volumetric flow units)
+  - Min Flow Rate (minimum daily flow — ALWAYS extract or estimate if not stated)
   - Peak Flow Rate (peak/max flow — ALWAYS extract or estimate if not stated)
-  - BOD or BOD5 (mg/L)
-  - COD (mg/L)
+  - BOD or BOD5 (mg/L) — ALWAYS also compute and include mass loading in ppd
+  - COD (mg/L) — ALWAYS also compute and include mass loading in ppd
   - TSS — Total Suspended Solids (mg/L) — this is NOT the same as TS%
   - FOG — Fats, Oils & Grease (mg/L) — ALWAYS extract or estimate if not stated
   - pH or pH Range — ALWAYS extract or estimate if not stated
-  - TKN or Total Nitrogen (mg/L)
+  - TKN or Total Nitrogen (TN) (mg/L) — ALWAYS also compute and include mass loading in ppd
   - NH3-N or Ammonia Nitrogen (mg/L)
   - Total Phosphorus (mg/L)
   - TDS — Total Dissolved Solids (mg/L)
@@ -329,6 +334,24 @@ You MUST ONLY extract the following parameter types under category "input":
   - Current treatment level / existing infrastructure
 
 If a parameter does NOT appear in the list above, it DOES NOT belong in "input".
+
+═══════════════════════════════════════════════════════════
+  MASS LOADING (ppd) — ALWAYS compute for BOD, COD, TN
+═══════════════════════════════════════════════════════════
+For BOD, COD, and TN (TKN/Total Nitrogen), you MUST ALWAYS include BOTH:
+  1. The concentration value in mg/L (as a separate parameter)
+  2. The mass loading in ppd (pounds per day) as an ADDITIONAL separate parameter
+
+Compute ppd using: ppd = concentration (mg/L) × average flow (MGD) × 8.34
+  - Where 8.34 is the standard conversion factor (lbs per gallon of water per million)
+  - Example: BOD = 4,500 mg/L, Flow = 0.8 MGD → BOD Loading = 4,500 × 0.8 × 8.34 = 30,024 ppd
+
+Name the mass loading parameters like this:
+  - "Influent 1 BOD Loading" with unit "ppd"
+  - "Influent 1 COD Loading" with unit "ppd"
+  - "Influent 1 TN Loading" with unit "ppd"
+
+These mass loading parameters should appear immediately after their corresponding mg/L parameters.
 
 ═══════════════════════════════════════════════════════════
   REJECTION LIST — NEVER extract these for Type A projects
@@ -354,15 +377,19 @@ Even if the user's text mentions some of these concepts, DO NOT extract them. Th
 ═══════════════════════════════════════════════════════════
   MANDATORY DESIGN DRIVERS — Must appear in every Type A extraction
 ═══════════════════════════════════════════════════════════
-Every Type A extraction MUST include ALL of these six design drivers in the "input" category. If the user's text provides them, extract the stated values. If the user's text does NOT provide them, you MUST estimate reasonable values based on the industry type and state confidence as "low":
+Every Type A extraction MUST include ALL of these design drivers in the "input" category. If the user's text provides them, extract the stated values. If the user's text does NOT provide them, you MUST estimate reasonable values based on the industry type and state confidence as "low":
 
 1. Flow Rate (average) — e.g., GPD or MGD. If not stated, estimate from industry type.
-2. Peak Flow Rate — typically 1.5x to 3x average for food processing. If not stated, estimate as 2x average flow.
-3. BOD (mg/L) — if not stated, estimate from industry type (e.g., dairy 2,000-6,000 mg/L, meat 1,500-5,000 mg/L, produce 500-3,000 mg/L).
-4. COD (mg/L) — if not stated and BOD is known, estimate COD ≈ 1.5-2.0x BOD. If neither stated, estimate from industry type.
-5. TSS (mg/L) — if not stated, estimate from industry type (e.g., dairy 500-2,000 mg/L, meat 800-3,000 mg/L).
-6. FOG (mg/L) — if not stated, estimate from industry type (e.g., dairy 200-800 mg/L, meat 100-500 mg/L, produce 50-200 mg/L).
-7. pH — if not stated, estimate from industry type (e.g., dairy 4-7, meat 6-7.5, produce 4-6, beverage 3-6).
+2. Min Flow Rate — minimum daily flow. If not stated, estimate as 0.5x to 0.7x average flow for food processing (seasonal/batch variability). Typical factor: 0.6x average.
+3. Peak Flow Rate (max) — typically 1.5x to 3x average for food processing. If not stated, estimate as 2x average flow.
+4. BOD (mg/L) — if not stated, estimate from industry type (e.g., dairy 2,000-6,000 mg/L, meat 1,500-5,000 mg/L, produce 500-3,000 mg/L).
+5. BOD Loading (ppd) — ALWAYS compute: BOD (mg/L) × avg flow (MGD) × 8.34. Include as separate parameter.
+6. COD (mg/L) — if not stated and BOD is known, estimate COD ≈ 1.5-2.0x BOD. If neither stated, estimate from industry type.
+7. COD Loading (ppd) — ALWAYS compute: COD (mg/L) × avg flow (MGD) × 8.34. Include as separate parameter.
+8. TSS (mg/L) — if not stated, estimate from industry type (e.g., dairy 500-2,000 mg/L, meat 800-3,000 mg/L).
+9. FOG (mg/L) — if not stated, estimate from industry type (e.g., dairy 200-800 mg/L, meat 100-500 mg/L, produce 50-200 mg/L).
+10. pH — if not stated, estimate from industry type (e.g., dairy 4-7, meat 6-7.5, produce 4-6, beverage 3-6).
+11. TN Loading (ppd) — if TKN/TN is available, ALWAYS compute: TN (mg/L) × avg flow (MGD) × 8.34. Include as separate parameter.
 
 Mark estimated values with confidence "low" to distinguish them from stated values.
 
@@ -405,16 +432,21 @@ If there is only one influent, you may omit the number prefix or use "Influent 1
 EXAMPLE INPUT:
 "A potato processing facility in Hermiston, OR generates 800,000 GPD of high-strength wastewater with BOD of 4,500 mg/L, COD of 7,200 mg/L, and TSS of 2,200 mg/L. The facility needs to meet their NPDES direct discharge permit limits of BOD < 30 mg/L and TSS < 30 mg/L. Organic loading is high enough to support an anaerobic reactor with biogas recovery. The site has 12 acres available and is 2 miles from a gas interconnect."
 
-EXAMPLE OUTPUT (notice: NO VS/TS, NO BMP, NO C:N — only mg/L analytes + flow):
+EXAMPLE OUTPUT (notice: NO VS/TS, NO BMP, NO C:N — only mg/L analytes + flow + ppd mass loadings):
 {"parameters": [
   {"category": "input", "name": "Influent 1 Type", "value": "Potato processing wastewater", "unit": null, "confidence": "high"},
   {"category": "input", "name": "Influent 1 Flow Rate", "value": "800,000", "unit": "GPD", "confidence": "high"},
+  {"category": "input", "name": "Influent 1 Min Flow Rate", "value": "480,000", "unit": "GPD", "confidence": "low"},
   {"category": "input", "name": "Influent 1 Peak Flow Rate", "value": "1,600,000", "unit": "GPD", "confidence": "low"},
   {"category": "input", "name": "Influent 1 BOD", "value": "4,500", "unit": "mg/L", "confidence": "high"},
+  {"category": "input", "name": "Influent 1 BOD Loading", "value": "30,024", "unit": "ppd", "confidence": "high"},
   {"category": "input", "name": "Influent 1 COD", "value": "7,200", "unit": "mg/L", "confidence": "high"},
+  {"category": "input", "name": "Influent 1 COD Loading", "value": "48,038", "unit": "ppd", "confidence": "high"},
   {"category": "input", "name": "Influent 1 TSS", "value": "2,200", "unit": "mg/L", "confidence": "high"},
   {"category": "input", "name": "Influent 1 FOG", "value": "150-400", "unit": "mg/L", "confidence": "low"},
   {"category": "input", "name": "Influent 1 pH", "value": "5.5-7.0", "unit": null, "confidence": "low"},
+  {"category": "input", "name": "Influent 1 TKN", "value": "120", "unit": "mg/L", "confidence": "low"},
+  {"category": "input", "name": "Influent 1 TN Loading", "value": "801", "unit": "ppd", "confidence": "low"},
   {"category": "location", "name": "City", "value": "Hermiston", "unit": null, "confidence": "high"},
   {"category": "location", "name": "State", "value": "Oregon", "unit": null, "confidence": "high"},
   {"category": "location", "name": "Available Land", "value": "12", "unit": "acres", "confidence": "high"},
@@ -427,12 +459,14 @@ EXAMPLE OUTPUT (notice: NO VS/TS, NO BMP, NO C:N — only mg/L analytes + flow):
 ]}
 
 FINAL SELF-CHECK — Before returning your JSON, verify:
-□ Every "input" parameter uses mg/L or volumetric flow units (GPD/MGD/m³/d) — no %, no tons, no kg
+□ Every "input" parameter uses mg/L or volumetric flow units (GPD/MGD/m³/d) or ppd for mass loadings — no %, no tons, no kg
 □ NO VS/TS Ratio, NO BMP, NO C:N Ratio, NO Moisture%, NO Delivery Form anywhere in output
-□ All 7 mandatory design drivers are present (Flow avg, Flow peak, BOD, COD, TSS, FOG, pH)
+□ All mandatory design drivers present: Flow avg, Flow min, Flow peak, BOD (mg/L + ppd), COD (mg/L + ppd), TSS, FOG, pH
+□ TN/TKN loading in ppd is included when TN/TKN concentration is available
 □ Missing design drivers have been estimated with confidence "low"
 □ TSS is in mg/L (not converted to TS%)
 □ Effluent limits and removal efficiencies are separate parameters
+□ Mass loadings (ppd) computed correctly: concentration (mg/L) × avg flow (MGD) × 8.34
 
 RULES:
 - Extract every quantitative value, date, location, material, cost, and requirement mentioned.

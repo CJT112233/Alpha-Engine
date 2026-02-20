@@ -147,6 +147,53 @@ function CollapsibleSection({
  * Supports inline editing, deletion, confirmation toggles, and provenance tooltips.
  * Groups specs by category: identity, physical, biochemical, contaminants, extended.
  */
+function computePpd(concentrationMgL: number, flowGPD: number): number {
+  const flowMGD = flowGPD / 1_000_000;
+  return concentrationMgL * flowMGD * 8.34;
+}
+
+const CONCENTRATION_KEYS = new Set(["bod", "bod5", "cod", "tkn", "totalnitrogen", "tn"]);
+
+function isConcentrationParam(key: string, displayName: string): boolean {
+  const k = key.toLowerCase();
+  const d = displayName.toLowerCase();
+  if (/loading/i.test(k) || /loading/i.test(d) || /ppd/i.test(k) || /ppd/i.test(d)) return false;
+  if (CONCENTRATION_KEYS.has(k)) return true;
+  return /\bbod5?\b/.test(d) || /\bcod\b/.test(d) || /\btkn\b/.test(d) || /\btotal\s*nitrogen\b/.test(d);
+}
+
+function flowToGPD(val: number, unit: string): number | null {
+  const u = unit.toLowerCase().trim();
+  if (/^mgd$/i.test(u)) return val * 1_000_000;
+  if (/^gpd$/i.test(u)) return val;
+  if (/^gpm$/i.test(u)) return val * 1440;
+  if (/^m[³3]\/d$/i.test(u) || /^m3d$/i.test(u)) return val * 264.172;
+  if (/^l\/d$/i.test(u) || /^lpd$/i.test(u)) return val * 0.264172;
+  return null;
+}
+
+function extractAvgFlowGPD(specs: Record<string, EnrichedFeedstockSpec>, feedstockVolume?: string, feedstockUnit?: string): number | null {
+  for (const [key, spec] of Object.entries(specs)) {
+    const k = key.toLowerCase();
+    const dn = (spec.displayName || key).toLowerCase();
+    if (/min|peak|max/.test(dn) || /min|peak|max/.test(k)) continue;
+    if (/flow\s*rate|avg.*flow|average.*flow|influent.*flow|design.*flow/.test(dn) || /^flow$/i.test(dn) || /^flow$/i.test(k)) {
+      const val = parseFloat(String(spec.value).replace(/,/g, ""));
+      if (isNaN(val)) continue;
+      const result = flowToGPD(val, spec.unit || "GPD");
+      if (result !== null) return result;
+    }
+  }
+  if (feedstockVolume) {
+    const val = parseFloat(feedstockVolume.replace(/,/g, ""));
+    if (!isNaN(val)) {
+      const result = flowToGPD(val, feedstockUnit || "GPD");
+      if (result !== null) return result;
+    }
+  }
+  return null;
+}
+
 function FeedstockSpecsTable({
   specs,
   isEditing,
@@ -163,6 +210,9 @@ function FeedstockSpecsTable({
   onDeleteNewSpec,
   onUpdateNewSpec,
   testIdPrefix = "",
+  projectType,
+  feedstockVolume,
+  feedstockUnit,
 }: {
   specs: Record<string, EnrichedFeedstockSpec>;
   isEditing: boolean;
@@ -179,7 +229,12 @@ function FeedstockSpecsTable({
   onDeleteNewSpec?: (index: number) => void;
   onUpdateNewSpec?: (index: number, field: string, value: string) => void;
   testIdPrefix?: string;
+  projectType?: string;
+  feedstockVolume?: string;
+  feedstockUnit?: string;
 }) {
+  const avgFlowGPD = projectType === "A" ? extractAvgFlowGPD(specs, feedstockVolume, feedstockUnit) : null;
+
   const grouped: Record<string, Array<[string, EnrichedFeedstockSpec]>> = {};
 
   for (const [key, spec] of Object.entries(specs)) {
@@ -249,6 +304,18 @@ function FeedstockSpecsTable({
                           ) : (
                             <span className="text-sm" data-testid={`text-spec-${key}`}>
                               {formatDisplayValue(typeof spec.value === "object" ? String((spec.value as any)?.value ?? "") : spec.value)}{spec.unit ? ` ${spec.unit}` : ""}
+                              {avgFlowGPD && spec.unit && /mg\/l/i.test(spec.unit) && isConcentrationParam(key, spec.displayName || key) && (() => {
+                                const conc = parseFloat(String(spec.value).replace(/,/g, ""));
+                                if (!isNaN(conc)) {
+                                  const ppd = computePpd(conc, avgFlowGPD);
+                                  return (
+                                    <span className="ml-2 text-xs text-muted-foreground" data-testid={`text-ppd-${key}`}>
+                                      ({ppd < 10 ? ppd.toFixed(1) : Math.round(ppd).toLocaleString()} ppd)
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </span>
                           )}
                         </td>
@@ -1450,6 +1517,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                               specs={specs!}
                               isEditing={true}
                               testIdPrefix={`${idx}-`}
+                              projectType={propProjectType || undefined}
+                              feedstockVolume={fs.feedstockVolume || undefined}
+                              feedstockUnit={fs.feedstockUnit || undefined}
                               onSpecUpdate={(key, value) => {
                                 setFeedstockSpecEdits(prev => ({
                                   ...prev,
@@ -1873,6 +1943,9 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                           confirmedSpecs={localConfirmedFields.feedstocks?.[idx]?.feedstockSpecs}
                           onToggleConfirm={!isConfirmed ? (key) => toggleFieldConfirm(`feedstocks.${idx}.feedstockSpecs.${key}`) : undefined}
                           showConfirmToggles={!isConfirmed}
+                          projectType={propProjectType || undefined}
+                          feedstockVolume={fs.feedstockVolume || undefined}
+                          feedstockUnit={fs.feedstockUnit || undefined}
                         />
                       </div>
                     )}

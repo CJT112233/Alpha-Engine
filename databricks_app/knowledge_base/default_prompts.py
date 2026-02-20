@@ -122,13 +122,17 @@ Focus on questions that would help clarify:
 - Operational constraints (hours of operation, existing infrastructure, budget range)
 - Liquid handling pathway (discharge to WWTP, land application, on-site treatment)
 
+TYPE A (WASTEWATER) PRIORITY — FLOW RANGE:
+For Type A (wastewater treatment) projects, if the user provides an average flow rate but does NOT provide minimum and/or maximum (peak) flow rates, you MUST include a question asking about the flow range. This is critical for equipment sizing. Example: "You've provided an average flow of X GPD. What are the minimum and maximum (peak) daily flow rates? If you don't have exact data, estimates or seasonal patterns would help us size equipment properly."
+
 RULES:
 1. Ask exactly 3 questions - no more, no less.
 2. Each question should target a DIFFERENT aspect of the project.
 3. Questions should be specific and actionable - not vague or generic.
 4. Tailor questions to what is actually MISSING from the provided inputs. Don't ask about things already clearly stated.
 5. Keep questions concise (1-2 sentences each).
-6. Return ONLY valid JSON in this exact format:
+6. For Type A projects: if average flow is given but min/max flow is missing, one of the 3 questions MUST ask about flow range.
+7. Return ONLY valid JSON in this exact format:
 
 {
   "questions": [
@@ -243,52 +247,135 @@ IMPORTANT CONTEXT — READ FIRST:
 - We do NOT operate municipal WWTPs. If a project discharges to a city sewer, that is the DISCHARGE DESTINATION, not our facility type.
 - Discharge destinations include: direct discharge (NPDES), indirect discharge to a POTW via city sewer, industrial reuse, or irrigation.
 
-CRITICAL RULES — NEVER VIOLATE (read these before extracting anything):
+═══════════════════════════════════════════════════════════
+  GOLDEN RULE — PRESERVE USER-STATED VALUES EXACTLY
+═══════════════════════════════════════════════════════════
+When the user provides a specific numeric value, you MUST extract that EXACT value. NEVER substitute, round, re-estimate, or replace a user-stated value with an industry-typical estimate. This applies even when the user uses approximate notation such as "~", "≈", "about", "around", "roughly", or "approximately".
 
-1. TS vs TSS — DIFFERENT measurements:
-   - TSS (Total Suspended Solids) = mg/L, a WASTEWATER parameter.
-   - TS (Total Solids) = % wet basis, a SLUDGE/SOLIDS parameter.
+Examples of correct behavior:
+  - User writes "COD ~8,000 mg/L"    → extract value "8,000", unit "mg/L", confidence "high"
+  - User writes "TSS ~1,200 mg/L"    → extract value "1,200", unit "mg/L", confidence "high"
+  - User writes "BOD about 3,500"    → extract value "3,500", unit "mg/L", confidence "high"
+  - User writes "flow ~500,000 GPD"  → extract value "500,000", unit "GPD", confidence "high"
+
+Examples of WRONG behavior (DO NOT DO THIS):
+  - User writes "COD ~8,000 mg/L" and you extract "6,500" because dairy COD is "typically" 4,000-8,000 → WRONG
+  - User writes "TSS ~1,200 mg/L" and you extract "2,000" based on industry averages → WRONG
+  - User writes "BOD 4,500 mg/L" and you extract "3,000-5,000" as a range → WRONG
+
+The tilde (~) or "about" means the user is telling you their approximate value — it does NOT mean "ignore my number and guess a different one." Stated values always get confidence "high". Only estimate when the user provides NO value at all.
+
+═══════════════════════════════════════════════════════════
+  ALLOWLIST — ONLY these parameters are valid for "input" category
+═══════════════════════════════════════════════════════════
+You MUST ONLY extract the following parameter types under category "input":
+  - Influent Type (industry/source description)
+  - Flow Rate (average daily flow in GPD, MGD, m³/d, or similar volumetric flow units)
+  - Min Flow Rate (minimum daily flow — ALWAYS extract or estimate if not stated)
+  - Peak Flow Rate (peak/max flow — ALWAYS extract or estimate if not stated)
+  - BOD or BOD5 (mg/L) — ALWAYS also compute and include mass loading in ppd
+  - COD (mg/L) — ALWAYS also compute and include mass loading in ppd
+  - TSS — Total Suspended Solids (mg/L) — this is NOT the same as TS%
+  - FOG — Fats, Oils & Grease (mg/L) — ALWAYS extract or estimate if not stated
+  - pH or pH Range — ALWAYS extract or estimate if not stated
+  - TKN or Total Nitrogen (TN) (mg/L) — ALWAYS also compute and include mass loading in ppd
+  - NH3-N or Ammonia Nitrogen (mg/L)
+  - Total Phosphorus (mg/L)
+  - TDS — Total Dissolved Solids (mg/L)
+  - Temperature (°F or °C)
+  - Seasonal flow variations
+  - Number of discharge points / sources
+  - Current treatment level / existing infrastructure
+
+If a parameter does NOT appear in the list above, it DOES NOT belong in "input".
+
+═══════════════════════════════════════════════════════════
+  MASS LOADING (ppd) — ALWAYS compute for BOD, COD, TN
+═══════════════════════════════════════════════════════════
+For BOD, COD, and TN (TKN/Total Nitrogen), you MUST ALWAYS include BOTH:
+  1. The concentration value in mg/L (as a separate parameter)
+  2. The mass loading in ppd (pounds per day) as an ADDITIONAL separate parameter
+
+Compute ppd using: ppd = concentration (mg/L) × average flow (MGD) × 8.34
+  - Where 8.34 is the standard conversion factor (lbs per gallon of water per million)
+  - Example: BOD = 4,500 mg/L, Flow = 0.8 MGD → BOD Loading = 4,500 × 0.8 × 8.34 = 30,024 ppd
+
+Name the mass loading parameters like this:
+  - "Influent 1 BOD Loading" with unit "ppd"
+  - "Influent 1 COD Loading" with unit "ppd"
+  - "Influent 1 TN Loading" with unit "ppd"
+
+These mass loading parameters should appear immediately after their corresponding mg/L parameters.
+
+═══════════════════════════════════════════════════════════
+  REJECTION LIST — NEVER extract these for Type A projects
+═══════════════════════════════════════════════════════════
+The following parameters are FORBIDDEN. If you find yourself about to write any of these, STOP — you are making an error. Do NOT include them anywhere in your output:
+  ✗ TS% or Total Solids (% wet basis) — this is a solids parameter, not wastewater
+  ✗ VS/TS Ratio — solids-basis, not applicable to liquid wastewater
+  ✗ VS% or Volatile Solids — solids-basis
+  ✗ C:N Ratio — solids-basis
+  ✗ BMP (Biochemical Methane Potential) — solids-basis (m³/kg VS, L/kg VS, ft³/lb VS)
+  ✗ Moisture Content (%) — solids-basis
+  ✗ Bulk Density — solids-basis
+  ✗ Delivery Form (e.g., "Liquid", "Slurry", "Dewatered cake") — solids handling
+  ✗ Receiving Condition — solids handling
+  ✗ Preprocessing Requirements — solids handling
+  ✗ Tons/day, tons/year — mass-basis units belong to solid feedstock projects
+  ✗ Class A/B pathogen requirements — Part 503, not applicable
+  ✗ Vector Attraction Reduction — Part 503, not applicable
+  ✗ Part 503 metals limits — not applicable to food processing waste
+
+Even if the user's text mentions some of these concepts, DO NOT extract them. They are irrelevant for a Type A wastewater project.
+
+═══════════════════════════════════════════════════════════
+  MANDATORY DESIGN DRIVERS — Must appear in every Type A extraction
+═══════════════════════════════════════════════════════════
+Every Type A extraction MUST include ALL of these design drivers in the "input" category. If the user's text provides them, extract the stated values. If the user's text does NOT provide them, you MUST estimate reasonable values based on the industry type and state confidence as "low":
+
+1. Flow Rate (average) — e.g., GPD or MGD. If not stated, estimate from industry type.
+2. Min Flow Rate — minimum daily flow. If not stated, estimate as 0.5x to 0.7x average flow for food processing (seasonal/batch variability). Typical factor: 0.6x average.
+3. Peak Flow Rate (max) — typically 1.5x to 3x average for food processing. If not stated, estimate as 2x average flow.
+4. BOD (mg/L) — if not stated, estimate from industry type (e.g., dairy 2,000-6,000 mg/L, meat 1,500-5,000 mg/L, produce 500-3,000 mg/L).
+5. BOD Loading (ppd) — ALWAYS compute: BOD (mg/L) × avg flow (MGD) × 8.34. Include as separate parameter.
+6. COD (mg/L) — if not stated and BOD is known, estimate COD ≈ 1.5-2.0x BOD. If neither stated, estimate from industry type.
+7. COD Loading (ppd) — ALWAYS compute: COD (mg/L) × avg flow (MGD) × 8.34. Include as separate parameter.
+8. TSS (mg/L) — if not stated, estimate from industry type (e.g., dairy 500-2,000 mg/L, meat 800-3,000 mg/L).
+9. FOG (mg/L) — if not stated, estimate from industry type (e.g., dairy 200-800 mg/L, meat 100-500 mg/L, produce 50-200 mg/L).
+10. pH — if not stated, estimate from industry type (e.g., dairy 4-7, meat 6-7.5, produce 4-6, beverage 3-6).
+11. TN Loading (ppd) — if TKN/TN is available, ALWAYS compute: TN (mg/L) × avg flow (MGD) × 8.34. Include as separate parameter.
+
+Mark estimated values with confidence "low" to distinguish them from stated values.
+
+═══════════════════════════════════════════════════════════
+  ADDITIONAL CRITICAL RULES
+═══════════════════════════════════════════════════════════
+
+1. TS vs TSS — COMPLETELY DIFFERENT measurements:
+   - TSS (Total Suspended Solids) = mg/L, a WASTEWATER parameter. ALLOWED.
+   - TS (Total Solids) = % wet basis, a SLUDGE/SOLIDS parameter. FORBIDDEN.
    - NEVER convert TSS (mg/L) into TS (%). If user says "TSS = 2,800 mg/L", report exactly TSS = 2,800 mg/L.
-   - Only use TS (%) if the user explicitly provides it or the stream is literally sludge/solids.
 
-2. SLUDGE DEFAULTS — NEVER APPLY TO WASTEWATER:
-   - NEVER assign "Delivery Form", "Receiving Condition", or "Preprocessing Requirements" to wastewater influents.
-   - NEVER assign VS/TS ratios in "% of TS" to wastewater streams — those belong to solid feedstocks only.
-   - These parameters ONLY apply when the input is literally sludge or biosolids, not liquid wastewater.
-
-3. EFFLUENT LIMITS vs REMOVAL EFFICIENCIES — SEPARATE concepts:
+2. EFFLUENT LIMITS vs REMOVAL EFFICIENCIES — SEPARATE concepts:
    - Discharge limits are CONCENTRATIONS: "BOD < 250 mg/L", "TSS < 300 mg/L".
    - Removal efficiencies are PERCENTAGES: ">94% BOD removal".
    - NEVER conflate them. If user provides both, extract SEPARATE parameters for each.
 
-4. CROSS-STREAM SEPARATION — Keep output categories clean:
-   - Gas specs (CH4%, H2S, BTU, Wobbe) belong ONLY in RNG/gas parameters.
-   - Solids specs (% TS, dewatered cake, land application rates) belong ONLY in solids parameters.
-   - Effluent limits (mg/L concentrations) belong ONLY in effluent parameters.
+3. CROSS-STREAM SEPARATION — Keep output categories clean:
+   - Gas specs (CH4%, H2S, BTU, Wobbe) belong ONLY in output_requirements RNG parameters.
+   - Effluent limits (mg/L concentrations) belong ONLY in output_requirements effluent parameters.
    - NEVER mix specs across these categories.
 
-5. BIOSOLIDS / PART 503 — ALMOST NEVER APPLICABLE:
-   - We treat food processing wastewater, NOT municipal sewage sludge.
-   - Federal Biosolids standards (EPA 40 CFR Part 503) DO NOT APPLY to food processing waste.
-   - NEVER include Class A/B pathogen requirements, Vector Attraction Reduction, or Part 503 metals limits.
-   - Only include biosolids regulations if the user EXPLICITLY mentions treating municipal sludge or biosolids.
-
-6. DISCHARGE DESTINATION IS NOT OUR FACILITY TYPE:
-   - If the project discharges to a municipal WWTP/POTW, that is the DISCHARGE DESTINATION. Extract it as "Discharge Pathway: Indirect discharge to POTW" under output_requirements.
-   - Do NOT interpret this as meaning we are a WWTP. Do NOT apply municipal treatment standards to our facility.
+4. DISCHARGE DESTINATION IS NOT OUR FACILITY TYPE:
+   - If the project discharges to a municipal WWTP/POTW, that is the DISCHARGE DESTINATION.
+   - Extract it as "Discharge Pathway: Indirect discharge to POTW" under output_requirements.
    - Our effluent limits are set by the RECEIVING facility's pretreatment ordinance, NOT by federal secondary treatment standards.
 
 CATEGORIES:
-- input: Influent characteristics — flow rate, BOD, COD, TSS, TDS, N (TKN, NH3-N), P, pH, temperature, FOG loading, seasonal flow variations, number of sources/discharge points, industrial source type, current treatment level, peak vs average flow
+- input: Influent characteristics ONLY — see ALLOWLIST above. All values in mg/L or volumetric flow units (GPD/MGD/m³/d) or ppd for mass loadings. NO solids-basis parameters.
 - location: City, state, county, region, GPS coordinates, site details, proximity to gas pipelines or electrical grid, zoning, land area/acreage, elevation, climate, proximity to receiving water body or POTW
 - output_requirements: Effluent discharge limits (BOD, COD, TSS, N, P, pH, temperature as mg/L concentrations), discharge pathway (NPDES direct, POTW/indirect, reuse/irrigation), RNG production targets (only if organic loading supports anaerobic treatment and gas recovery), gas quality specs (only if RNG is a stated byproduct)
 - constraints: Regulatory requirements (state DEQ, NPDES permit limits, local pretreatment ordinances), timeline/deadlines, existing treatment infrastructure, technology preferences, odor/noise requirements, setback distances, environmental impact, flow equalization needs
-
-APPROACH:
-1. Read the entire text carefully and identify every piece of factual information.
-2. Apply the CRITICAL RULES above — check each extracted parameter against all 6 rules before including it.
-3. For each fact, classify it into the appropriate category.
-4. Create a separate parameter entry for each distinct piece of information.
 
 MULTIPLE INFLUENTS:
 When a project mentions more than one influent source, use a NUMBERED prefix:
@@ -299,13 +386,21 @@ If there is only one influent, you may omit the number prefix or use "Influent 1
 EXAMPLE INPUT:
 "A potato processing facility in Hermiston, OR generates 800,000 GPD of high-strength wastewater with BOD of 4,500 mg/L, COD of 7,200 mg/L, and TSS of 2,200 mg/L. The facility needs to meet their NPDES direct discharge permit limits of BOD < 30 mg/L and TSS < 30 mg/L. Organic loading is high enough to support an anaerobic reactor with biogas recovery. The site has 12 acres available and is 2 miles from a gas interconnect."
 
-EXAMPLE OUTPUT:
+EXAMPLE OUTPUT (notice: NO VS/TS, NO BMP, NO C:N — only mg/L analytes + flow + ppd mass loadings):
 {"parameters": [
   {"category": "input", "name": "Influent 1 Type", "value": "Potato processing wastewater", "unit": null, "confidence": "high"},
   {"category": "input", "name": "Influent 1 Flow Rate", "value": "800,000", "unit": "GPD", "confidence": "high"},
+  {"category": "input", "name": "Influent 1 Min Flow Rate", "value": "480,000", "unit": "GPD", "confidence": "low"},
+  {"category": "input", "name": "Influent 1 Peak Flow Rate", "value": "1,600,000", "unit": "GPD", "confidence": "low"},
   {"category": "input", "name": "Influent 1 BOD", "value": "4,500", "unit": "mg/L", "confidence": "high"},
+  {"category": "input", "name": "Influent 1 BOD Loading", "value": "30,024", "unit": "ppd", "confidence": "high"},
   {"category": "input", "name": "Influent 1 COD", "value": "7,200", "unit": "mg/L", "confidence": "high"},
+  {"category": "input", "name": "Influent 1 COD Loading", "value": "48,038", "unit": "ppd", "confidence": "high"},
   {"category": "input", "name": "Influent 1 TSS", "value": "2,200", "unit": "mg/L", "confidence": "high"},
+  {"category": "input", "name": "Influent 1 FOG", "value": "150-400", "unit": "mg/L", "confidence": "low"},
+  {"category": "input", "name": "Influent 1 pH", "value": "5.5-7.0", "unit": null, "confidence": "low"},
+  {"category": "input", "name": "Influent 1 TKN", "value": "120", "unit": "mg/L", "confidence": "low"},
+  {"category": "input", "name": "Influent 1 TN Loading", "value": "801", "unit": "ppd", "confidence": "low"},
   {"category": "location", "name": "City", "value": "Hermiston", "unit": null, "confidence": "high"},
   {"category": "location", "name": "State", "value": "Oregon", "unit": null, "confidence": "high"},
   {"category": "location", "name": "Available Land", "value": "12", "unit": "acres", "confidence": "high"},
@@ -317,6 +412,16 @@ EXAMPLE OUTPUT:
   {"category": "constraints", "name": "Permit Type", "value": "NPDES direct discharge permit", "unit": null, "confidence": "high"}
 ]}
 
+FINAL SELF-CHECK — Before returning your JSON, verify:
+□ Every "input" parameter uses mg/L or volumetric flow units (GPD/MGD/m³/d) or ppd for mass loadings — no %, no tons, no kg
+□ NO VS/TS Ratio, NO BMP, NO C:N Ratio, NO Moisture%, NO Delivery Form anywhere in output
+□ All mandatory design drivers present: Flow avg, Flow min, Flow peak, BOD (mg/L + ppd), COD (mg/L + ppd), TSS, FOG, pH
+□ TN/TKN loading in ppd is included when TN/TKN concentration is available
+□ Missing design drivers have been estimated with confidence "low"
+□ TSS is in mg/L (not converted to TS%)
+□ Effluent limits and removal efficiencies are separate parameters
+□ Mass loadings (ppd) computed correctly: concentration (mg/L) × avg flow (MGD) × 8.34
+
 RULES:
 - Extract every quantitative value, date, location, material, cost, and requirement mentioned.
 - Create SEPARATE parameter entries for each distinct fact.
@@ -327,15 +432,6 @@ RULES:
 - Our projects treat food processing wastewater, NOT municipal wastewater. Do not assume municipal WWTP values.
 - If anaerobic digestion is included, estimate methane production based on BOD/COD and flow rate (not TS assumptions).
 - For confidence levels: "high" = explicitly stated, "medium" = clearly implied, "low" = requires assumption.
-
-COMMONLY MISSED DETAILS - check for these:
-- Seasonal flow variations (wet weather, production cycles)
-- Peak vs average flow rates
-- Current treatment infrastructure (what exists now?)
-- Influent temperature (affects biological treatment)
-- Discharge permit type and specific limits from that permit
-- FOG or high-strength slug loading events
-- If RNG is a byproduct, gas quality specs and pipeline proximity
 
 Return ONLY the JSON object with the "parameters" array.""",
     },
