@@ -124,6 +124,15 @@ export function exportMassBalancePDF(
 
     let y = 140;
 
+    if (results.assumptions && results.assumptions.length > 0) {
+      y = addSectionHeader(doc, "Design Assumptions", y, leftMargin, contentWidth);
+      const assHeaders = ["Parameter", "Value", "Source"];
+      const assRows = results.assumptions.map(a => [sanitize(a.parameter), sanitize(a.value), sanitize(a.source)]);
+      const assWidths = [180, 162, 170];
+      y = drawTable(doc, assHeaders, assRows, leftMargin, y, assWidths);
+      y += 15;
+    }
+
     if (results.summary && Object.keys(results.summary).length > 0) {
       y = addSectionHeader(doc, "Summary", y, leftMargin, contentWidth);
       const summaryHeaders = ["Parameter", "Value", "Unit"];
@@ -137,35 +146,8 @@ export function exportMassBalancePDF(
       y += 15;
     }
 
-    if (results.stages && results.stages.length > 0) {
-      y = addSectionHeader(doc, "Treatment Train - Stream Data", y, leftMargin, contentWidth);
-      if (results.convergenceAchieved !== undefined) {
-        doc.font("Helvetica").fontSize(8).fillColor("#666666")
-          .text(`Convergence: ${results.convergenceAchieved ? "Yes" : "No"} (${results.convergenceIterations} iterations)`, leftMargin, y);
-        y += 14;
-      }
-      for (const stage of results.stages) {
-        if (y > 680) { doc.addPage(); y = 50; }
-        doc.font("Helvetica-Bold").fontSize(9).fillColor("#333333")
-          .text(`${sanitize(stage.name)} (${sanitize(stage.type)})`, leftMargin, y);
-        y += 14;
-        const streamHeaders = ["Parameter", "Influent", "Effluent", "Removal %"];
-        const params = ["flow", "bod", "cod", "tss", "tkn", "tp", "fog"] as const;
-        const paramLabels: Record<string, string> = { flow: "Flow (GPD)", bod: "BOD (mg/L)", cod: "COD (mg/L)", tss: "TSS (mg/L)", tkn: "TKN (mg/L)", tp: "TP (mg/L)", fog: "FOG (mg/L)" };
-        const streamRows = params.map(p => [
-          paramLabels[p] || p.toUpperCase(),
-          fmtNum(stage.influent[p]),
-          fmtNum(stage.effluent[p]),
-          stage.removalEfficiencies[p] !== undefined ? `${fmtNum(stage.removalEfficiencies[p])}%` : "-",
-        ]);
-        const streamWidths = [128, 128, 128, 128];
-        y = drawTable(doc, streamHeaders, streamRows, leftMargin, y, streamWidths);
-        y += 10;
-      }
-    }
-
     if (results.adStages && results.adStages.length > 0) {
-      y = addSectionHeader(doc, "AD / RNG Process Stages", y, leftMargin, contentWidth);
+      y = addSectionHeader(doc, "Process Stages", y, leftMargin, contentWidth);
       for (const stage of results.adStages) {
         if (y > 680) { doc.addPage(); y = 50; }
         doc.font("Helvetica-Bold").fontSize(9).fillColor("#333333")
@@ -206,12 +188,31 @@ export function exportMassBalancePDF(
       y += 15;
     }
 
-    if (results.assumptions && results.assumptions.length > 0) {
-      y = addSectionHeader(doc, "Design Assumptions", y, leftMargin, contentWidth);
-      const assHeaders = ["Parameter", "Value", "Source"];
-      const assRows = results.assumptions.map(a => [sanitize(a.parameter), sanitize(a.value), sanitize(a.source)]);
-      const assWidths = [180, 162, 170];
-      y = drawTable(doc, assHeaders, assRows, leftMargin, y, assWidths);
+    if (results.stages && results.stages.length > 0) {
+      y = addSectionHeader(doc, "Treatment Train - Stream Data", y, leftMargin, contentWidth);
+      if (results.convergenceAchieved !== undefined) {
+        doc.font("Helvetica").fontSize(8).fillColor("#666666")
+          .text(`Convergence: ${results.convergenceAchieved ? "Yes" : "No"} (${results.convergenceIterations} iterations)`, leftMargin, y);
+        y += 14;
+      }
+      for (const stage of results.stages) {
+        if (y > 680) { doc.addPage(); y = 50; }
+        doc.font("Helvetica-Bold").fontSize(9).fillColor("#333333")
+          .text(`${sanitize(stage.name)} (${sanitize(stage.type)})`, leftMargin, y);
+        y += 14;
+        const streamHeaders = ["Parameter", "Influent", "Effluent", "Removal %"];
+        const params = ["flow", "bod", "cod", "tss", "tkn", "tp", "fog"] as const;
+        const paramLabels: Record<string, string> = { flow: "Flow (GPD)", bod: "BOD (mg/L)", cod: "COD (mg/L)", tss: "TSS (mg/L)", tkn: "TKN (mg/L)", tp: "TP (mg/L)", fog: "FOG (mg/L)" };
+        const streamRows = params.map(p => [
+          paramLabels[p] || p.toUpperCase(),
+          fmtNum(stage.influent[p]),
+          fmtNum(stage.effluent[p]),
+          stage.removalEfficiencies[p] !== undefined ? `${fmtNum(stage.removalEfficiencies[p])}%` : "-",
+        ]);
+        const streamWidths = [128, 128, 128, 128];
+        y = drawTable(doc, streamHeaders, streamRows, leftMargin, y, streamWidths);
+        y += 10;
+      }
     }
 
     doc.end();
@@ -226,6 +227,18 @@ export function exportMassBalanceExcel(
 ): Buffer {
   const wb = XLSX.utils.book_new();
   const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
+
+  if (results.assumptions && results.assumptions.length > 0) {
+    const assData: string[][] = [
+      ["Design Assumptions"],
+      [],
+      ["Parameter", "Value", "Source"],
+      ...results.assumptions.map(a => [a.parameter, a.value, a.source]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(assData);
+    ws["!cols"] = [{ wch: 30 }, { wch: 25 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, ws, "Assumptions");
+  }
 
   if (results.summary && Object.keys(results.summary).length > 0) {
     const summaryData = [
@@ -242,6 +255,52 @@ export function exportMassBalanceExcel(
     const ws = XLSX.utils.aoa_to_sheet(summaryData);
     ws["!cols"] = [{ wch: 30 }, { wch: 20 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, ws, "Summary");
+  }
+
+  if (results.adStages && results.adStages.length > 0) {
+    const adData: (string | number)[][] = [["Process Stages"], []];
+    for (const stage of results.adStages) {
+      adData.push([`${stage.name} (${stage.type})`]);
+      adData.push(["Parameter", "Input Value", "Input Unit", "Output Value", "Output Unit"]);
+      const allKeys = new Set([
+        ...Object.keys(stage.inputStream || {}),
+        ...Object.keys(stage.outputStream || {}),
+      ]);
+      for (const key of allKeys) {
+        const inp = stage.inputStream?.[key];
+        const out = stage.outputStream?.[key];
+        adData.push([
+          key.replace(/([A-Z])/g, " $1").trim(),
+          inp?.value ?? "",
+          inp?.unit ?? "",
+          out?.value ?? "",
+          out?.unit ?? "",
+        ]);
+      }
+      adData.push([]);
+    }
+    const ws = XLSX.utils.aoa_to_sheet(adData);
+    ws["!cols"] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, ws, "Process");
+  }
+
+  if (results.equipment && results.equipment.length > 0) {
+    const eqData: (string | number)[][] = [
+      ["Equipment List"],
+      [],
+      ["Process", "Equipment Type", "Qty", "Description", "Design Basis", "Notes"],
+      ...results.equipment.map(eq => [
+        eq.process,
+        eq.equipmentType,
+        eq.quantity,
+        eq.description,
+        eq.designBasis,
+        eq.notes,
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(eqData);
+    ws["!cols"] = [{ wch: 20 }, { wch: 20 }, { wch: 6 }, { wch: 35 }, { wch: 30 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, ws, "Equipment");
   }
 
   if (results.stages && results.stages.length > 0) {
@@ -268,64 +327,6 @@ export function exportMassBalanceExcel(
     const ws = XLSX.utils.aoa_to_sheet(stageData);
     ws["!cols"] = [{ wch: 25 }, { wch: 18 }, { wch: 18 }, { wch: 15 }];
     XLSX.utils.book_append_sheet(wb, ws, "Treatment Train");
-  }
-
-  if (results.adStages && results.adStages.length > 0) {
-    const adData: (string | number)[][] = [["AD / RNG Process Stages"], []];
-    for (const stage of results.adStages) {
-      adData.push([`${stage.name} (${stage.type})`]);
-      adData.push(["Parameter", "Input Value", "Input Unit", "Output Value", "Output Unit"]);
-      const allKeys = new Set([
-        ...Object.keys(stage.inputStream || {}),
-        ...Object.keys(stage.outputStream || {}),
-      ]);
-      for (const key of allKeys) {
-        const inp = stage.inputStream?.[key];
-        const out = stage.outputStream?.[key];
-        adData.push([
-          key.replace(/([A-Z])/g, " $1").trim(),
-          inp?.value ?? "",
-          inp?.unit ?? "",
-          out?.value ?? "",
-          out?.unit ?? "",
-        ]);
-      }
-      adData.push([]);
-    }
-    const ws = XLSX.utils.aoa_to_sheet(adData);
-    ws["!cols"] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, ws, "AD Process");
-  }
-
-  if (results.equipment && results.equipment.length > 0) {
-    const eqData: (string | number)[][] = [
-      ["Equipment List"],
-      [],
-      ["Process", "Equipment Type", "Qty", "Description", "Design Basis", "Notes"],
-      ...results.equipment.map(eq => [
-        eq.process,
-        eq.equipmentType,
-        eq.quantity,
-        eq.description,
-        eq.designBasis,
-        eq.notes,
-      ]),
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(eqData);
-    ws["!cols"] = [{ wch: 20 }, { wch: 20 }, { wch: 6 }, { wch: 35 }, { wch: 30 }, { wch: 30 }];
-    XLSX.utils.book_append_sheet(wb, ws, "Equipment");
-  }
-
-  if (results.assumptions && results.assumptions.length > 0) {
-    const assData: string[][] = [
-      ["Design Assumptions"],
-      [],
-      ["Parameter", "Value", "Source"],
-      ...results.assumptions.map(a => [a.parameter, a.value, a.source]),
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(assData);
-    ws["!cols"] = [{ wch: 30 }, { wch: 25 }, { wch: 30 }];
-    XLSX.utils.book_append_sheet(wb, ws, "Assumptions");
   }
 
   return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));

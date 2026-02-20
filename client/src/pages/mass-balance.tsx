@@ -1387,12 +1387,12 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
   const hasOutputs = hasWWStages || hasADStages;
 
   const tabItems: { value: string; label: string }[] = [];
-  if (hasOutputs) tabItems.push({ value: "outputs", label: "Outputs" });
-  if (hasWWStages) tabItems.push({ value: "treatment-train", label: "Treatment Train" });
+  tabItems.push({ value: "assumptions", label: "Assumptions" });
+  if (hasSummary) tabItems.push({ value: "stats", label: "Stats" });
   if (hasADStages) tabItems.push({ value: "ad-process", label: "Process" });
   tabItems.push({ value: "equipment", label: `Equipment (${results?.equipment?.length || 0})` });
-  if (hasSummary) tabItems.push({ value: "stats", label: "Stats" });
-  tabItems.push({ value: "assumptions", label: "Assumptions" });
+  if (hasOutputs) tabItems.push({ value: "outputs", label: "Outputs" });
+  if (hasWWStages) tabItems.push({ value: "treatment-train", label: "Treatment Train" });
 
   const defaultTab = tabItems[0]?.value || "outputs";
 
