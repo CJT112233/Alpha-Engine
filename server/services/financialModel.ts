@@ -10,7 +10,7 @@ import type {
 
 const DEFAULT_ASSUMPTIONS: FinancialAssumptions = {
   inflationRate: 0.025,
-  projectLifeYears: 10,
+  projectLifeYears: 20,
   constructionMonths: 18,
   uptimePct: 0.98,
   biogasGrowthRate: 0.0,
