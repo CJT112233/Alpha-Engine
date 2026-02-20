@@ -550,7 +550,210 @@ function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLoc
   );
 }
 
-function SummaryCard({ summary, overrides, locks, onSaveOverride, onToggleLock }: {
+function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, onToggleLock }: {
+  results: MassBalanceResults;
+  overrides: MassBalanceOverrides;
+  locks: Record<string, boolean>;
+  onSaveOverride: (key: string, value: string, originalValue: string) => void;
+  onToggleLock: (key: string, currentValue?: string) => void;
+}) {
+  const stages = results.stages || [];
+  const adStages = results.adStages || [];
+  const hasWW = stages.length > 0;
+  const hasAD = adStages.length > 0;
+
+  if (!hasWW && !hasAD) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12 gap-2">
+          <Factory className="h-8 w-8 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No mass balance output data available.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const wwParams = ["flow", "bod", "cod", "tss", "tkn", "tp", "fog"] as const;
+  const wwParamLabels: Record<string, string> = {
+    flow: "Flow (MGD)",
+    bod: "BOD (mg/L)",
+    cod: "COD (mg/L)",
+    tss: "TSS (mg/L)",
+    tkn: "TKN (mg/L)",
+    tp: "TP (mg/L)",
+    fog: "FOG (mg/L)",
+  };
+
+  const allADParamKeys = new Set<string>();
+  adStages.forEach(stage => {
+    Object.keys(stage.inputStream || {}).forEach(k => allADParamKeys.add(k));
+    Object.keys(stage.outputStream || {}).forEach(k => allADParamKeys.add(k));
+  });
+  const adParamKeys = Array.from(allADParamKeys);
+
+  return (
+    <div className="space-y-4">
+      {hasWW && (
+        <Card data-testid="card-outputs-ww">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Droplets className="h-4 w-4" /> Wastewater Treatment Mass Balance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table data-testid="table-outputs-ww">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[120px] sticky left-0 bg-background z-10">Parameter</TableHead>
+                    <TableHead className="text-center min-w-[90px]">Influent</TableHead>
+                    {stages.map((stage, i) => (
+                      <TableHead key={i} className="text-center min-w-[90px]">{stage.name}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {wwParams.map(p => (
+                    <TableRow key={p}>
+                      <TableCell className="font-medium sticky left-0 bg-background z-10">{wwParamLabels[p]}</TableCell>
+                      <TableCell className="text-center">
+                        {stages.length > 0 ? (
+                          (() => {
+                            const val = stages[0].influent[p as keyof StreamData] as number;
+                            const fieldKey = `stages.0.influent.${p}`;
+                            return (
+                              <EditableTableCell
+                                fieldKey={fieldKey}
+                                displayValue={val}
+                                decimals={p === "flow" ? 4 : 1}
+                                isLocked={!!locks[fieldKey]}
+                                isOverridden={!!overrides[fieldKey]}
+                                onSaveOverride={onSaveOverride}
+                                onToggleLock={onToggleLock}
+                              />
+                            );
+                          })()
+                        ) : "\u2014"}
+                      </TableCell>
+                      {stages.map((stage, i) => {
+                        const val = stage.effluent[p as keyof StreamData] as number;
+                        const fieldKey = `stages.${i}.effluent.${p}`;
+                        return (
+                          <EditableTableCell
+                            key={i}
+                            fieldKey={fieldKey}
+                            displayValue={val}
+                            decimals={p === "flow" ? 4 : 1}
+                            isLocked={!!locks[fieldKey]}
+                            isOverridden={!!overrides[fieldKey]}
+                            onSaveOverride={onSaveOverride}
+                            onToggleLock={onToggleLock}
+                          />
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {hasAD && (
+        <Card data-testid="card-outputs-ad">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Flame className="h-4 w-4" /> AD / RNG Process Mass Balance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table data-testid="table-outputs-ad">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[140px] sticky left-0 bg-background z-10">Parameter</TableHead>
+                    {adStages.map((stage, i) => (
+                      <TableHead key={i} className="text-center min-w-[100px]" colSpan={2}>
+                        {stage.name}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                  <TableRow>
+                    <TableHead className="sticky left-0 bg-background z-10" />
+                    {adStages.map((_, i) => (
+                      <>{/* Fragment for paired sub-headers */}
+                        <TableHead key={`in-${i}`} className="text-center text-xs text-muted-foreground">In</TableHead>
+                        <TableHead key={`out-${i}`} className="text-center text-xs text-muted-foreground">Out</TableHead>
+                      </>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {adParamKeys.map(paramKey => (
+                    <TableRow key={paramKey}>
+                      <TableCell className="font-medium sticky left-0 bg-background z-10">
+                        {formatLabel(paramKey)}
+                        {adStages.some(s => (s.inputStream?.[paramKey]?.unit || s.outputStream?.[paramKey]?.unit)) && (
+                          <span className="text-xs text-muted-foreground ml-1">
+                            ({adStages.find(s => s.inputStream?.[paramKey]?.unit || s.outputStream?.[paramKey]?.unit)?.inputStream?.[paramKey]?.unit ||
+                              adStages.find(s => s.outputStream?.[paramKey]?.unit)?.outputStream?.[paramKey]?.unit || ""})
+                          </span>
+                        )}
+                      </TableCell>
+                      {adStages.map((stage, i) => {
+                        const inVal = stage.inputStream?.[paramKey];
+                        const outVal = stage.outputStream?.[paramKey];
+                        const inFieldKey = `adStages.${i}.inputStream.${paramKey}`;
+                        const outFieldKey = `adStages.${i}.outputStream.${paramKey}`;
+                        const inStr = inVal?.value !== undefined ? (typeof inVal.value === 'number' ? inVal.value.toLocaleString() : String(inVal.value)) : "\u2014";
+                        const outStr = outVal?.value !== undefined ? (typeof outVal.value === 'number' ? outVal.value.toLocaleString() : String(outVal.value)) : "\u2014";
+                        return (
+                          <>{/* Fragment for paired cells */}
+                            {inVal?.value !== undefined ? (
+                              <EditableTableCell
+                                key={`in-${i}`}
+                                fieldKey={inFieldKey}
+                                displayValue={typeof inVal.value === 'number' ? inVal.value : parseFloat(String(inVal.value)) || 0}
+                                decimals={1}
+                                isLocked={!!locks[inFieldKey]}
+                                isOverridden={!!overrides[inFieldKey]}
+                                onSaveOverride={onSaveOverride}
+                                onToggleLock={onToggleLock}
+                              />
+                            ) : (
+                              <TableCell key={`in-${i}`} className="text-center text-muted-foreground">{inStr}</TableCell>
+                            )}
+                            {outVal?.value !== undefined ? (
+                              <EditableTableCell
+                                key={`out-${i}`}
+                                fieldKey={outFieldKey}
+                                displayValue={typeof outVal.value === 'number' ? outVal.value : parseFloat(String(outVal.value)) || 0}
+                                decimals={1}
+                                isLocked={!!locks[outFieldKey]}
+                                isOverridden={!!overrides[outFieldKey]}
+                                onSaveOverride={onSaveOverride}
+                                onToggleLock={onToggleLock}
+                              />
+                            ) : (
+                              <TableCell key={`out-${i}`} className="text-center text-muted-foreground">{outStr}</TableCell>
+                            )}
+                          </>
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function StatsCard({ summary, overrides, locks, onSaveOverride, onToggleLock }: {
   summary: Record<string, { value: string; unit: string }> | undefined;
   overrides: MassBalanceOverrides;
   locks: Record<string, boolean>;
@@ -586,9 +789,9 @@ function SummaryCard({ summary, overrides, locks, onSaveOverride, onToggleLock }
   };
 
   return (
-    <Card data-testid="card-summary">
+    <Card data-testid="card-stats">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">Project Summary</CardTitle>
+        <CardTitle className="text-base">Project Stats</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -1071,14 +1274,17 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
     );
   }
 
+  const hasOutputs = hasWWStages || hasADStages;
+
   const tabItems: { value: string; label: string }[] = [];
-  if (hasSummary) tabItems.push({ value: "summary", label: "Summary" });
+  if (hasOutputs) tabItems.push({ value: "outputs", label: "Outputs" });
   if (hasWWStages) tabItems.push({ value: "treatment-train", label: "Treatment Train" });
   if (hasADStages) tabItems.push({ value: "ad-process", label: "AD / RNG Process" });
   tabItems.push({ value: "equipment", label: `Equipment (${results?.equipment?.length || 0})` });
+  if (hasSummary) tabItems.push({ value: "stats", label: "Stats" });
   tabItems.push({ value: "assumptions", label: "Assumptions" });
 
-  const defaultTab = tabItems[0]?.value || "summary";
+  const defaultTab = tabItems[0]?.value || "outputs";
 
   return (
     <div className="space-y-4">
@@ -1209,10 +1415,10 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
                   ))}
                 </TabsList>
 
-                {hasSummary && results.summary && (
-                  <TabsContent value="summary" className="mt-4">
-                    <SummaryCard
-                      summary={results.summary}
+                {hasOutputs && results && (
+                  <TabsContent value="outputs" className="mt-4">
+                    <MassBalanceOutputsTable
+                      results={results}
                       overrides={overrides}
                       locks={locks}
                       onSaveOverride={handleSaveOverride}
@@ -1349,6 +1555,18 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
                     />
                   )}
                 </TabsContent>
+
+                {hasSummary && results.summary && (
+                  <TabsContent value="stats" className="mt-4">
+                    <StatsCard
+                      summary={results.summary}
+                      overrides={overrides}
+                      locks={locks}
+                      onSaveOverride={handleSaveOverride}
+                      onToggleLock={handleToggleLock}
+                    />
+                  </TabsContent>
+                )}
 
                 <TabsContent value="assumptions" className="mt-4">
                   <Card>
