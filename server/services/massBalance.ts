@@ -3,10 +3,16 @@ import type {
   TreatmentStage,
   RecycleStream,
   EquipmentItem,
+  ADProcessStage,
   MassBalanceResults,
   UpifRecord,
   FeedstockEntry,
 } from "@shared/schema";
+import {
+  selectProdevalUnit,
+  getProdevalEquipmentList,
+  getProdevalGasTrainDesignCriteria,
+} from "@shared/prodeval-equipment-library";
 
 const CONVERGENCE_TOLERANCE = 0.01;
 const MAX_ITERATIONS = 10;
@@ -853,6 +859,269 @@ function sizeEquipment(
   return equipment;
 }
 
+function projectIncludesRNG(upif: UpifRecord): boolean {
+  const text = [
+    upif.outputRequirements || "",
+    JSON.stringify(upif.outputSpecs || {}),
+    (upif.constraints || []).join(" "),
+    (upif as any).projectDescription || "",
+  ].join(" ").toLowerCase();
+  return text.includes("rng") ||
+    text.includes("renewable natural gas") ||
+    text.includes("pipeline injection") ||
+    text.includes("biomethane") ||
+    text.includes("upgraded biogas") ||
+    text.includes("pipeline-quality") ||
+    text.includes("pipeline gas") ||
+    text.includes("biogas upgrading");
+}
+
+function calculateTypeADigestionAndGasTrain(
+  upif: UpifRecord,
+  flowMGD: number,
+  influent: StreamData,
+): {
+  adStages: ADProcessStage[];
+  equipment: EquipmentItem[];
+  assumptions: Array<{ parameter: string; value: string; source: string }>;
+  warnings: MassBalanceResults["warnings"];
+  summary: Record<string, any>;
+} {
+  const adStages: ADProcessStage[] = [];
+  const equipment: EquipmentItem[] = [];
+  const assumptions: Array<{ parameter: string; value: string; source: string }> = [];
+  const warnings: MassBalanceResults["warnings"] = [];
+  const summary: Record<string, any> = {};
+  let eqId = 100;
+  const makeId = (suffix?: string) => `eq-ad-${suffix || eqId++}`;
+
+  const bodLoadLbPerDay = influent.bod * flowMGD * 8.34;
+  const codLoadLbPerDay = influent.cod * flowMGD * 8.34;
+  const tssLoadLbPerDay = influent.tss * flowMGD * 8.34;
+
+  const primarySludgeTSS = tssLoadLbPerDay * 0.55;
+  const wasSludgeTSS = bodLoadLbPerDay * 0.40;
+  const totalSludgeLbPerDay = primarySludgeTSS + wasSludgeTSS;
+  const sludgeTpd = totalSludgeLbPerDay / 2000;
+
+  const vsContentPct = 75;
+  const vsLbPerDay = totalSludgeLbPerDay * (vsContentPct / 100);
+  const tsContentPct = 4;
+  const sludgeGPD = (totalSludgeLbPerDay / (tsContentPct / 100)) / 8.34;
+
+  const hrt = 20;
+  const temperature = 37;
+  const vsDestruction = 55;
+  const gasYield = 15;
+  const ch4Content = 63;
+  const co2Content = 35;
+  const h2sContentPpmv = 800;
+
+  assumptions.push(
+    { parameter: "Sludge VS Content", value: `${vsContentPct}%`, source: "Typical WWT sludge (WEF MOP 8)" },
+    { parameter: "Sludge TS Content", value: `${tsContentPct}%`, source: "Typical combined sludge (WEF MOP 8)" },
+    { parameter: "Digester HRT", value: `${hrt} days`, source: "Mesophilic AD design practice" },
+    { parameter: "VS Destruction", value: `${vsDestruction}%`, source: "WEF MOP 8 typical for WWT sludge" },
+    { parameter: "Biogas Yield", value: `${gasYield} scf/lb VS destroyed`, source: "WEF MOP 8" },
+    { parameter: "Biogas CH₄ Content", value: `${ch4Content}%`, source: "Typical WWT sludge biogas" },
+  );
+
+  const vsDestroyedLbPerDay = vsLbPerDay * (vsDestruction / 100);
+  const biogasScfPerDay = vsDestroyedLbPerDay * gasYield;
+  const biogasScfm = biogasScfPerDay / 1440;
+
+  const ch4ScfPerDay = biogasScfPerDay * (ch4Content / 100);
+  const biogasMMBtuPerDay = ch4ScfPerDay * 1012 / 1_000_000;
+
+  const digesterVolGal = sludgeGPD * hrt;
+  const digesterVolFt3 = digesterVolGal / 7.481;
+  const headspacePct = 12;
+  const totalVolFt3 = digesterVolFt3 / (1 - headspacePct / 100);
+  const digesterDia = roundTo(Math.pow((4 * totalVolFt3) / (Math.PI * 1.0), 1 / 3));
+  const digesterH = roundTo(digesterDia * 1.0);
+  const mixingPower = 6;
+  const mixingHP = kWToHP(mixingPower * digesterVolFt3 * 0.0283168 / 1000);
+
+  const digestionStage: ADProcessStage = {
+    name: "Anaerobic Digestion (Sludge)",
+    type: "digestion",
+    inputStream: {
+      sludgeFlow: { value: roundTo(sludgeGPD), unit: "GPD" },
+      totalSolids: { value: roundTo(tsContentPct, 1), unit: "% TS" },
+      volatileSolids: { value: roundTo(vsContentPct), unit: "% VS" },
+      vsLoad: { value: roundTo(vsLbPerDay), unit: "lb VS/day" },
+    },
+    outputStream: {
+      biogasFlow: { value: roundTo(biogasScfm), unit: "SCFM" },
+      biogasScfPerDay: { value: roundTo(biogasScfPerDay), unit: "scf/day" },
+      ch4Content: { value: ch4Content, unit: "%" },
+      co2Content: { value: co2Content, unit: "%" },
+      h2s: { value: h2sContentPpmv, unit: "ppmv" },
+      energyContent: { value: roundTo(biogasMMBtuPerDay, 1), unit: "MMBTU/day" },
+      vsDestruction: { value: vsDestruction, unit: "%" },
+    },
+    designCriteria: {
+      hrt: { value: hrt, unit: "days", source: "WEF MOP 8" },
+      temperature: { value: temperature, unit: "°C", source: "Mesophilic standard" },
+      vsDestruction: { value: vsDestruction, unit: "%", source: "WEF MOP 8" },
+      gasYield: { value: gasYield, unit: "scf/lb VS destroyed", source: "WEF MOP 8" },
+      ch4Content: { value: ch4Content, unit: "%", source: "Typical WWT sludge biogas" },
+      mixingPower: { value: mixingPower, unit: "W/m³", source: "WEF MOP 8" },
+    },
+    notes: [
+      `Primary + WAS sludge: ${roundTo(sludgeTpd, 1)} tons/day`,
+      `Biogas production: ${roundTo(biogasScfPerDay)} scf/day (${roundTo(biogasScfm)} SCFM)`,
+      `Energy content: ${roundTo(biogasMMBtuPerDay, 1)} MMBTU/day`,
+    ],
+  };
+  adStages.push(digestionStage);
+
+  equipment.push({
+    id: makeId("digester"),
+    process: "Anaerobic Digestion",
+    equipmentType: "Anaerobic Digester",
+    description: "Mesophilic CSTR anaerobic digester for sludge stabilization and biogas production",
+    quantity: 1,
+    specs: {
+      volume: { value: String(roundTo(digesterVolGal)), unit: "gal" },
+      hrt: { value: String(hrt), unit: "days" },
+      temperature: { value: String(temperature), unit: "°C" },
+      dimensionsL: { value: String(digesterDia), unit: "ft (dia)" },
+      dimensionsW: { value: String(digesterDia), unit: "ft (dia)" },
+      dimensionsH: { value: String(digesterH), unit: "ft" },
+      power: { value: String(mixingHP), unit: "HP" },
+    },
+    designBasis: `${hrt}-day HRT, mesophilic (${temperature}°C), ${mixingPower} W/m³ mixing`,
+    notes: "Includes gas collection, safety relief, and foam control systems",
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  const prodevDesign = getProdevalGasTrainDesignCriteria(biogasScfm);
+  const prodevUnit = selectProdevalUnit(biogasScfm);
+
+  const h2sRemovalEff = prodevDesign.gasConditioning.h2sRemovalEff.value / 100;
+  const outH2sPpmv = h2sContentPpmv * (1 - h2sRemovalEff);
+  const volumeLossPct = prodevDesign.gasConditioning.volumeLoss.value / 100;
+  const conditionedScfm = biogasScfm * (1 - volumeLossPct);
+
+  const conditioningStage: ADProcessStage = {
+    name: "Biogas Conditioning (Prodeval)",
+    type: "gasConditioning",
+    inputStream: {
+      biogasFlow: { value: roundTo(biogasScfm), unit: "SCFM" },
+      ch4: { value: ch4Content, unit: "%" },
+      co2: { value: co2Content, unit: "%" },
+      h2s: { value: h2sContentPpmv, unit: "ppmv" },
+    },
+    outputStream: {
+      biogasFlow: { value: roundTo(conditionedScfm), unit: "SCFM" },
+      h2s: { value: roundTo(outH2sPpmv, 1), unit: "ppmv" },
+      moisture: { value: 0, unit: "dry" },
+    },
+    designCriteria: prodevDesign.gasConditioning,
+    notes: [
+      `Prodeval VALOGAZ® FU 100/200 + VALOPACK® FU 300 — ${prodevUnit.numberOfTrains} train(s)`,
+      `H₂S removal: ${h2sContentPpmv} → ${roundTo(outH2sPpmv, 1)} ppmv (${roundTo(h2sRemovalEff * 100)}%)`,
+      "Moisture removal via refrigerated condenser to 39°F dewpoint",
+      "H₂S + siloxane removal via lead-lag activated carbon",
+    ],
+  };
+  adStages.push(conditioningStage);
+
+  const methaneRecovery = prodevDesign.gasUpgrading.methaneRecovery.value / 100;
+  const productCH4 = prodevDesign.gasUpgrading.productCH4.value;
+  const rngCH4ScfPerDay = ch4ScfPerDay * methaneRecovery;
+  const rngScfPerDay = rngCH4ScfPerDay / (productCH4 / 100);
+  const rngScfm = rngScfPerDay / 1440;
+  const rngMMBtuPerDay = rngScfPerDay * 1012 / 1_000_000;
+  const tailgasScfm = conditionedScfm - rngScfm;
+  const electricalDemandKW = biogasScfPerDay * prodevDesign.gasUpgrading.electricalDemand.value / (1000 * 24);
+
+  const rngPressurePsig = prodevDesign.gasUpgrading.pressureOut.value;
+  const rngProductCO2 = 100 - productCH4 - 0.5 - 0.3;
+  const rngBtuPerScf = productCH4 * 10.12;
+
+  const upgradingStage: ADProcessStage = {
+    name: "Gas Upgrading to RNG (Prodeval)",
+    type: "gasUpgrading",
+    inputStream: {
+      avgFlowScfm: { value: roundTo(conditionedScfm), unit: "SCFM" },
+      ch4: { value: roundTo(ch4Content, 1), unit: "%" },
+    },
+    outputStream: {
+      avgFlowScfm: { value: roundTo(rngScfm), unit: "SCFM" },
+      pressurePsig: { value: rngPressurePsig, unit: "psig" },
+      ch4: { value: productCH4, unit: "%" },
+      co2: { value: roundTo(rngProductCO2, 1), unit: "%" },
+      btuPerScf: { value: roundTo(rngBtuPerScf), unit: "Btu/SCF" },
+      mmbtuPerDay: { value: roundTo(rngMMBtuPerDay, 1), unit: "MMBtu/Day" },
+      tailgasFlow: { value: roundTo(tailgasScfm), unit: "SCFM" },
+      methaneRecovery: { value: roundTo(methaneRecovery * 100), unit: "%" },
+    },
+    designCriteria: prodevDesign.gasUpgrading,
+    notes: [
+      `Prodeval VALOPUR® FU 500 — 3-stage membrane separation`,
+      `RNG product: ${roundTo(rngScfm)} SCFM at ${rngPressurePsig} psig, ≥${productCH4}% CH₄`,
+      `Tail gas: ${roundTo(tailgasScfm)} SCFM → thermal oxidizer or flare`,
+      `Electrical demand: ${roundTo(electricalDemandKW)} kW`,
+      `RNG energy output: ${roundTo(rngMMBtuPerDay, 1)} MMBTU/day`,
+    ],
+  };
+  adStages.push(upgradingStage);
+
+  const prodevalEquipment = getProdevalEquipmentList(biogasScfm, makeId);
+  for (const pe of prodevalEquipment) {
+    equipment.push({
+      ...pe,
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  const flareHeight = roundTo(Math.max(15, Math.sqrt(biogasScfm) * 2), 0);
+  equipment.push({
+    id: makeId("enclosed-flare"),
+    process: "Gas Management",
+    equipmentType: "Enclosed Flare",
+    description: "Enclosed ground flare for tail gas and excess biogas combustion",
+    quantity: 1,
+    specs: {
+      capacity: { value: String(roundTo(biogasScfm * 1.1)), unit: "scfm" },
+      destructionEff: { value: "99.5", unit: "%" },
+      dimensionsL: { value: "8", unit: "ft (dia)" },
+      dimensionsW: { value: "8", unit: "ft (dia)" },
+      dimensionsH: { value: String(flareHeight), unit: "ft" },
+      power: { value: "5", unit: "HP" },
+    },
+    designBasis: "110% of maximum biogas production",
+    notes: "Emergency flare for biogas + tail gas combustion",
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  summary.biogasProduction = {
+    scfPerDay: roundTo(biogasScfPerDay),
+    scfm: roundTo(biogasScfm),
+    mmbtuPerDay: roundTo(biogasMMBtuPerDay, 1),
+  };
+  summary.rngProduction = {
+    scfPerDay: roundTo(rngScfPerDay),
+    scfm: roundTo(rngScfm),
+    mmbtuPerDay: roundTo(rngMMBtuPerDay, 1),
+    pressurePsig: rngPressurePsig,
+    productCH4Pct: productCH4,
+    methaneRecoveryPct: roundTo(methaneRecovery * 100),
+  };
+  summary.prodevalUnit = {
+    model: prodevUnit.modelSize,
+    trains: prodevUnit.numberOfTrains,
+    perTrainScfm: prodevUnit.perTrainScfm,
+  };
+
+  return { adStages, equipment, assumptions, warnings, summary };
+}
+
 export function calculateMassBalance(upif: UpifRecord): MassBalanceResults {
   const warnings: MassBalanceResults["warnings"] = [];
   const assumptions: MassBalanceResults["assumptions"] = [];
@@ -1003,16 +1272,29 @@ export function calculateMassBalance(upif: UpifRecord): MassBalanceResults {
     }
   }
 
+  let adStages: ADProcessStage[] = [];
+  let adEquipment: EquipmentItem[] = [];
+  let summaryData: Record<string, any> = {};
+
+  if (projectIncludesRNG(upif)) {
+    const adResult = calculateTypeADigestionAndGasTrain(upif, flowMGD, influent);
+    adStages = adResult.adStages;
+    adEquipment = adResult.equipment;
+    assumptions.push(...adResult.assumptions);
+    warnings.push(...adResult.warnings);
+    summaryData = adResult.summary;
+  }
+
   return {
     projectType: "A",
     stages,
-    adStages: [],
+    adStages,
     recycleStreams,
-    equipment,
+    equipment: [...equipment, ...adEquipment],
     convergenceIterations: iterations,
     convergenceAchieved: converged,
     assumptions,
     warnings,
-    summary: {},
+    summary: summaryData,
   };
 }

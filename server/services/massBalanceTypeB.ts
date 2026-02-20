@@ -5,6 +5,11 @@ import type {
   UpifRecord,
   FeedstockEntry,
 } from "@shared/schema";
+import {
+  selectProdevalUnit,
+  getProdevalEquipmentList,
+  getProdevalGasTrainDesignCriteria,
+} from "@shared/prodeval-equipment-library";
 
 type DesignCriterion = { value: number; unit: string; source: string };
 
@@ -897,18 +902,21 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   });
 
   // ══════════════════════════════════════════════════════════
-  // STAGE 7: BIOGAS CONDITIONING
+  // STAGE 7: BIOGAS CONDITIONING (Prodeval VALOGAZ® + VALOPACK®)
   // ══════════════════════════════════════════════════════════
-  const h2sRemovalEff = AD_DESIGN_DEFAULTS.gasConditioning.h2sRemovalEff.value / 100;
+  const prodevDesign = getProdevalGasTrainDesignCriteria(biogasScfm);
+  const prodevUnit = selectProdevalUnit(biogasScfm);
+
+  const h2sRemovalEff = prodevDesign.gasConditioning.h2sRemovalEff.value / 100;
   const outH2sPpmv = h2sPpmv * (1 - h2sRemovalEff);
-  const volumeLossPct = AD_DESIGN_DEFAULTS.gasConditioning.volumeLoss.value / 100;
+  const volumeLossPct = prodevDesign.gasConditioning.volumeLoss.value / 100;
   const conditionedBiogasM3PerDay = biogasM3PerDay * (1 - volumeLossPct);
   const conditionedScfm = biogasScfm * (1 - volumeLossPct);
 
   const conditionedBiogasStream = buildGasStream(conditionedScfm, 2, ch4Pct, co2Pct, outH2sPpmv, 1.0, 0.5);
 
   const conditioningStage: ADProcessStage = {
-    name: "Biogas Conditioning",
+    name: "Biogas Conditioning (Prodeval)",
     type: "gasConditioning",
     inputStream: {
       ...biogasRawStream,
@@ -917,87 +925,21 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       ...conditionedBiogasStream,
       moisture: { value: 0, unit: "saturated → dry" },
     },
-    designCriteria: AD_DESIGN_DEFAULTS.gasConditioning,
+    designCriteria: prodevDesign.gasConditioning,
     notes: [
+      `Prodeval VALOGAZ® FU 100/200 + VALOPACK® FU 300 — ${prodevUnit.numberOfTrains} train(s)`,
       `H₂S removal: ${h2sPpmv} → ${roundTo(outH2sPpmv, 1)} ppmv (${roundTo(h2sRemovalEff * 100)}% removal)`,
-      "Moisture removal via chiller and desiccant dryer to -40°F dewpoint",
-      "Siloxane removal via activated carbon (if applicable)",
+      "Moisture removal via Prodeval VALOGAZ® refrigerated condenser to 39°F dewpoint",
+      "H₂S + siloxane removal via Prodeval VALOPACK® lead-lag activated carbon",
     ],
   };
   adStages.push(conditioningStage);
 
-  const scrubberH = roundTo(Math.max(8, Math.sqrt(biogasScfm) * 1.5), 0);
-  const scrubberDia = roundTo(Math.max(3, Math.sqrt(biogasScfm) * 0.5), 1);
-  equipment.push({
-    id: makeId("h2s-scrubber"),
-    process: "Biogas Conditioning",
-    equipmentType: "H₂S Removal System",
-    description: h2sPpmv > 5000 ? "Chemical scrubber for high-H₂S biogas" :
-                 h2sPpmv > 500 ? "Biological scrubber for hydrogen sulfide removal" :
-                 "Iron sponge for hydrogen sulfide removal",
-    quantity: 1,
-    specs: {
-      inletH2S: { value: String(h2sPpmv), unit: "ppmv" },
-      outletH2S: { value: String(roundTo(outH2sPpmv, 1)), unit: "ppmv" },
-      removalEff: { value: "99.5", unit: "%" },
-      gasFlow: { value: String(roundTo(biogasScfm)), unit: "scfm" },
-      dimensionsL: { value: String(scrubberDia), unit: "ft (dia)" },
-      dimensionsW: { value: String(scrubberDia), unit: "ft (dia)" },
-      dimensionsH: { value: String(scrubberH), unit: "ft" },
-      power: { value: String(roundTo(Math.max(3, biogasScfm * 0.05), 0)), unit: "HP" },
-    },
-    designBasis: "99.5% H₂S removal to < 10 ppmv",
-    notes: "Includes media replacement schedule and monitoring",
-    isOverridden: false,
-    isLocked: false,
-  });
-
-  const blowerPowerKW = roundTo(biogasScfm * 0.1, 1);
-  equipment.push({
-    id: makeId("biogas-blower"),
-    process: "Biogas Conditioning",
-    equipmentType: "Biogas Blower",
-    description: "Positive displacement blower for biogas transport through conditioning train",
-    quantity: 2,
-    specs: {
-      gasFlow: { value: String(roundTo(biogasScfm)), unit: "scfm" },
-      pressure: { value: "2", unit: "psig" },
-      dimensionsL: { value: "6", unit: "ft" },
-      dimensionsW: { value: "4", unit: "ft" },
-      dimensionsH: { value: "4", unit: "ft" },
-      power: { value: String(kWToHP(blowerPowerKW)), unit: "HP" },
-    },
-    designBasis: "Duty + standby (N+1 redundancy)",
-    notes: "Low-pressure transport of biogas through conditioning equipment",
-    isOverridden: false,
-    isLocked: false,
-  });
-
-  equipment.push({
-    id: makeId("gas-chiller"),
-    process: "Biogas Conditioning",
-    equipmentType: "Gas Chiller/Dryer",
-    description: "Refrigerated chiller and desiccant dryer for moisture removal",
-    quantity: 1,
-    specs: {
-      gasFlow: { value: String(roundTo(biogasScfm)), unit: "scfm" },
-      outletDewpoint: { value: "-40", unit: "°F" },
-      dimensionsL: { value: "8", unit: "ft" },
-      dimensionsW: { value: "4", unit: "ft" },
-      dimensionsH: { value: "6", unit: "ft" },
-      power: { value: String(roundTo(Math.max(5, biogasScfm * 0.08), 0)), unit: "HP" },
-    },
-    designBasis: "Reduce moisture to pipeline specifications",
-    notes: "Condensate drainage to plant drain",
-    isOverridden: false,
-    isLocked: false,
-  });
-
   // ══════════════════════════════════════════════════════════
-  // STAGE 8: GAS UPGRADING TO RNG
+  // STAGE 8: GAS UPGRADING TO RNG (Prodeval VALOPUR®)
   // ══════════════════════════════════════════════════════════
-  const methaneRecovery = AD_DESIGN_DEFAULTS.gasUpgrading.methaneRecovery.value / 100;
-  const productCH4 = AD_DESIGN_DEFAULTS.gasUpgrading.productCH4.value;
+  const methaneRecovery = prodevDesign.gasUpgrading.methaneRecovery.value / 100;
+  const productCH4 = prodevDesign.gasUpgrading.productCH4.value;
   const rngCH4M3PerDay = ch4M3PerDay * methaneRecovery;
   const rngM3PerDay = rngCH4M3PerDay / (productCH4 / 100);
   const rngScfPerDay = rngM3PerDay * 35.3147;
@@ -1005,15 +947,15 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   const rngMMBtuPerDay = rngScfPerDay * 1012 / 1_000_000;
   const tailgasM3PerDay = conditionedBiogasM3PerDay - rngM3PerDay;
   const biogasScfdTotal = biogasM3PerDay * 35.3147;
-  const electricalDemandKW = biogasScfdTotal * AD_DESIGN_DEFAULTS.gasUpgrading.electricalDemand.value / (1000 * 24);
+  const electricalDemandKW = biogasScfdTotal * prodevDesign.gasUpgrading.electricalDemand.value / (1000 * 24);
 
   const rngProductCO2 = 100 - productCH4 - 0.5 - 0.3;
-  const pressureOut = AD_DESIGN_DEFAULTS.gasUpgrading.pressureOut.value;
+  const pressureOut = prodevDesign.gasUpgrading.pressureOut.value;
   const rngStream = buildGasStream(rngScfm, pressureOut, productCH4, rngProductCO2, 4, 0.5, 0.3);
   const tailgasScfm = roundTo(m3ToScf(tailgasM3PerDay) / 1440);
 
   const upgradingStage: ADProcessStage = {
-    name: "Gas Upgrading to RNG",
+    name: "Gas Upgrading to RNG (Prodeval)",
     type: "gasUpgrading",
     inputStream: {
       ...conditionedBiogasStream,
@@ -1024,59 +966,25 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       tailgasFlowSCFM: { value: tailgasScfm, unit: "SCFM" },
       methaneRecovery: { value: roundTo(methaneRecovery * 100), unit: "%" },
     },
-    designCriteria: AD_DESIGN_DEFAULTS.gasUpgrading,
+    designCriteria: prodevDesign.gasUpgrading,
     notes: [
-      "Membrane or PSA upgrading system",
-      `Tail gas: ${roundTo(m3ToScf(tailgasM3PerDay))} scfd → thermal oxidizer or flare`,
+      `Prodeval VALOPUR® FU 500 — 3-stage membrane separation`,
+      `RNG product: ${roundTo(rngScfm)} SCFM at ${pressureOut} psig, ≥${productCH4}% CH₄`,
+      `Tail gas: ${roundTo(m3ToScf(tailgasM3PerDay))} scfd (${tailgasScfm} SCFM) → thermal oxidizer or flare`,
       `Electrical demand: ${roundTo(electricalDemandKW)} kW`,
       `RNG energy output: ${roundTo(rngMMBtuPerDay, 1)} MMBTU/day`,
     ],
   };
   adStages.push(upgradingStage);
 
-  const upgradingPowerHP = roundTo(kWToHP(electricalDemandKW * 0.4), 0);
-  equipment.push({
-    id: makeId("membrane-psa"),
-    process: "Gas Upgrading",
-    equipmentType: "Membrane/PSA Upgrading System",
-    description: "Multi-stage membrane or pressure swing adsorption system for CO₂ removal",
-    quantity: 1,
-    specs: {
-      inletFlow: { value: String(roundTo(biogasScfm)), unit: "scfm" },
-      productFlow: { value: String(roundTo(rngScfm)), unit: "scfm" },
-      productCH4: { value: String(productCH4), unit: "%" },
-      methaneRecovery: { value: "97", unit: "%" },
-      dimensionsL: { value: String(roundTo(Math.max(20, biogasScfm * 0.08), 0)), unit: "ft" },
-      dimensionsW: { value: String(roundTo(Math.max(10, biogasScfm * 0.04), 0)), unit: "ft" },
-      dimensionsH: { value: "12", unit: "ft" },
-      power: { value: String(upgradingPowerHP), unit: "HP" },
-    },
-    designBasis: "97% methane recovery, pipeline quality RNG (≥96% CH₄)",
-    notes: "Includes monitoring and control system",
-    isOverridden: false,
-    isLocked: false,
-  });
-
-  const compressorPowerHP = roundTo(kWToHP(electricalDemandKW * 0.6), 0);
-  equipment.push({
-    id: makeId("rng-compressor"),
-    process: "Gas Upgrading",
-    equipmentType: "RNG Compressor",
-    description: "Multi-stage compressor for pipeline injection pressure",
-    quantity: 1,
-    specs: {
-      flow: { value: String(roundTo(rngScfm)), unit: "scfm" },
-      dischargePressure: { value: String(AD_DESIGN_DEFAULTS.gasUpgrading.pressureOut.value), unit: "psig" },
-      dimensionsL: { value: "8", unit: "ft" },
-      dimensionsW: { value: "5", unit: "ft" },
-      dimensionsH: { value: "6", unit: "ft" },
-      power: { value: String(compressorPowerHP), unit: "HP" },
-    },
-    designBasis: `Pipeline injection at ${AD_DESIGN_DEFAULTS.gasUpgrading.pressureOut.value} psig`,
-    notes: "Includes aftercooler and moisture knockout",
-    isOverridden: false,
-    isLocked: false,
-  });
+  const prodevalEquipment = getProdevalEquipmentList(biogasScfm, (suffix?: string) => makeId(suffix || "prodeval"));
+  for (const pe of prodevalEquipment) {
+    equipment.push({
+      ...pe,
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
 
   // ══════════════════════════════════════════════════════════
   // STAGE 9: EMERGENCY GAS MANAGEMENT

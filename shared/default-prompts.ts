@@ -1100,21 +1100,26 @@ Stage 6: LIQUID CLEANUP — DISSOLVED AIR FLOTATION (DAF)
   - DAF effluent: clean enough for sewer discharge or irrigation
   - Hydraulic loading: 2-4 gpm/ft²
 
-Stage 7: BIOGAS CONDITIONING
-  - H₂S removal: iron sponge (< 500 ppm inlet), biological scrubber (500-5,000 ppm), chemical scrubber (> 5,000 ppm)
-  - Target: < 10 ppmv H₂S post-treatment
-  - Moisture removal: chiller/condenser to dewpoint -40°F, then desiccant dryer
-  - Siloxane removal: activated carbon adsorption if inlet > 0.5 mg/m³
+Stage 7: BIOGAS CONDITIONING — Prodeval VALOGAZ® + VALOPACK®
+  DEFAULT VENDOR: Prodeval (France). All gas train equipment uses Prodeval modular units (~400 SCFM per train).
+  - FU 100 VALOGAZ® Drying: Refrigerated condenser (2 × chillers N+1) + condensate separator, outlet ~39°F
+  - FU 200 VALOGAZ® Blower: Roots-type PD blower, ~2.3 psig outlet, with inlet filter and silencer
+  - FU 300 VALOPACK® Filtration: Lead-lag activated carbon (2 × 4 m³ tanks) for H₂S, siloxane, and VOC removal + dust filter downstream
+  - H₂S removal efficiency: 99.5%
+  - Siloxane removal: 95%
   - Minor biogas volume loss: ~1% through conditioning
+  - Standard unit sizes: 400 SCFM (1 train), 800 SCFM (2 trains), 1,200 SCFM (3 trains)
 
-Stage 8: GAS UPGRADING TO RNG
-  - Membrane separation or PSA (Pressure Swing Adsorption) for CO₂ removal
-  - Methane recovery: 97-99%
-  - Product RNG: ≥96% CH₄, <2% CO₂, <4 ppm H₂S
-  - Compression to pipeline pressure: 200-800 psig
+Stage 8: GAS UPGRADING TO RNG — Prodeval VALOPUR®
+  DEFAULT VENDOR: Prodeval. 3-stage membrane separation system.
+  - FU 500 VALOPUR® Purification: Mixing bottle → biogas compressor (~200 psig) → 3-stage membrane separation
+  - FU 800 VALOPUR® Compression: HP compressor + HP filtration for pipeline injection at 200 psig
+  - Methane recovery: 97%
+  - Product RNG: ≥97% CH₄, <2% CO₂, <4 ppm H₂S
+  - Pipeline injection pressure: 200 psig (default)
   - RNG heating value: ~1,012 BTU/scf
-  - Tail gas (CO₂-rich) to thermal oxidizer or flare
-  - Electrical demand: 6-9 kWh/1,000 scf raw biogas
+  - Tail gas (CO₂-rich permeate) to thermal oxidizer or flare
+  - Electrical demand: ~8.8 kWh/1,000 scf raw biogas
 
 Stage 9: EMERGENCY/BACKUP GAS MANAGEMENT
   - Enclosed flare sized for 100-110% of maximum biogas production
@@ -1131,13 +1136,14 @@ EQUIPMENT LIST — Include at minimum:
   7. Centrifuge (decanter) for digestate dewatering
   8. Centrate collection tank
   9. DAF unit for liquid cleanup
-  10. Biogas blower
-  11. H₂S removal system
-  12. Gas chiller/dryer (moisture removal)
-  13. Siloxane removal (activated carbon, if applicable)
-  14. Membrane/PSA upgrading system
-  15. RNG compressor (pipeline injection pressure)
-  16. Enclosed flare
+  10. Prodeval VALOGAZ® Condenser (FU 100) — refrigerated moisture removal
+  11. Prodeval VALOGAZ® Blower (FU 200) — PD blower for gas transport
+  12. Prodeval VALOPACK® Activated Carbon Filter (FU 300) — H₂S, siloxane, VOC removal
+  13. Prodeval Dust Filter — downstream of AC for membrane protection
+  14. Prodeval VALOPUR® Mixing Bottle + Biogas Compressor (FU 500) — gas compression to ~200 psig
+  15. Prodeval VALOPUR® 3-Stage Membrane System (FU 500) — CO₂ removal, 97% CH₄ recovery
+  16. Prodeval VALOPUR® HP Filtration + RNG Compressor (FU 800) — pipeline injection at 200 psig
+  17. Enclosed flare
   17. Cake storage/loadout
   18. Digestate/effluent storage tank
 
@@ -1307,22 +1313,24 @@ PROCESS STAGES (BIOGAS-ONLY):
    - CH₄ (%), CO₂ (%), H₂S (ppm), N₂ (%), O₂ (%)
    - Heating Value (Btu/SCF), Energy Content (MMBtu/Day)
 
-DESIGN PARAMETERS:
-- H₂S removal: Iron sponge (< 500 ppm inlet), biological scrubber (500-5,000 ppm), chemical scrubber (> 5,000 ppm)
-- Moisture removal: Chiller/condenser to dewpoint -40°F
-- Siloxane removal: Activated carbon if inlet > 0.5 mg/m³
-- Gas upgrading methane recovery: 97-99%
-- Parasitic load: 3-5% of gas energy for compression/upgrading
-- Pipeline pressure: typically 200-800 psig depending on utility requirements
+DESIGN PARAMETERS — Prodeval Gas Train (Default Vendor):
+All gas train equipment uses Prodeval modular units (~400 SCFM per train). Standard sizes: 400/800/1,200 SCFM.
+- FU 100 VALOGAZ® Drying: Refrigerated condenser (2 × chillers N+1), outlet ~39°F
+- FU 200 VALOGAZ® Blower: PD blower, ~2.3 psig outlet
+- FU 300 VALOPACK® Filtration: Lead-lag activated carbon (2 × 4 m³), H₂S removal 99.5%, siloxane removal 95%
+- FU 500 VALOPUR® Purification: Mixing bottle → compressor (~200 psig) → 3-stage membrane (97% CH₄ recovery, ≥97% CH₄ product)
+- FU 800 VALOPUR® Compression: HP compressor + filtration, pipeline injection at 200 psig
+- Electrical demand: ~8.8 kWh/1,000 scf raw biogas
 
-EQUIPMENT:
-- Blower/compressor: Sized for raw biogas flow
-- H₂S scrubber: Sized for gas flow and inlet concentration
-- Chiller/condenser: Sized for moisture load at gas flow
-- Activated carbon vessel: Sized for siloxane load (if applicable)
-- Membrane/PSA unit: Sized for raw biogas flow, number of stages
-- RNG compressor: Sized for pipeline pressure requirement
-- Flare: Emergency backup, sized for 100% raw biogas flow
+EQUIPMENT (Prodeval Default):
+- Prodeval VALOGAZ® Condenser (FU 100) — per train
+- Prodeval VALOGAZ® Blower (FU 200) — per train
+- Prodeval VALOPACK® AC Filter (FU 300) — per train, lead-lag configuration
+- Prodeval Dust Filter — per train, downstream of AC
+- Prodeval VALOPUR® Mixing Bottle + Biogas Compressor (FU 500) — shared
+- Prodeval VALOPUR® 3-Stage Membrane System (FU 500) — shared
+- Prodeval VALOPUR® HP Filtration + RNG Compressor (FU 800) — shared
+- Enclosed Flare: Emergency backup, sized for 110% raw biogas flow
 
 RESPOND WITH VALID JSON matching this exact structure:
 {
@@ -1435,8 +1443,9 @@ AD/RNG TRAIN:
 Design the anaerobic digestion and gas upgrading pipeline:
 - Sludge thickening/blending with any co-digestion feedstocks
 - Anaerobic digestion (mesophilic, HRT 15-25 days for sludge)
-- Biogas conditioning (H₂S, moisture, siloxane removal)
-- Gas upgrading to RNG (≥96% CH₄)
+- Biogas conditioning — Prodeval VALOGAZ® (FU 100/200) + VALOPACK® (FU 300): refrigerated drying, PD blower, lead-lag activated carbon for H₂S/siloxane/VOC removal
+- Gas upgrading — Prodeval VALOPUR® (FU 500/800): 3-stage membrane separation, 97% CH₄ recovery, ≥97% CH₄ product, pipeline injection at 200 psig
+DEFAULT VENDOR: Prodeval. Modular gas train (~400 SCFM per train). Standard sizes: 400/800/1,200 SCFM.
 
 SLUDGE GENERATION:
 - Primary sludge: 50-65% of primary TSS removal, typically 3-6% TS
@@ -1662,9 +1671,9 @@ Include these cost categories for a full greenfield AD-to-RNG facility:
 - Feedstock receiving and storage (tipping floor, storage tanks/bins)
 - Feedstock pretreatment (screening, grinding, mixing, depackaging)
 - Anaerobic digesters (tanks, covers, heating, mixing systems)
-- Biogas collection, conditioning, and H₂S removal
-- Gas upgrading system (membrane, PSA, or amine scrubbing)
-- RNG compression and pipeline interconnect
+- Biogas conditioning — Prodeval VALOGAZ® (FU 100 condenser, FU 200 blower) + VALOPACK® (FU 300 lead-lag AC filter)
+- Gas upgrading — Prodeval VALOPUR® (FU 500 3-stage membrane separation, FU 800 HP compression)
+- RNG compression and pipeline interconnect (Prodeval FU 800 default)
 - Digestate handling (dewatering, storage, loadout)
 - Pumps, piping, and conveyance
 - Instrumentation and controls (SCADA, gas monitoring)
@@ -1752,14 +1761,16 @@ For each equipment item, estimate:
 3. Installed cost = base cost × quantity × installation factor
 4. Contingency percentage (15-25% for bolt-on)
 
-Include these cost categories for a bolt-on gas upgrading facility:
-- Biogas conditioning (moisture removal, chilling, filtration)
-- H₂S removal system (iron sponge, activated carbon, biological)
-- Siloxane removal (activated carbon beds)
-- Gas upgrading system (membrane, PSA, or amine scrubbing to ≥96% CH₄)
-- RNG compression and metering
-- Pipeline interconnect and custody transfer
-- Flare system (backup/safety)
+Include these cost categories for a bolt-on gas upgrading facility (Prodeval Default Vendor):
+- Prodeval VALOGAZ® Condenser (FU 100) — refrigerated moisture removal
+- Prodeval VALOGAZ® Blower (FU 200) — PD blower for gas transport
+- Prodeval VALOPACK® Activated Carbon Filter (FU 300) — lead-lag H₂S, siloxane, VOC removal
+- Prodeval Dust Filter — downstream protection for membranes
+- Prodeval VALOPUR® Mixing Bottle + Biogas Compressor (FU 500) — gas compression
+- Prodeval VALOPUR® 3-Stage Membrane System (FU 500) — CO₂ removal, ≥97% CH₄
+- Prodeval VALOPUR® HP Filtration + RNG Compressor (FU 800) — pipeline injection at 200 psig
+- Pipeline interconnect and custody transfer metering
+- Enclosed flare system (backup/safety)
 - Instrumentation and controls (gas analyzers, SCADA)
 - Electrical and power distribution
 - Piping and valves
@@ -1859,9 +1870,9 @@ AD / RNG TRAIN:
 - Sludge blending and feed preparation
 - Co-digestion receiving (if applicable)
 - Anaerobic digesters with heating and mixing
-- Biogas collection and conditioning
-- Gas upgrading to RNG quality
-- RNG compression and pipeline interconnect
+- Biogas conditioning — Prodeval VALOGAZ® (FU 100/200) + VALOPACK® (FU 300)
+- Gas upgrading — Prodeval VALOPUR® (FU 500 3-stage membrane, FU 800 HP compression)
+- RNG compression and pipeline interconnect (Prodeval FU 800 default, 200 psig)
 - Digestate dewatering and handling
 
 SHARED:
@@ -1984,7 +1995,7 @@ RULES:
 - specsSummary should highlight the most important sizing parameters (capacity, flow rate, volume, power, etc.).
 - For common equipment (pumps, blowers, heat exchangers), prefer major brands like Grundfos, Xylem/Flygt, Sulzer, Aerzen, Gardner Denver, Alfa Laval, etc.
 - For specialized AD/biogas equipment, prefer specialists like Vogelsang, Landia, BTS Biogas, Bright Biomethane, Guild Associates, Unison Solutions, etc.
-- For gas upgrading (membranes, PSA, amine), prefer Air Liquide, Pentair Haffmans, Bright Biomethane, Guild Associates, Xebec/Questair, etc.
+- For gas conditioning and upgrading (membranes, compression, H₂S/siloxane removal), use Prodeval (France) as default vendor: VALOGAZ® (FU 100/200), VALOPACK® (FU 300), VALOPUR® (FU 500/800). Alternative vendors: Air Liquide, Pentair Haffmans, Bright Biomethane, Guild Associates, Xebec/Questair.
 
 Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
   },
@@ -2141,13 +2152,13 @@ CHEMICALS & CONSUMABLES:
 - Iron chloride / H₂S scavengers
 - Antifoam agents
 - pH adjustment chemicals
-- Membrane/media replacement for gas upgrading
-- Activated carbon for siloxane/VOC removal
+- Prodeval VALOPUR® membrane cartridge replacement (3-stage membrane system)
+- Prodeval VALOPACK® activated carbon replacement (lead-lag AC beds for H₂S/siloxane/VOC)
 
 MAINTENANCE & REPAIRS:
 - Routine preventive maintenance (typically 3-5% of equipment CapEx/year)
 - Spare parts and consumables
-- Major equipment overhaul reserves (membranes, CHP, compressors)
+- Major equipment overhaul reserves (Prodeval VALOPUR® membranes, compressors, VALOGAZ® chillers)
 
 DIGESTATE MANAGEMENT:
 - Digestate hauling and land application
@@ -2253,16 +2264,13 @@ ENERGY & UTILITIES:
 - Instrument air
 - Process cooling water
 
-CHEMICALS & CONSUMABLES:
-- Activated carbon (H₂S, siloxane, VOC removal)
-- Iron sponge or other desulfurization media
-- Membrane replacement (if membrane upgrading)
-- PSA adsorbent replacement (if PSA upgrading)
-- Amine solution makeup (if amine scrubbing)
+CHEMICALS & CONSUMABLES (Prodeval Default Vendor):
+- Prodeval VALOPACK® activated carbon replacement (lead-lag AC beds, H₂S/siloxane/VOC)
+- Prodeval VALOPUR® membrane cartridge replacement (3-stage membrane system)
 
 MAINTENANCE & REPAIRS:
-- Compressor maintenance and overhaul
-- Gas upgrading system maintenance
+- Prodeval VALOGAZ® chiller/blower maintenance and overhaul
+- Prodeval VALOPUR® compressor and membrane system maintenance
 - Instrumentation calibration
 - Spare parts (typically 3-5% of equipment CapEx/year)
 
@@ -2331,7 +2339,7 @@ ENERGY & UTILITIES:
 CHEMICALS:
 - WW treatment chemicals (coagulants, polymers, disinfection)
 - AD process chemicals (H₂S scavengers, antifoam, nutrients)
-- Gas upgrading consumables (membranes, carbon, amine)
+- Gas upgrading consumables (Prodeval VALOPUR® membranes, VALOPACK® activated carbon)
 
 FEEDSTOCK & LOGISTICS:
 - Co-digestion feedstock receiving and handling
