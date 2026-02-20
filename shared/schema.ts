@@ -129,7 +129,7 @@ export type EnrichedFeedstockSpecRecord = Record<string, {
   source: "user_provided" | "ai_inferred" | "estimated_default";
   confidence: "high" | "medium" | "low";
   provenance: string;
-  group: "identity" | "physical" | "biochemical" | "contaminants" | "extended" | "composition";
+  group: "identity" | "physical" | "biochemical" | "contaminants" | "extended" | "composition" | "flow" | "energy";
   displayName: string;
   sortOrder: number;
 }>;
