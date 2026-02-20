@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 import * as XLSX from "xlsx";
-import type { MassBalanceResults, TreatmentStage, ADProcessStage, EquipmentItem, CapexResults, CapexLineItem, CapexSummary } from "@shared/schema";
+import type { MassBalanceResults, TreatmentStage, ADProcessStage, EquipmentItem, CapexResults, CapexLineItem, CapexSummary, VendorList } from "@shared/schema";
 
 function sanitize(text: string): string {
   if (!text) return "";
@@ -487,4 +487,69 @@ export function exportCapexExcel(
   }
 
   return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+}
+
+export function exportVendorListPDF(
+  vendorList: VendorList,
+  scenarioName: string,
+  projectName: string,
+  projectType: string
+): Promise<Buffer> {
+  return new Promise((resolve) => {
+    const doc = new PDFDocument({ size: "letter", margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+
+    const leftMargin = 50;
+    const contentWidth = 512;
+    const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
+
+    doc.font("Helvetica-Bold").fontSize(18).fillColor("#1E3A5F")
+      .text("Recommended Vendor List", leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica").fontSize(10).fillColor("#666666")
+      .text(`Project: ${sanitize(projectName)}`, leftMargin, 75, { align: "center", width: contentWidth })
+      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 88, { align: "center", width: contentWidth })
+      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 101, { align: "center", width: contentWidth })
+      .text(`Generated: ${vendorList.generatedAt ? new Date(vendorList.generatedAt).toLocaleDateString("en-US") : new Date().toLocaleDateString("en-US")}`, leftMargin, 114, { align: "center", width: contentWidth })
+      .text(`Model: ${sanitize(vendorList.modelUsed || "")}`, leftMargin, 127, { align: "center", width: contentWidth });
+
+    let y = 155;
+
+    for (const item of vendorList.items) {
+      if (y > 650) { doc.addPage(); y = 50; }
+
+      doc.rect(leftMargin, y, contentWidth, 22).fill("#2563EB");
+      doc.font("Helvetica-Bold").fontSize(10).fillColor("#FFFFFF")
+        .text(`${sanitize(item.equipmentType)} — ${sanitize(item.process)}`, leftMargin + 8, y + 5, { width: contentWidth - 16 });
+      y += 26;
+
+      doc.font("Helvetica").fontSize(8).fillColor("#333333")
+        .text(`Quantity: ${item.quantity}`, leftMargin + 8, y);
+      y += 12;
+      if (item.specsSummary) {
+        doc.font("Helvetica").fontSize(8).fillColor("#555555")
+          .text(`Specs: ${sanitize(item.specsSummary)}`, leftMargin + 8, y, { width: contentWidth - 16 });
+        y += doc.heightOfString(`Specs: ${sanitize(item.specsSummary)}`, { width: contentWidth - 16 }) + 4;
+      }
+
+      if (item.recommendations && item.recommendations.length > 0) {
+        y += 4;
+        const recHeaders = ["#", "Manufacturer", "Model Number", "Website", "Notes"];
+        const recWidths = [20, 110, 120, 130, 132];
+        const recRows: string[][] = item.recommendations.map((rec, idx) => [
+          String(idx + 1),
+          sanitize(rec.manufacturer),
+          sanitize(rec.modelNumber),
+          sanitize(rec.websiteUrl || rec.specSheetUrl || ""),
+          sanitize(rec.notes || ""),
+        ]);
+        y = drawTable(doc, recHeaders, recRows, leftMargin, y, recWidths, { fontSize: 7 });
+      }
+
+      y += 12;
+    }
+
+    doc.end();
+  });
 }

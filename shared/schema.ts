@@ -357,6 +357,29 @@ export type MassBalanceOverrides = Record<string, {
 
 export type MassBalanceLocks = Record<string, boolean>;
 
+export type VendorRecommendation = {
+  manufacturer: string;
+  modelNumber: string;
+  specSheetUrl?: string;
+  websiteUrl?: string;
+  notes?: string;
+};
+
+export type VendorListItem = {
+  equipmentId: string;
+  equipmentType: string;
+  process: string;
+  quantity: number;
+  specsSummary: string;
+  recommendations: VendorRecommendation[];
+};
+
+export type VendorList = {
+  items: VendorListItem[];
+  generatedAt: string;
+  modelUsed: string;
+};
+
 /**
  * Mass Balance Runs table: Versioned mass balance & equipment list results for scenarios.
  */
@@ -369,6 +392,7 @@ export const massBalanceRuns = pgTable("mass_balance_runs", {
   results: jsonb("results").$type<MassBalanceResults>(),
   overrides: jsonb("overrides").$type<MassBalanceOverrides>(),
   locks: jsonb("locks").$type<MassBalanceLocks>(),
+  vendorList: jsonb("vendor_list").$type<VendorList>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -2587,6 +2587,137 @@ async def export_mass_balance_excel_route(scenario_id: str):
 
 
 # =========================================================================
+# Recommended Vendor List
+# =========================================================================
+
+
+@router.get("/scenarios/{scenario_id}/vendor-list")
+async def get_vendor_list(scenario_id: str):
+    try:
+        runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        latest = runs[0] if runs else None
+        if not latest:
+            raise HTTPException(status_code=404, detail="No mass balance run found")
+        return {"vendorList": latest.get("vendor_list"), "runId": latest["id"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error fetching vendor list: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch vendor list")
+
+
+@router.post("/scenarios/{scenario_id}/vendor-list/generate")
+async def generate_vendor_list(scenario_id: str):
+    import time as _time
+    start_time = _time.time()
+    model_used = "unknown"
+    try:
+        runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        latest = runs[0] if runs else None
+        if not latest or not latest.get("results"):
+            raise HTTPException(status_code=400, detail="No mass balance results found. Generate a mass balance first.")
+        results = latest["results"]
+        equipment = results.get("equipment", [])
+        if not equipment:
+            raise HTTPException(status_code=400, detail="No equipment found in mass balance results.")
+
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        project_type = results.get("projectType") or scenario.get("project_type") or "B"
+        preferred_model = scenario.get("preferred_model") or "databricks-gpt-5-2-codex"
+
+        from services.vendor_list_ai import generate_vendor_list_with_ai
+        ai_result = await generate_vendor_list_with_ai(equipment, project_type, preferred_model, storage)
+        model_used = ai_result["provider_label"]
+
+        storage.update_mass_balance_run(latest["id"], {"vendor_list": ai_result["vendor_list"]})
+
+        elapsed_ms = int((_time.time() - start_time) * 1000)
+        try:
+            project = storage.get_project(scenario.get("project_id", ""))
+            storage.create_generation_log(
+                document_type="Vendor List",
+                model_used=model_used,
+                project_id=scenario.get("project_id"),
+                project_name=project.get("name") if project else None,
+                scenario_id=scenario_id,
+                scenario_name=scenario.get("name"),
+                duration_ms=elapsed_ms,
+                status="success",
+            )
+        except Exception:
+            pass
+
+        return {"vendorList": ai_result["vendor_list"], "runId": latest["id"]}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        elapsed_ms = int((_time.time() - start_time) * 1000)
+        logger.error("Error generating vendor list: %s", str(e))
+        try:
+            scenario = storage.get_scenario(scenario_id)
+            if scenario:
+                project = storage.get_project(scenario.get("project_id", ""))
+                storage.create_generation_log(
+                    document_type="Vendor List",
+                    model_used=model_used,
+                    project_id=scenario.get("project_id"),
+                    project_name=project.get("name") if project else None,
+                    scenario_id=scenario_id,
+                    scenario_name=scenario.get("name"),
+                    duration_ms=elapsed_ms,
+                    status="error",
+                    error_message=str(e),
+                )
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to generate vendor list: {str(e)}")
+
+
+@router.get("/scenarios/{scenario_id}/vendor-list/export-pdf")
+async def export_vendor_list_pdf_route(scenario_id: str):
+    try:
+        runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        latest = runs[0] if runs else None
+        if not latest or not latest.get("vendor_list"):
+            raise HTTPException(status_code=404, detail="No vendor list found. Generate a vendor list first.")
+
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        results = latest.get("results", {})
+        project_type = results.get("projectType") or scenario.get("project_type") or "B"
+        project = storage.get_project(scenario.get("project_id", ""))
+
+        from services.export_service import export_vendor_list_pdf
+        pdf_bytes = export_vendor_list_pdf(
+            latest["vendor_list"],
+            scenario.get("name", ""),
+            project.get("name", "Project") if project else "Project",
+            project_type,
+        )
+
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", scenario.get("name", "vendor-list"))
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="VendorList-{safe_name}.pdf"',
+                "Content-Length": str(len(pdf_bytes)),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error exporting vendor list PDF: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to export vendor list PDF")
+
+
+# =========================================================================
 # CapEx Estimates
 # =========================================================================
 

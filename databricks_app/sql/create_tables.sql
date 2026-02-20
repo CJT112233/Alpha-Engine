@@ -147,11 +147,12 @@ CREATE TABLE IF NOT EXISTS burnham_rng.project_intakes.mass_balance_runs (
   results STRING,
   overrides STRING,
   locks STRING,
+  vendor_list STRING,
   created_at TIMESTAMP NOT NULL,
   updated_at TIMESTAMP NOT NULL
 )
 USING DELTA
-COMMENT 'Versioned mass balance calculation results. scenario_id references scenarios.id. JSON fields stored as STRING. Status: draft, reviewed, finalized.';
+COMMENT 'Versioned mass balance calculation results. scenario_id references scenarios.id. JSON fields stored as STRING. Status: draft, reviewed, finalized. vendor_list stores recommended vendor list JSON.';
 
 CREATE TABLE IF NOT EXISTS burnham_rng.project_intakes.capex_estimates (
   id STRING NOT NULL,

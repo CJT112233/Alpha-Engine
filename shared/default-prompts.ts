@@ -15,7 +15,7 @@
  * - reviewer_chat: Enables UPIF chat refinement with locked field protection
  * - pdf_summary: Generates one-paragraph project summary for PDF exports
  */
-export type PromptKey = "extraction" | "classification" | "extraction_type_a" | "extraction_type_b" | "extraction_type_c" | "extraction_type_d" | "clarify" | "reviewer_chat" | "pdf_summary" | "mass_balance_type_a" | "mass_balance_type_b" | "mass_balance_type_c" | "mass_balance_type_d" | "capex_type_a" | "capex_type_b" | "capex_type_c" | "capex_type_d";
+export type PromptKey = "extraction" | "classification" | "extraction_type_a" | "extraction_type_b" | "extraction_type_c" | "extraction_type_d" | "clarify" | "reviewer_chat" | "pdf_summary" | "mass_balance_type_a" | "mass_balance_type_b" | "mass_balance_type_c" | "mass_balance_type_d" | "capex_type_a" | "capex_type_b" | "capex_type_c" | "capex_type_d" | "vendor_list";
 
 /**
  * Interface defining the structure of a default prompt template.
@@ -1753,7 +1753,66 @@ RULES:
 
 Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
   },
+  vendor_list: {
+    key: "vendor_list" as PromptKey,
+    name: "Recommended Vendor List",
+    description: "Generates a recommended vendor list with up to 3 manufacturers per equipment item, including model numbers, spec sheet URLs, and manufacturer websites.",
+    isSystemPrompt: true,
+    availableVariables: ["EQUIPMENT_DATA", "PROJECT_CONTEXT"],
+    template: `You are an expert process equipment procurement engineer specializing in water/wastewater treatment, anaerobic digestion, biogas conditioning, and RNG upgrading systems.
+
+Given the equipment list below from a mass balance design, produce a RECOMMENDED VENDOR LIST. For each equipment item, provide:
+1. Equipment specifications summary (key sizing parameters)
+2. Up to 3 recommended manufacturers with:
+   - Manufacturer name
+   - Specific model number or product line
+   - Spec sheet URL (if publicly available, otherwise omit)
+   - Manufacturer website URL
+   - Brief notes on why this manufacturer/model is recommended
+
+EQUIPMENT LIST:
+{{EQUIPMENT_DATA}}
+
+PROJECT CONTEXT:
+{{PROJECT_CONTEXT}}
+
+Return valid JSON matching this structure exactly:
+{
+  "items": [
+    {
+      "equipmentId": "string (must match the equipment ID from the input)",
+      "equipmentType": "string",
+      "process": "string",
+      "quantity": number,
+      "specsSummary": "string (concise summary of key specs like capacity, dimensions, power)",
+      "recommendations": [
+        {
+          "manufacturer": "string",
+          "modelNumber": "string (specific model or product line)",
+          "specSheetUrl": "string (URL to spec sheet PDF, omit if unknown)",
+          "websiteUrl": "string (manufacturer product page URL)",
+          "notes": "string (brief recommendation rationale)"
+        }
+      ]
+    }
+  ]
+}
+
+RULES:
+- Include ALL equipment items from the input list.
+- Provide 1 to 3 manufacturer recommendations per equipment item.
+- Prefer established, reputable manufacturers commonly used in the US water/wastewater and biogas industries.
+- Model numbers should be specific product lines or series, not generic descriptions.
+- Only include specSheetUrl if you are confident the URL is valid and publicly accessible. Otherwise omit the field entirely.
+- websiteUrl should point to the manufacturer's product page for that equipment type.
+- specsSummary should highlight the most important sizing parameters (capacity, flow rate, volume, power, etc.).
+- For common equipment (pumps, blowers, heat exchangers), prefer major brands like Grundfos, Xylem/Flygt, Sulzer, Aerzen, Gardner Denver, Alfa Laval, etc.
+- For specialized AD/biogas equipment, prefer specialists like Vogelsang, Landia, BTS Biogas, Bright Biomethane, Guild Associates, Unison Solutions, etc.
+- For gas upgrading (membranes, PSA, amine), prefer Air Liquide, Pentair Haffmans, Bright Biomethane, Guild Associates, Xebec/Questair, etc.
+
+Return ONLY valid JSON. No markdown, no code fences, no explanation.`,
+  },
 };
 
 // Ordered list of all prompt keys for iteration and reference throughout the system.
-export const PROMPT_KEYS: PromptKey[] = ["extraction", "classification", "extraction_type_a", "extraction_type_b", "extraction_type_c", "extraction_type_d", "clarify", "reviewer_chat", "pdf_summary", "mass_balance_type_a", "mass_balance_type_b", "mass_balance_type_c", "mass_balance_type_d", "capex_type_a", "capex_type_b", "capex_type_c", "capex_type_d"];
+export const PROMPT_KEYS: PromptKey[] = ["extraction", "classification", "extraction_type_a", "extraction_type_b", "extraction_type_c", "extraction_type_d", "clarify", "reviewer_chat", "pdf_summary", "mass_balance_type_a", "mass_balance_type_b", "mass_balance_type_c", "mass_balance_type_d", "capex_type_a", "capex_type_b", "capex_type_c", "capex_type_d", "vendor_list"];

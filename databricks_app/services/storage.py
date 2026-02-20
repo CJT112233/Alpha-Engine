@@ -764,7 +764,7 @@ class DatabricksStorage:
     # MASS BALANCE RUNS
     # ========================================================================
 
-    JSON_FIELDS_MB = ["input_snapshot", "results", "overrides", "locks"]
+    JSON_FIELDS_MB = ["input_snapshot", "results", "overrides", "locks", "vendor_list"]
 
     def get_mass_balance_runs_by_scenario(self, scenario_id: str) -> list:
         with get_connection() as conn:
@@ -801,6 +801,7 @@ class DatabricksStorage:
         results=None,
         overrides=None,
         locks=None,
+        vendor_list=None,
     ) -> dict:
         run_id = str(uuid.uuid4())
         now = datetime.utcnow()
@@ -809,14 +810,15 @@ class DatabricksStorage:
                 cur.execute(
                     f"INSERT INTO {self._mass_balance_runs} "
                     "(id, scenario_id, version, status, input_snapshot, results, "
-                    "overrides, locks, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "overrides, locks, vendor_list, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         run_id, scenario_id, version, status,
                         _serialize_json(input_snapshot),
                         _serialize_json(results),
                         _serialize_json(overrides),
                         _serialize_json(locks),
+                        _serialize_json(vendor_list),
                         now, now,
                     ),
                 )
@@ -836,7 +838,7 @@ class DatabricksStorage:
             if key in updates:
                 set_parts.append(f"{key} = ?")
                 values.append(updates[key])
-        for key in ["input_snapshot", "results", "overrides", "locks"]:
+        for key in ["input_snapshot", "results", "overrides", "locks", "vendor_list"]:
             if key in updates:
                 set_parts.append(f"{key} = ?")
                 values.append(_serialize_json(updates[key]))

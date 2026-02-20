@@ -48,10 +48,13 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  Users,
+  ExternalLink,
+  Loader2,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { ElapsedTimer } from "@/components/elapsed-timer";
-import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData, ADProcessStage, MassBalanceOverrides } from "@shared/schema";
+import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData, ADProcessStage, MassBalanceOverrides, VendorList, VendorListItem } from "@shared/schema";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -718,6 +721,146 @@ function EquipmentTable({ equipment, locks, overrides, onToggleLock, onSaveOverr
   );
 }
 
+function VendorListSection({ vendorList, scenarioId, isGenerating, onGenerate }: {
+  vendorList: VendorList | null | undefined;
+  scenarioId: string;
+  isGenerating: boolean;
+  onGenerate: () => void;
+}) {
+  if (!vendorList || !vendorList.items || vendorList.items.length === 0) {
+    return (
+      <Card className="mt-4">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4" /> Recommended Vendor List
+            </CardTitle>
+            <Button
+              onClick={onGenerate}
+              disabled={isGenerating}
+              size="sm"
+              data-testid="button-generate-vendor-list"
+            >
+              {isGenerating ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating...</>
+              ) : (
+                <><Users className="h-4 w-4 mr-2" /> Generate Vendor List</>
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            {isGenerating
+              ? "AI is generating vendor recommendations for each equipment item..."
+              : "Click \"Generate Vendor List\" to get manufacturer recommendations for each equipment item."}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="mt-4">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4" /> Recommended Vendor List
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs" data-testid="badge-vendor-model">
+              {vendorList.modelUsed}
+            </Badge>
+            <Badge variant="outline" className="text-xs" data-testid="badge-vendor-count">
+              {vendorList.items.length} items
+            </Badge>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" data-testid="button-vendor-export">
+                  <Download className="h-4 w-4 mr-2" /> Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem
+                  data-testid="button-export-vendor-pdf"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/vendor-list/export-pdf`, "_blank")}
+                >
+                  <FileText className="h-4 w-4 mr-2" /> Download PDF
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              onClick={onGenerate}
+              disabled={isGenerating}
+              variant="outline"
+              size="sm"
+              data-testid="button-regenerate-vendor-list"
+            >
+              {isGenerating ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Regenerating...</>
+              ) : (
+                <><RefreshCw className="h-4 w-4 mr-2" /> Regenerate</>
+              )}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {vendorList.items.map((item, idx) => (
+          <div key={idx} className="border rounded-lg overflow-hidden" data-testid={`vendor-item-${idx}`}>
+            <div className="bg-muted/40 px-3 py-2 flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-sm">{item.equipmentType}</span>
+              <Badge variant="outline" className="text-xs">{item.process}</Badge>
+              <Badge variant="secondary" className="text-xs">Qty: {item.quantity}</Badge>
+            </div>
+            {item.specsSummary && (
+              <div className="px-3 py-1 text-xs text-muted-foreground border-b">
+                {item.specsSummary}
+              </div>
+            )}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8">#</TableHead>
+                  <TableHead>Manufacturer</TableHead>
+                  <TableHead>Model Number</TableHead>
+                  <TableHead>Website</TableHead>
+                  <TableHead>Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {item.recommendations.map((rec, rIdx) => (
+                  <TableRow key={rIdx} data-testid={`vendor-rec-${idx}-${rIdx}`}>
+                    <TableCell className="text-xs text-muted-foreground">{rIdx + 1}</TableCell>
+                    <TableCell className="font-medium text-sm">{rec.manufacturer}</TableCell>
+                    <TableCell className="text-sm">{rec.modelNumber}</TableCell>
+                    <TableCell className="text-sm">
+                      {(rec.websiteUrl || rec.specSheetUrl) ? (
+                        <a
+                          href={rec.websiteUrl || rec.specSheetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                          data-testid={`link-vendor-${idx}-${rIdx}`}
+                        >
+                          Visit <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : "\u2014"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                      {rec.notes || "\u2014"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 function WarningsList({ warnings }: { warnings: MassBalanceResults["warnings"] }) {
   const validWarnings = (warnings || []).filter(
     (w) => (w.field && w.field.trim()) || (w.message && w.message.trim())
@@ -871,6 +1014,20 @@ export default function MassBalancePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "mass-balance"] });
       toast({ title: "Status Updated" });
+    },
+  });
+
+  const vendorListMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/scenarios/${scenarioId}/vendor-list/generate`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "mass-balance"] });
+      toast({ title: "Vendor List Generated", description: "Manufacturer recommendations are ready." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1203,6 +1360,14 @@ export default function MassBalancePage() {
                     onToggleLock={handleToggleLock}
                     onSaveOverride={handleSaveOverride}
                   />
+                  {latestRun && latestRun.status === "finalized" && (
+                    <VendorListSection
+                      vendorList={latestRun.vendorList}
+                      scenarioId={scenarioId!}
+                      isGenerating={vendorListMutation.isPending}
+                      onGenerate={() => vendorListMutation.mutate()}
+                    />
+                  )}
                 </TabsContent>
 
                 <TabsContent value="assumptions" className="mt-4">

@@ -2958,6 +2958,118 @@ export async function registerRoutes(
   });
 
   // =========================================================================
+  // Recommended Vendor List
+  // =========================================================================
+
+  app.get("/api/scenarios/:scenarioId/vendor-list", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const runs = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const latestRun = runs?.[0];
+      if (!latestRun) return res.status(404).json({ error: "No mass balance run found" });
+      res.json({ vendorList: latestRun.vendorList || null, runId: latestRun.id });
+    } catch (error) {
+      console.error("Error fetching vendor list:", error);
+      res.status(500).json({ error: "Failed to fetch vendor list" });
+    }
+  });
+
+  app.post("/api/scenarios/:scenarioId/vendor-list/generate", async (req: Request, res: Response) => {
+    req.setTimeout(300000);
+    res.setTimeout(300000);
+    const startTime = Date.now();
+    let modelUsed = "unknown";
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const runs = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const latestRun = runs?.[0];
+      if (!latestRun?.results) {
+        return res.status(400).json({ error: "No mass balance results found. Generate a mass balance first." });
+      }
+      const results = latestRun.results as MassBalanceResults;
+      if (!results.equipment || results.equipment.length === 0) {
+        return res.status(400).json({ error: "No equipment found in mass balance results." });
+      }
+
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+
+      const projectType = results.projectType || (scenario as any).projectType || "B";
+      const preferredModel = (scenario.preferredModel || "gpt5") as LLMProvider;
+
+      const { generateVendorListWithAI } = await import("./services/vendorListAI");
+      const aiResult = await generateVendorListWithAI(results.equipment, projectType, preferredModel, storage);
+      modelUsed = aiResult.providerLabel;
+
+      const updated = await storage.updateMassBalanceRun(latestRun.id, {
+        vendorList: aiResult.vendorList,
+      });
+
+      const elapsed = Date.now() - startTime;
+      try {
+        await storage.createGenerationLog({
+          documentType: "Vendor List",
+          modelUsed,
+          projectId: scenario.projectId,
+          projectName: scenario.project?.name || null,
+          scenarioId,
+          scenarioName: scenario.name,
+          durationMs: elapsed,
+          status: "success",
+          errorMessage: null,
+        });
+      } catch {}
+
+      res.json({ vendorList: aiResult.vendorList, runId: latestRun.id });
+    } catch (error) {
+      const elapsed = Date.now() - startTime;
+      console.error("Error generating vendor list:", error);
+      try {
+        const sid = req.params.scenarioId as string;
+        const scenario = await storage.getScenario(sid);
+        if (scenario) {
+          await storage.createGenerationLog({
+            documentType: "Vendor List",
+            modelUsed,
+            projectId: scenario.projectId,
+            projectName: scenario.project?.name || null,
+            scenarioId: sid,
+            scenarioName: scenario.name,
+            durationMs: elapsed,
+            status: "error",
+            errorMessage: (error as Error).message,
+          });
+        }
+      } catch {}
+      res.status(500).json({ error: "Failed to generate vendor list: " + (error as Error).message });
+    }
+  });
+
+  app.get("/api/scenarios/:scenarioId/vendor-list/export-pdf", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const runs = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const latestRun = runs?.[0];
+      if (!latestRun?.vendorList) return res.status(404).json({ error: "No vendor list found. Generate a vendor list first." });
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+      const { exportVendorListPDF } = await import("./services/exportService");
+      const projectType = (latestRun.results as MassBalanceResults)?.projectType || (scenario as any).projectType || "B";
+      const pdfBuffer = await exportVendorListPDF(latestRun.vendorList as any, scenario.name, scenario.project?.name || "Project", projectType);
+      const safeName = (scenario.name || "vendor-list").replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="VendorList-${safeName}.pdf"`,
+        "Content-Length": pdfBuffer.length.toString(),
+      });
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error exporting vendor list PDF:", error);
+      res.status(500).json({ error: "Failed to export vendor list PDF" });
+    }
+  });
+
+  // =========================================================================
   // CapEx Estimates
   // =========================================================================
 

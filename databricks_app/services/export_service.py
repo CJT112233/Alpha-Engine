@@ -561,7 +561,104 @@ def export_capex_excel(results: dict, scenario_name: str, project_name: str, pro
         ws.column_dimensions["B"].width = 25
         ws.column_dimensions["C"].width = 30
 
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return output.read()
+    capex_output = io.BytesIO()
+    wb.save(capex_output)
+    capex_output.seek(0)
+    return capex_output.read()
+
+
+def export_vendor_list_pdf(
+    vendor_list: dict,
+    scenario_name: str,
+    project_name: str,
+    project_type: str,
+) -> bytes:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas as pdf_canvas
+    from reportlab.lib.colors import HexColor
+
+    buf = io.BytesIO()
+    page_w, page_h = letter
+    c = pdf_canvas.Canvas(buf, pagesize=letter)
+    left = 50
+    content_w = page_w - 100
+
+    c.setFont("Helvetica-Bold", 18)
+    c.setFillColor(HexColor("#1E3A5F"))
+    c.drawCentredString(page_w / 2, page_h - 50, "Recommended Vendor List")
+
+    c.setFont("Helvetica", 10)
+    c.setFillColor(HexColor("#666666"))
+    c.drawCentredString(page_w / 2, page_h - 70, f"Project: {_sanitize(project_name)}")
+    c.drawCentredString(page_w / 2, page_h - 83, f"Scenario: {_sanitize(scenario_name)}")
+    type_label = TYPE_LABELS.get(project_type.upper(), project_type)
+    c.drawCentredString(page_w / 2, page_h - 96, f"Type {project_type}: {type_label}")
+    generated_at = vendor_list.get("generatedAt") or vendor_list.get("generated_at") or ""
+    model_used = vendor_list.get("modelUsed") or vendor_list.get("model_used") or ""
+    if generated_at:
+        try:
+            from datetime import datetime as _dt
+            dt = _dt.fromisoformat(generated_at.replace("Z", "+00:00"))
+            generated_at = dt.strftime("%m/%d/%Y")
+        except Exception:
+            pass
+    c.drawCentredString(page_w / 2, page_h - 109, f"Generated: {generated_at}")
+    c.drawCentredString(page_w / 2, page_h - 122, f"Model: {_sanitize(model_used)}")
+
+    y = page_h - 150
+
+    items = vendor_list.get("items", [])
+    for item in items:
+        eq_type = _sanitize(item.get("equipmentType") or item.get("equipment_type") or "")
+        process = _sanitize(item.get("process", ""))
+        quantity = item.get("quantity", 1)
+        specs_summary = _sanitize(item.get("specsSummary") or item.get("specs_summary") or "")
+
+        if y < 120:
+            c.showPage()
+            y = page_h - 50
+
+        c.setFillColor(HexColor("#2563EB"))
+        c.rect(left, y - 16, content_w, 20, fill=1, stroke=0)
+        c.setFillColor(HexColor("#FFFFFF"))
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(left + 6, y - 12, f"{eq_type} -- {process}")
+        y -= 24
+
+        c.setFillColor(HexColor("#333333"))
+        c.setFont("Helvetica", 8)
+        c.drawString(left + 6, y, f"Quantity: {quantity}")
+        y -= 12
+
+        if specs_summary:
+            c.setFillColor(HexColor("#555555"))
+            c.setFont("Helvetica", 8)
+            wrapped = _wrap_text(f"Specs: {specs_summary}", content_w - 12, "Helvetica", 8)
+            for line in wrapped:
+                if y < 50:
+                    c.showPage()
+                    y = page_h - 50
+                c.drawString(left + 6, y, line)
+                y -= 11
+            y -= 2
+
+        recommendations = item.get("recommendations", [])
+        if recommendations:
+            headers = ["#", "Manufacturer", "Model Number", "Website", "Notes"]
+            col_widths = [20, 110, 120, 130, content_w - 380]
+            rows = []
+            for idx, rec in enumerate(recommendations):
+                rows.append([
+                    str(idx + 1),
+                    _sanitize(rec.get("manufacturer", "")),
+                    _sanitize(rec.get("modelNumber") or rec.get("model_number") or ""),
+                    _sanitize(rec.get("websiteUrl") or rec.get("website_url") or rec.get("specSheetUrl") or rec.get("spec_sheet_url") or ""),
+                    _sanitize(rec.get("notes", "")),
+                ])
+            y = _draw_table(c, headers, rows, left, y, col_widths, font_size=7)
+
+        y -= 12
+
+    c.save()
+    buf.seek(0)
+    return buf.read()
