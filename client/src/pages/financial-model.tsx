@@ -27,7 +27,16 @@ import {
   Clock,
   Percent,
   Target,
+  Download,
+  FileText,
+  FileStack,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useState } from "react";
 import { ElapsedTimer } from "@/components/elapsed-timer";
 import type {
@@ -316,6 +325,34 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
             <RefreshCw className={`h-4 w-4 mr-2 ${generateMutation.isPending ? "animate-spin" : ""}`} />
             Regenerate
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" data-testid="button-export-summary">
+                <Download className="h-4 w-4 mr-2" />
+                Project Summary
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                data-testid="menu-export-executive"
+                onClick={() => {
+                  window.open(`/api/scenarios/${scenarioId}/project-summary?mode=executive`, "_blank");
+                }}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Executive Summary (2 pages)
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="menu-export-full"
+                onClick={() => {
+                  window.open(`/api/scenarios/${scenarioId}/project-summary?mode=full`, "_blank");
+                }}
+              >
+                <FileStack className="h-4 w-4 mr-2" />
+                Full Report with Appendices
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <ElapsedTimer isRunning={generateMutation.isPending || updateAssumptionsMutation.isPending} />
         </div>
       </div>

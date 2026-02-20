@@ -27,7 +27,7 @@ import { feedstockGroupLabels, feedstockGroupOrder } from "@shared/feedstock-lib
 import { outputGroupLabels, outputGroupOrder } from "@shared/output-criteria-library";
 import { llmComplete, getAvailableProviders, providerLabels, isProviderAvailable, type LLMProvider } from "./llm";
 import { DEFAULT_PROMPTS, PROMPT_KEYS, type PromptKey } from "@shared/default-prompts";
-import { exportMassBalancePDF, exportMassBalanceExcel, exportCapexPDF, exportCapexExcel, exportOpexPDF, exportOpexExcel } from "./services/exportService";
+import { exportMassBalancePDF, exportMassBalanceExcel, exportCapexPDF, exportCapexExcel, exportOpexPDF, exportOpexExcel, exportProjectSummaryPDF } from "./services/exportService";
 import type { MassBalanceResults, CapexResults, OpexResults } from "@shared/schema";
 import {
   validateAndSanitizeOutputSpecs,
@@ -3722,6 +3722,70 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching generation stats:", error);
       res.status(500).json({ error: "Failed to fetch generation stats" });
+    }
+  });
+
+  // ========================================================================
+  // PROJECT SUMMARY EXPORT ROUTE
+  // ========================================================================
+
+  app.get("/api/scenarios/:scenarioId/project-summary", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const mode = (req.query.mode as string) === "full" ? "full" : "executive";
+
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+
+      const upif = await storage.getUpifByScenario(scenarioId);
+      if (!upif) return res.status(400).json({ error: "UPIF not found" });
+
+      const mbRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const latestMB = mbRuns[0];
+      if (!latestMB || latestMB.status !== "finalized") {
+        return res.status(400).json({ error: "Mass balance must be finalized first." });
+      }
+
+      const capexEstimates = await storage.getCapexEstimatesByScenario(scenarioId);
+      const latestCapex = capexEstimates[0];
+      if (!latestCapex || latestCapex.status !== "finalized") {
+        return res.status(400).json({ error: "CapEx must be finalized first." });
+      }
+
+      const opexEstimates = await storage.getOpexEstimatesByScenario(scenarioId);
+      const latestOpex = opexEstimates[0];
+      if (!latestOpex || latestOpex.status !== "finalized") {
+        return res.status(400).json({ error: "OpEx must be finalized first." });
+      }
+
+      const financialModels = await storage.getFinancialModelsByScenario(scenarioId);
+      const latestFM = financialModels[0];
+      if (!latestFM || !latestFM.results) {
+        return res.status(400).json({ error: "Financial model must be generated first." });
+      }
+
+      const projectType = (scenario as any).projectType || (upif as any).projectType || "B";
+      const projectName = (scenario as any).project?.name || "Project";
+
+      const pdfBuffer = await exportProjectSummaryPDF(
+        mode as "executive" | "full",
+        projectName,
+        scenario.name,
+        projectType,
+        upif,
+        latestMB.results as MassBalanceResults,
+        latestCapex.results as CapexResults,
+        latestOpex.results as OpexResults,
+        latestFM.results as any,
+      );
+
+      const fileName = `Project_Summary_${mode === "full" ? "Full" : "Executive"}_${scenario.name.replace(/\s+/g, "_")}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error exporting project summary:", error);
+      res.status(500).json({ error: "Failed to export project summary" });
     }
   });
 
