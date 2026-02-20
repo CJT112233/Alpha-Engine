@@ -105,6 +105,83 @@ function hasPackagedWaste(feedstocks: FeedstockEntry[]): boolean {
   });
 }
 
+type StreamParam = { value: number; unit: string };
+
+function buildSolidsStream(tpd: number, tsPct: number, vsPctOfTs: number, codMgL: number = 0): Record<string, StreamParam> {
+  const tpy = roundTo(tpd * 365, 0);
+  const lbPerDay = roundTo(tpd * 2000, 0);
+  const densityLbPerGal = 8.34 + (tsPct / 100) * 0.5;
+  const gpd = roundTo(lbPerDay / densityLbPerGal, 0);
+  const tsLbPerDay = roundTo(lbPerDay * (tsPct / 100), 0);
+  const vsLbPerDay = roundTo(tsLbPerDay * (vsPctOfTs / 100), 0);
+  const codLbPerDay = codMgL > 0 ? roundTo(codMgL * gpd * 8.34 / 1_000_000, 0) : 0;
+  return {
+    flowTonsPerYear: { value: tpy, unit: "tons/year" },
+    flowTonsPerDay: { value: roundTo(tpd), unit: "tons/day" },
+    flowLbPerDay: { value: lbPerDay, unit: "lb/d" },
+    flowGPD: { value: gpd, unit: "GPD" },
+    totalSolidsPct: { value: roundTo(tsPct), unit: "%" },
+    volatileSolidsPct: { value: roundTo(vsPctOfTs), unit: "%" },
+    totalSolidsLbPerDay: { value: tsLbPerDay, unit: "lb/d" },
+    volatileSolidsLbPerDay: { value: vsLbPerDay, unit: "lb/d" },
+    codMgL: { value: roundTo(codMgL, 0), unit: "mg/L" },
+    codLbPerDay: { value: codLbPerDay, unit: "lb/d" },
+  };
+}
+
+function buildCodFractionation(codMgL: number, scodFraction: number = 0.3, codVsRatio: number = 1.4): Record<string, StreamParam> {
+  const scodMgL = roundTo(codMgL * scodFraction, 0);
+  const pcodMgL = roundTo(codMgL * (1 - scodFraction), 0);
+  return {
+    scodMgL: { value: scodMgL, unit: "mg/L" },
+    pcodMgL: { value: pcodMgL, unit: "mg/L" },
+    codVsRatio: { value: roundTo(codVsRatio, 2), unit: "lb COD/lb VS" },
+  };
+}
+
+function buildGasStream(avgScfm: number, pressurePsig: number, ch4Pct: number, co2Pct: number, h2sPpm: number, n2Pct: number = 1.0, o2Pct: number = 0.5): Record<string, StreamParam> {
+  const maxScfm = roundTo(avgScfm * 1.3);
+  const minScfm = roundTo(avgScfm * 0.6);
+  const btuPerScf = roundTo(ch4Pct / 100 * 1012, 0);
+  const mmbtuPerDay = roundTo(avgScfm * 1440 * btuPerScf / 1_000_000, 1);
+  return {
+    avgFlowScfm: { value: roundTo(avgScfm), unit: "SCFM" },
+    maxFlowScfm: { value: maxScfm, unit: "SCFM" },
+    minFlowScfm: { value: minScfm, unit: "SCFM" },
+    pressurePsig: { value: roundTo(pressurePsig), unit: "psig" },
+    ch4: { value: roundTo(ch4Pct, 1), unit: "%" },
+    co2: { value: roundTo(co2Pct, 1), unit: "%" },
+    h2s: { value: roundTo(h2sPpm, 0), unit: "ppm" },
+    n2: { value: roundTo(n2Pct, 1), unit: "%" },
+    o2: { value: roundTo(o2Pct, 1), unit: "%" },
+    btuPerScf: { value: btuPerScf, unit: "Btu/SCF" },
+    mmbtuPerDay: { value: mmbtuPerDay, unit: "MMBtu/Day" },
+  };
+}
+
+function buildWastewaterStream(
+  wetFlowLbPerDay: number, tsLbPerDay: number, vsLbPerDay: number,
+  tssLbPerDay: number, vssLbPerDay: number, codLbPerDay: number,
+  scodLbPerDay: number, rbscodLbPerDay: number, rscodLbPerDay: number,
+  tnLbPerDay: number, tknLbPerDay: number, nh3nLbPerDay: number, tpLbPerDay: number
+): Record<string, StreamParam> {
+  return {
+    wetFlowLbPerDay: { value: roundTo(wetFlowLbPerDay, 0), unit: "lb/d" },
+    tsLbPerDay: { value: roundTo(tsLbPerDay, 0), unit: "lb/d" },
+    vsLbPerDay: { value: roundTo(vsLbPerDay, 0), unit: "lb/d" },
+    tssLbPerDay: { value: roundTo(tssLbPerDay, 0), unit: "lb/d" },
+    vssLbPerDay: { value: roundTo(vssLbPerDay, 0), unit: "lb/d" },
+    codLbPerDay: { value: roundTo(codLbPerDay, 0), unit: "lb/d" },
+    scodLbPerDay: { value: roundTo(scodLbPerDay, 0), unit: "lb/d" },
+    rbscodLbPerDay: { value: roundTo(rbscodLbPerDay, 0), unit: "lb/d" },
+    rscodLbPerDay: { value: roundTo(rscodLbPerDay, 0), unit: "lb/d" },
+    tnLbPerDay: { value: roundTo(tnLbPerDay, 0), unit: "lb/d" },
+    tknLbPerDay: { value: roundTo(tknLbPerDay, 0), unit: "lb/d" },
+    nh3nLbPerDay: { value: roundTo(nh3nLbPerDay, 0), unit: "lb/d" },
+    tpLbPerDay: { value: roundTo(tpLbPerDay, 0), unit: "lb/d" },
+  };
+}
+
 export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults {
   const warnings: MassBalanceResults["warnings"] = [];
   const assumptions: MassBalanceResults["assumptions"] = [];
@@ -136,6 +213,9 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   let weightedVS = 0;
   let weightedBMP = 0;
   let weightedCN = 0;
+  let weightedCOD = 0;
+  let weightedTKN = 0;
+  let weightedTP = 0;
   let totalWeightForAvg = 0;
 
   for (const fs of feedstocks) {
@@ -148,6 +228,9 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     const vsOfTs = getSpecValue(fs, ["volatileSolids", "volatile solids", "vs", "vs/ts"], 80);
     const bmp = getSpecValue(fs, ["methanePotential", "bmp", "biochemical methane potential"], 0.30);
     const cn = getSpecValue(fs, ["cnRatio", "c:n ratio", "c:n", "c/n"], 25);
+    const codMgL = getSpecValue(fs, ["cod", "chemical oxygen demand"], 0);
+    const tknMgL = getSpecValue(fs, ["tkn", "total kjeldahl nitrogen"], 0);
+    const tpMgL = getSpecValue(fs, ["tp", "total phosphorus", "totalPhosphorus"], 0);
 
     const feedKgPerDay = tpd * 1000;
     const tsKg = feedKgPerDay * (ts / 100);
@@ -159,6 +242,9 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     weightedVS += vsOfTs * tpd;
     weightedBMP += bmp * vsKg;
     weightedCN += cn * tpd;
+    weightedCOD += codMgL * tpd;
+    weightedTKN += tknMgL * tpd;
+    weightedTP += tpMgL * tpd;
     totalWeightForAvg += tpd;
 
     if (ts <= 0) assumptions.push({ parameter: `${fs.feedstockType} TS`, value: "15%", source: "Default assumption" });
@@ -185,26 +271,56 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   const avgVS = weightedVS / totalWeightForAvg;
   const avgBMP = totalVSLoadKgPerDay > 0 ? weightedBMP / totalVSLoadKgPerDay : 0.30;
   const avgCN = weightedCN / totalWeightForAvg;
+  const avgCOD = weightedCOD / totalWeightForAvg;
+  const avgTKN = weightedTKN / totalWeightForAvg;
+  const avgTP = weightedTP / totalWeightForAvg;
   const isPackaged = hasPackagedWaste(feedstocks);
+
+  const scodFraction = 0.30;
+  const totalFeedLbPerDay = totalFeedTpd * 2000;
+  const feedDensityLbPerGal = 8.34 + (avgTS / 100) * 0.5;
+  const totalFeedGPD = totalFeedLbPerDay / feedDensityLbPerGal;
+  const totalTSLbPerDay = totalFeedLbPerDay * (avgTS / 100);
+  const totalVSLbPerDay = totalTSLbPerDay * (avgVS / 100);
+  const totalCODLbPerDay = avgCOD > 0 ? roundTo(avgCOD * totalFeedGPD * 8.34 / 1_000_000, 0) : roundTo(totalVSLbPerDay * 1.4, 0);
+  const codVsRatio = (totalCODLbPerDay > 0 && totalVSLbPerDay > 0)
+    ? totalCODLbPerDay / totalVSLbPerDay
+    : 1.4;
+  const totalSCODLbPerDay = roundTo(totalCODLbPerDay * scodFraction, 0);
+  const totalTKNLbPerDay = avgTKN > 0 ? roundTo(avgTKN * totalFeedGPD * 8.34 / 1_000_000, 0) : roundTo(totalFeedLbPerDay * 0.005, 0);
+  const totalNH3NLbPerDay = roundTo(totalTKNLbPerDay * 0.6, 0);
+  const totalTPLbPerDay = avgTP > 0 ? roundTo(avgTP * totalFeedGPD * 8.34 / 1_000_000, 0) : roundTo(totalFeedLbPerDay * 0.001, 0);
+  const effectiveCODMgL = avgCOD > 0 ? avgCOD : roundTo(totalVSLbPerDay * 1.4 / (totalFeedGPD * 8.34) * 1_000_000, 0);
 
   assumptions.push({ parameter: "Blended TS", value: `${roundTo(avgTS)}%`, source: "Weighted average" });
   assumptions.push({ parameter: "Blended VS/TS", value: `${roundTo(avgVS)}%`, source: "Weighted average" });
   assumptions.push({ parameter: "Blended BMP", value: `${roundTo(avgBMP * 35.3147 / 2.2046, 3)} scf CH₄/lb VS`, source: "Weighted average" });
+  if (avgCOD <= 0) {
+    assumptions.push({ parameter: "Blended COD", value: `${roundTo(effectiveCODMgL, 0)} mg/L (estimated from 1.4 × VS)`, source: "Engineering estimate" });
+  }
+  if (avgTKN <= 0) {
+    assumptions.push({ parameter: "TKN", value: `Estimated at 0.5% of wet weight`, source: "Typical food waste" });
+  }
+  if (avgTP <= 0) {
+    assumptions.push({ parameter: "TP", value: `Estimated at 0.1% of wet weight`, source: "Typical food waste" });
+  }
 
   // ══════════════════════════════════════════════════════════
   // STAGE 1: FEEDSTOCK RECEIVING & STORAGE
   // ══════════════════════════════════════════════════════════
+  const receivingSolids = buildSolidsStream(totalFeedTpd, avgTS, avgVS, effectiveCODMgL);
+  const receivingCodFrac = buildCodFractionation(effectiveCODMgL, scodFraction, codVsRatio > 0 ? codVsRatio : 1.4);
   const receivingStage: ADProcessStage = {
     name: "Feedstock Receiving & Storage",
     type: "receiving",
     inputStream: {
-      feedRate: { value: roundTo(totalFeedTpd), unit: "tons/day" },
-      totalSolids: { value: roundTo(avgTS), unit: "%" },
+      ...receivingSolids,
+      ...receivingCodFrac,
       numFeedstocks: { value: feedstocks.length, unit: "streams" },
     },
     outputStream: {
-      feedRate: { value: roundTo(totalFeedTpd), unit: "tons/day" },
-      totalSolids: { value: roundTo(avgTS), unit: "%" },
+      ...receivingSolids,
+      ...receivingCodFrac,
     },
     designCriteria: AD_DESIGN_DEFAULTS.receiving,
     notes: [`Receiving ${feedstocks.length} feedstock stream(s), total ${roundTo(totalFeedTpd).toLocaleString()} tons/day`],
@@ -234,17 +350,19 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   // ══════════════════════════════════════════════════════════
   const rejectRate = isPackaged ? AD_DESIGN_DEFAULTS.maceration.depackagingRejectRate.value / 100 : 0;
   const postMacerationTpd = totalFeedTpd * (1 - rejectRate);
+  const postMacSolids = buildSolidsStream(postMacerationTpd, avgTS, avgVS, effectiveCODMgL);
+  const postMacCodFrac = buildCodFractionation(effectiveCODMgL, scodFraction, codVsRatio > 0 ? codVsRatio : 1.4);
 
   const macerationStage: ADProcessStage = {
     name: "Feedstock Preparation (Maceration & Size Reduction)",
     type: "maceration",
     inputStream: {
-      feedRate: { value: roundTo(totalFeedTpd), unit: "tons/day" },
-      totalSolids: { value: roundTo(avgTS), unit: "%" },
+      ...receivingSolids,
+      ...receivingCodFrac,
     },
     outputStream: {
-      feedRate: { value: roundTo(postMacerationTpd), unit: "tons/day" },
-      totalSolids: { value: roundTo(avgTS), unit: "%" },
+      ...postMacSolids,
+      ...postMacCodFrac,
       particleSize: { value: AD_DESIGN_DEFAULTS.maceration.targetParticleSize.value, unit: "mm" },
       rejects: { value: roundTo(totalFeedTpd * rejectRate), unit: "tons/day" },
     },
@@ -309,17 +427,21 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     assumptions.push({ parameter: "Dilution Water", value: `${roundTo(dilutionWaterTpd)} tons/day added to achieve ${targetEqTS}% TS`, source: "Engineering practice" });
   }
 
+  const eqInputSolids = buildSolidsStream(postMacerationTpd, avgTS, avgVS, effectiveCODMgL);
+  const eqOutputSolids = buildSolidsStream(eqOutputTpd, eqOutputTS, avgVS, effectiveCODMgL * (eqOutputTS / avgTS));
+  const eqOutputCodFrac = buildCodFractionation(effectiveCODMgL * (eqOutputTS / avgTS), scodFraction, codVsRatio > 0 ? codVsRatio : 1.4);
+
   const eqStage: ADProcessStage = {
     name: "Equalization (EQ) Tank",
     type: "equalization",
     inputStream: {
-      feedRate: { value: roundTo(postMacerationTpd), unit: "tons/day" },
-      totalSolids: { value: roundTo(avgTS), unit: "%" },
+      ...eqInputSolids,
+      ...postMacCodFrac,
       dilutionWater: { value: roundTo(dilutionWaterTpd), unit: "tons/day" },
     },
     outputStream: {
-      feedRate: { value: roundTo(eqOutputTpd), unit: "tons/day" },
-      totalSolids: { value: roundTo(eqOutputTS), unit: "%" },
+      ...eqOutputSolids,
+      ...eqOutputCodFrac,
       temperature: { value: AD_DESIGN_DEFAULTS.equalization.preheatTemp.value, unit: "°C" },
       vsLoad: { value: roundTo(eqVSLoadKgPerDay), unit: "kg VS/day" },
     },
@@ -442,23 +564,26 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
 
   const digestateTPD = eqOutputTpd * (1 - vsDestruction * (eqOutputTS / 100) * (avgVS / 100));
 
+  const biogasRawStream = buildGasStream(biogasScfm, 0.5, ch4Pct, co2Pct, h2sPpmv, 1.0, 0.5);
+  const digestateTS = eqOutputTS * (1 - vsDestruction * (avgVS / 100));
+  const digestateVSOfTS = avgVS * (1 - vsDestruction) / (1 - vsDestruction * (avgVS / 100));
+  const digestateSolids = buildSolidsStream(digestateTPD, digestateTS, digestateVSOfTS, effectiveCODMgL * 0.35);
+  const digestateCodFrac = buildCodFractionation(effectiveCODMgL * 0.35, 0.5, codVsRatio > 0 ? codVsRatio : 1.4);
+
   const digesterStage: ADProcessStage = {
     name: "Anaerobic Digestion (CSTR)",
     type: "digester",
     inputStream: {
-      feedRate: { value: roundTo(eqOutputTpd), unit: "tons/day" },
+      ...eqOutputSolids,
+      ...eqOutputCodFrac,
       vsLoad: { value: roundTo(eqVSLoadKgPerDay), unit: "kg VS/day" },
-      totalSolids: { value: roundTo(eqOutputTS), unit: "%" },
       temperature: { value: AD_DESIGN_DEFAULTS.equalization.preheatTemp.value, unit: "°C" },
     },
     outputStream: {
-      biogasFlow: { value: roundTo(biogasScfPerDay), unit: "scfd" },
-      biogasFlowSCFM: { value: roundTo(biogasScfm), unit: "scfm" },
-      ch4Content: { value: ch4Pct, unit: "%" },
-      co2Content: { value: co2Pct, unit: "%" },
-      h2sContent: { value: h2sPpmv, unit: "ppmv" },
+      ...biogasRawStream,
       vsDestroyed: { value: roundTo(vsDestroyedKgPerDay), unit: "kg/day" },
-      digestateFlow: { value: roundTo(digestateTPD), unit: "tons/day" },
+      ...digestateSolids,
+      ...digestateCodFrac,
     },
     designCriteria: AD_DESIGN_DEFAULTS.digester,
     notes: [
@@ -511,7 +636,6 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   // ══════════════════════════════════════════════════════════
   const centSolidsCaptureEff = AD_DESIGN_DEFAULTS.centrifuge.solidsCaptureEff.value / 100;
   const centCakeSolidsPct = AD_DESIGN_DEFAULTS.centrifuge.cakeSolids.value;
-  const digestateTS = eqOutputTS * (1 - vsDestruction * (avgVS / 100));
   const digestateTSKgPerDay = digestateTPD * 1000 * (digestateTS / 100);
   const cakeSolidsKgPerDay = digestateTSKgPerDay * centSolidsCaptureEff;
   const cakeTPD = cakeSolidsKgPerDay / (centCakeSolidsPct / 100) / 1000;
@@ -521,18 +645,39 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   assumptions.push({ parameter: "Centrifuge Solids Capture", value: `${roundTo(centSolidsCaptureEff * 100)}%`, source: "Decanter centrifuge typical" });
   assumptions.push({ parameter: "Cake Solids", value: `${centCakeSolidsPct}% TS`, source: "Decanter centrifuge typical" });
 
+  const centrateLbPerDay = centrateTPD * 2000;
+  const centrateTSLbPerDay = digestateTSKgPerDay * (1 - centSolidsCaptureEff) * 2.2046;
+  const centrateVSLbPerDay = centrateTSLbPerDay * (digestateVSOfTS / 100);
+  const centrateTSSLbPerDay = centrateTSLbPerDay * 0.85;
+  const centrateVSSLbPerDay = centrateVSLbPerDay * 0.85;
+  const postDigestionCODFactor = 0.35;
+  const centrateCODLbPerDay = totalCODLbPerDay * postDigestionCODFactor * (1 - centSolidsCaptureEff * 0.5);
+  const centrateSCODLbPerDay = centrateCODLbPerDay * 0.6;
+  const centrateRbSCODLbPerDay = centrateSCODLbPerDay * 0.3;
+  const centrateRSCODLbPerDay = centrateSCODLbPerDay * 0.7;
+  const centrateTNLbPerDay = totalTKNLbPerDay * 0.85;
+  const centrateTKNLbPerDay = centrateTNLbPerDay * 0.95;
+  const centrateNH3NLbPerDay = centrateTKNLbPerDay * 0.7;
+  const centrateTPLbPerDay = totalTPLbPerDay * 0.6;
+
+  const centrateWW = buildWastewaterStream(
+    centrateLbPerDay, centrateTSLbPerDay, centrateVSLbPerDay,
+    centrateTSSLbPerDay, centrateVSSLbPerDay, centrateCODLbPerDay,
+    centrateSCODLbPerDay, centrateRbSCODLbPerDay, centrateRSCODLbPerDay,
+    centrateTNLbPerDay, centrateTKNLbPerDay, centrateNH3NLbPerDay, centrateTPLbPerDay
+  );
+  const cakeSolids = buildSolidsStream(cakeTPD, centCakeSolidsPct, digestateVSOfTS * 0.8, 0);
+
   const centrifugeStage: ADProcessStage = {
     name: "Solids-Liquid Separation (Centrifuge)",
     type: "solidsSeparation",
     inputStream: {
-      digestateFlow: { value: roundTo(digestateTPD), unit: "tons/day" },
-      digestateTS: { value: roundTo(digestateTS), unit: "% TS" },
+      ...digestateSolids,
+      ...digestateCodFrac,
     },
     outputStream: {
-      cakeFlow: { value: roundTo(cakeTPD), unit: "tons/day" },
-      cakeSolids: { value: centCakeSolidsPct, unit: "% TS" },
-      centrateFlow: { value: roundTo(centrateTPD), unit: "tons/day" },
-      centrateTSS: { value: roundTo(centrateTSSMgL, 0), unit: "mg/L" },
+      ...cakeSolids,
+      ...centrateWW,
     },
     designCriteria: AD_DESIGN_DEFAULTS.centrifuge,
     notes: [
@@ -591,18 +736,35 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   const dafEffluentTPD = centrateTPD - dafFloatTPD;
   const dafEffluentGPD = roundTo(dafEffluentTPD * 1000 / 3.785, 0);
 
+  const dafEffluentLbPerDay = dafEffluentTPD * 2000;
+  const dafEffTSLbPerDay = centrateTSLbPerDay * (1 - dafTSSRemoval) * 0.7;
+  const dafEffVSLbPerDay = centrateVSLbPerDay * (1 - dafTSSRemoval) * 0.7;
+  const dafEffTSSLbPerDay = centrateTSSLbPerDay * (1 - dafTSSRemoval);
+  const dafEffVSSLbPerDay = centrateVSSLbPerDay * (1 - dafTSSRemoval);
+  const dafEffCODLbPerDay = centrateCODLbPerDay * 0.7;
+  const dafEffSCODLbPerDay = centrateSCODLbPerDay * 0.9;
+  const dafEffRbSCODLbPerDay = centrateRbSCODLbPerDay * 0.85;
+  const dafEffRSCODLbPerDay = centrateRSCODLbPerDay * 0.9;
+  const dafEffTNLbPerDay = centrateTNLbPerDay * 0.95;
+  const dafEffTKNLbPerDay = centrateTKNLbPerDay * 0.95;
+  const dafEffNH3NLbPerDay = centrateNH3NLbPerDay * 0.95;
+  const dafEffTPLbPerDay = centrateTPLbPerDay * 0.5;
+
+  const dafEffluentWW = buildWastewaterStream(
+    dafEffluentLbPerDay, dafEffTSLbPerDay, dafEffVSLbPerDay,
+    dafEffTSSLbPerDay, dafEffVSSLbPerDay, dafEffCODLbPerDay,
+    dafEffSCODLbPerDay, dafEffRbSCODLbPerDay, dafEffRSCODLbPerDay,
+    dafEffTNLbPerDay, dafEffTKNLbPerDay, dafEffNH3NLbPerDay, dafEffTPLbPerDay
+  );
+
   const dafStage: ADProcessStage = {
     name: "Liquid Cleanup — Dissolved Air Flotation (DAF)",
     type: "daf",
     inputStream: {
-      centrateFlow: { value: roundTo(centrateTPD), unit: "tons/day" },
-      centrateFlowGPD: { value: roundTo(centrateFlowGPD, 0), unit: "GPD" },
-      centrateTSS: { value: roundTo(centrateTSSMgL, 0), unit: "mg/L" },
+      ...centrateWW,
     },
     outputStream: {
-      effluentFlow: { value: roundTo(dafEffluentTPD), unit: "tons/day" },
-      effluentFlowGPD: { value: dafEffluentGPD, unit: "GPD" },
-      effluentTSS: { value: roundTo(dafEffluentTSSMgL, 0), unit: "mg/L" },
+      ...dafEffluentWW,
       floatSludge: { value: roundTo(dafFloatTPD), unit: "tons/day" },
     },
     designCriteria: AD_DESIGN_DEFAULTS.daf,
@@ -658,20 +820,18 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   const outH2sPpmv = h2sPpmv * (1 - h2sRemovalEff);
   const volumeLossPct = AD_DESIGN_DEFAULTS.gasConditioning.volumeLoss.value / 100;
   const conditionedBiogasM3PerDay = biogasM3PerDay * (1 - volumeLossPct);
+  const conditionedScfm = biogasScfm * (1 - volumeLossPct);
+
+  const conditionedBiogasStream = buildGasStream(conditionedScfm, 2, ch4Pct, co2Pct, outH2sPpmv, 1.0, 0.5);
 
   const conditioningStage: ADProcessStage = {
     name: "Biogas Conditioning",
     type: "gasConditioning",
     inputStream: {
-      biogasFlow: { value: roundTo(biogasScfPerDay), unit: "scfd" },
-      biogasFlowSCFM: { value: roundTo(biogasScfm), unit: "scfm" },
-      ch4Content: { value: ch4Pct, unit: "%" },
-      h2sContent: { value: h2sPpmv, unit: "ppmv" },
+      ...biogasRawStream,
     },
     outputStream: {
-      biogasFlow: { value: roundTo(m3ToScf(conditionedBiogasM3PerDay)), unit: "scfd" },
-      ch4Content: { value: ch4Pct, unit: "%" },
-      h2sContent: { value: roundTo(outH2sPpmv, 1), unit: "ppmv" },
+      ...conditionedBiogasStream,
       moisture: { value: 0, unit: "saturated → dry" },
     },
     designCriteria: AD_DESIGN_DEFAULTS.gasConditioning,
@@ -750,19 +910,21 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   const biogasScfdTotal = biogasM3PerDay * 35.3147;
   const electricalDemandKW = biogasScfdTotal * AD_DESIGN_DEFAULTS.gasUpgrading.electricalDemand.value / (1000 * 24);
 
+  const rngProductCO2 = 100 - productCH4 - 0.5 - 0.3;
+  const pressureOut = AD_DESIGN_DEFAULTS.gasUpgrading.pressureOut.value;
+  const rngStream = buildGasStream(rngScfm, pressureOut, productCH4, rngProductCO2, 4, 0.5, 0.3);
+  const tailgasScfm = roundTo(m3ToScf(tailgasM3PerDay) / 1440);
+
   const upgradingStage: ADProcessStage = {
     name: "Gas Upgrading to RNG",
     type: "gasUpgrading",
     inputStream: {
-      biogasFlow: { value: roundTo(m3ToScf(conditionedBiogasM3PerDay)), unit: "scfd" },
-      ch4Content: { value: ch4Pct, unit: "%" },
+      ...conditionedBiogasStream,
     },
     outputStream: {
-      rngFlow: { value: roundTo(rngScfPerDay), unit: "scfd" },
-      rngFlowSCFM: { value: roundTo(rngScfm), unit: "scfm" },
-      rngCH4: { value: productCH4, unit: "%" },
-      rngEnergy: { value: roundTo(rngMMBtuPerDay, 1), unit: "MMBtu/day" },
+      ...rngStream,
       tailgasFlow: { value: roundTo(m3ToScf(tailgasM3PerDay)), unit: "scfd" },
+      tailgasFlowSCFM: { value: tailgasScfm, unit: "SCFM" },
       methaneRecovery: { value: roundTo(methaneRecovery * 100), unit: "%" },
     },
     designCriteria: AD_DESIGN_DEFAULTS.gasUpgrading,
@@ -847,18 +1009,56 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   // ══════════════════════════════════════════════════════════
   const digesterVolGallons = totalDigesterVolM3 * 264.172;
 
+  const biogasBtuPerScf = roundTo(ch4Pct / 100 * 1012, 0);
+  const biogasMmbtuPerDay = roundTo(biogasScfm * 1440 * biogasBtuPerScf / 1_000_000, 1);
+  const rngBtuPerScf = roundTo(productCH4 / 100 * 1012, 0);
+  const rngMmbtuPerDayFinal = roundTo(rngScfm * 1440 * rngBtuPerScf / 1_000_000, 1);
+
   const summary: Record<string, { value: string; unit: string }> = {
     totalFeedRate: { value: roundTo(totalFeedTpd).toLocaleString(), unit: "tons/day" },
+    totalFeedLbPerDay: { value: roundTo(totalFeedLbPerDay, 0).toLocaleString(), unit: "lb/d" },
+    totalFeedGPD: { value: roundTo(totalFeedGPD, 0).toLocaleString(), unit: "GPD" },
+    totalSolidsPct: { value: `${roundTo(avgTS)}`, unit: "%" },
+    volatileSolidsPct: { value: `${roundTo(avgVS)}`, unit: "%" },
+    totalSolidsLbPerDay: { value: roundTo(totalTSLbPerDay, 0).toLocaleString(), unit: "lb/d" },
+    volatileSolidsLbPerDay: { value: roundTo(totalVSLbPerDay, 0).toLocaleString(), unit: "lb/d" },
+    codMgL: { value: roundTo(effectiveCODMgL, 0).toLocaleString(), unit: "mg/L" },
+    codLbPerDay: { value: roundTo(totalCODLbPerDay, 0).toLocaleString(), unit: "lb/d" },
+    scodMgL: { value: roundTo(effectiveCODMgL * scodFraction, 0).toLocaleString(), unit: "mg/L" },
+    pcodMgL: { value: roundTo(effectiveCODMgL * (1 - scodFraction), 0).toLocaleString(), unit: "mg/L" },
+    codVsRatio: { value: `${roundTo(codVsRatio > 0 ? codVsRatio : 1.4, 2)}`, unit: "lb COD/lb VS" },
     totalVSLoad: { value: roundTo(eqVSLoadKgPerDay).toLocaleString(), unit: "kg VS/day" },
-    biogasProduction: { value: roundTo(biogasScfm).toLocaleString(), unit: "scfm" },
-    methaneProduction: { value: roundTo(biogasScfm * ch4Pct / 100).toLocaleString(), unit: "scfm CH₄" },
-    rngEnergy: { value: roundTo(rngMMBtuPerDay, 1).toLocaleString(), unit: "MMBTU/day" },
-    rngFlowSCFM: { value: roundTo(rngScfm).toLocaleString(), unit: "scfm" },
     digesterVolume: { value: roundTo(digesterVolGallons, 0).toLocaleString(), unit: "gallons" },
     hrt: { value: String(actualHRT), unit: "days" },
     vsDestruction: { value: `${roundTo(vsDestruction * 100)}`, unit: "%" },
+    biogasAvgFlowScfm: { value: roundTo(biogasScfm).toLocaleString(), unit: "SCFM" },
+    biogasMaxFlowScfm: { value: roundTo(biogasScfm * 1.3).toLocaleString(), unit: "SCFM" },
+    biogasMinFlowScfm: { value: roundTo(biogasScfm * 0.6).toLocaleString(), unit: "SCFM" },
+    biogasPressurePsig: { value: "0.5", unit: "psig" },
+    biogasCH4: { value: `${ch4Pct}`, unit: "%" },
+    biogasCO2: { value: `${co2Pct}`, unit: "%" },
+    biogasH2S: { value: `${h2sPpmv}`, unit: "ppm" },
+    biogasN2: { value: "1.0", unit: "%" },
+    biogasO2: { value: "0.5", unit: "%" },
+    biogasBtuPerScf: { value: `${biogasBtuPerScf}`, unit: "Btu/SCF" },
+    biogasMmbtuPerDay: { value: `${biogasMmbtuPerDay}`, unit: "MMBtu/Day" },
+    rngAvgFlowScfm: { value: roundTo(rngScfm).toLocaleString(), unit: "SCFM" },
+    rngMaxFlowScfm: { value: roundTo(rngScfm * 1.3).toLocaleString(), unit: "SCFM" },
+    rngMinFlowScfm: { value: roundTo(rngScfm * 0.6).toLocaleString(), unit: "SCFM" },
+    rngPressurePsig: { value: `${pressureOut}`, unit: "psig" },
+    rngCH4: { value: `${productCH4}`, unit: "%" },
+    rngCO2: { value: `${roundTo(rngProductCO2, 1)}`, unit: "%" },
+    rngH2S: { value: "4", unit: "ppm" },
+    rngN2: { value: "0.5", unit: "%" },
+    rngO2: { value: "0.3", unit: "%" },
+    rngBtuPerScf: { value: `${rngBtuPerScf}`, unit: "Btu/SCF" },
+    rngMmbtuPerDay: { value: `${rngMmbtuPerDayFinal}`, unit: "MMBtu/Day" },
+    methaneRecovery: { value: `${roundTo(methaneRecovery * 100)}`, unit: "%" },
     solidDigestate: { value: roundTo(cakeTPD).toLocaleString(), unit: "tons/day" },
     dafEffluent: { value: dafEffluentGPD.toLocaleString(), unit: "GPD" },
+    centrateTKNLbPerDay: { value: roundTo(centrateTKNLbPerDay, 0).toLocaleString(), unit: "lb/d" },
+    centrateNH3NLbPerDay: { value: roundTo(centrateNH3NLbPerDay, 0).toLocaleString(), unit: "lb/d" },
+    centrateTPLbPerDay: { value: roundTo(centrateTPLbPerDay, 0).toLocaleString(), unit: "lb/d" },
     electricalDemand: { value: roundTo(electricalDemandKW).toLocaleString(), unit: "kW" },
   };
 

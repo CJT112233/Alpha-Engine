@@ -1133,6 +1133,30 @@ EQUIPMENT LIST — Include at minimum:
   17. Cake storage/loadout
   18. Digestate/effluent storage tank
 
+═══════════════════════════════════════════════════════════════
+STANDARDIZED STREAM PARAMETER FORMATS — EVERY STAGE MUST USE THESE
+═══════════════════════════════════════════════════════════════
+
+SOLIDS STREAM FORMAT (Stages 1-4: Receiving, Maceration, EQ, Digester input/digestate):
+  flowTonsPerYear, flowTonsPerDay, flowLbPerDay, flowGPD,
+  totalSolidsPct (%), volatileSolidsPct (% of TS),
+  totalSolidsLbPerDay (lb/d), volatileSolidsLbPerDay (lb/d),
+  codMgL (mg/L), codLbPerDay (lb/d)
+Plus COD FRACTIONATION: scodMgL (mg/L), pcodMgL (mg/L), codVsRatio (lb COD/lb VS)
+
+GAS STREAM FORMAT (Stages 4 output, 7, 8: Digester biogas, Conditioning, Upgrading):
+  avgFlowScfm (SCFM), maxFlowScfm (SCFM), minFlowScfm (SCFM),
+  pressurePsig (psig),
+  ch4 (%), co2 (%), h2s (ppm), n2 (%), o2 (%),
+  btuPerScf (Btu/SCF), mmbtuPerDay (MMBtu/Day)
+
+WASTEWATER STREAM FORMAT (Stages 5-6: Centrate, DAF effluent):
+  wetFlowLbPerDay (lb/d),
+  tsLbPerDay (lb/d), vsLbPerDay (lb/d),
+  tssLbPerDay (lb/d), vssLbPerDay (lb/d),
+  codLbPerDay (lb/d), scodLbPerDay (lb/d), rbscodLbPerDay (lb/d), rscodLbPerDay (lb/d),
+  tnLbPerDay (lb/d), tknLbPerDay (lb/d), nh3nLbPerDay (lb/d), tpLbPerDay (lb/d)
+
 RESPOND WITH VALID JSON matching this exact structure:
 {
   "projectType": "B",
@@ -1174,6 +1198,17 @@ RESPOND WITH VALID JSON matching this exact structure:
   ],
   "summary": {
     "totalFeedRate": { "value": "string", "unit": "tons/day" },
+    "totalFeedLbPerDay": { "value": "string", "unit": "lb/d" },
+    "totalFeedGPD": { "value": "string", "unit": "GPD" },
+    "totalSolidsPct": { "value": "string", "unit": "%" },
+    "volatileSolidsPct": { "value": "string", "unit": "%" },
+    "totalSolidsLbPerDay": { "value": "string", "unit": "lb/d" },
+    "volatileSolidsLbPerDay": { "value": "string", "unit": "lb/d" },
+    "codMgL": { "value": "string", "unit": "mg/L" },
+    "codLbPerDay": { "value": "string", "unit": "lb/d" },
+    "scodMgL": { "value": "string", "unit": "mg/L" },
+    "pcodMgL": { "value": "string", "unit": "mg/L" },
+    "codVsRatio": { "value": "string", "unit": "lb COD/lb VS" },
     "totalVSLoad": { "value": "string", "unit": "kg VS/day" },
     "digesterVolume": { "value": "string", "unit": "gallons" },
     "hrt": { "value": "string", "unit": "days" },
@@ -1202,7 +1237,11 @@ RESPOND WITH VALID JSON matching this exact structure:
     "rngMmbtuPerDay": { "value": "string", "unit": "MMBtu/Day" },
     "methaneRecovery": { "value": "string", "unit": "%" },
     "solidDigestate": { "value": "string", "unit": "tons/day" },
-    "dafEffluent": { "value": "string", "unit": "GPD" }
+    "dafEffluent": { "value": "string", "unit": "GPD" },
+    "centrateTKNLbPerDay": { "value": "string", "unit": "lb/d" },
+    "centrateNH3NLbPerDay": { "value": "string", "unit": "lb/d" },
+    "centrateTPLbPerDay": { "value": "string", "unit": "lb/d" },
+    "electricalDemand": { "value": "string", "unit": "kW" }
   }
 }
 
@@ -1215,8 +1254,12 @@ RULES:
 - List all design assumptions with references.
 - The process train MUST follow: Receiving → Maceration → EQ Tank → CSTR Digester → Centrifuge → DAF → Biogas Conditioning → Gas Upgrading → RNG.
 - Include recycle streams (e.g., DAF float back to digester, centrate to DAF).
-- The Biogas Conditioning inputStream and Gas Upgrading outputStream MUST contain all 11 standardized gas parameters (avgFlowScfm, maxFlowScfm, minFlowScfm, pressurePsig, ch4, co2, h2s, n2, o2, btuPerScf, mmbtuPerDay).
-- Use SCFM (not scfm), ppm (not ppmv), Btu/SCF, MMBtu/Day for units.
+- EVERY STAGE MUST use the STANDARDIZED STREAM PARAMETER FORMATS defined above:
+  * Solids streams (Stages 1-4): All 10 solids parameters + 3 COD fractionation parameters
+  * Gas streams (Stages 4 output, 7, 8): All 11 gas parameters (avgFlowScfm through mmbtuPerDay)
+  * Wastewater streams (Stages 5-6): All 13 wastewater parameters (wetFlowLbPerDay through tpLbPerDay)
+- The Digester outputStream must contain BOTH the gas stream (biogas) AND the digestate solids stream.
+- Use SCFM (not scfm), ppm (not ppmv), Btu/SCF, MMBtu/Day for gas units.
 
 Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON.`,
   },
