@@ -32,7 +32,7 @@ export default function Dashboard() {
             Welcome to Project Factory
           </h1>
           <p className="text-muted-foreground">
-            Transform unstructured project inputs into standardized specifications with AI-powered extraction.
+            Translating ideas into conceptual designs.
           </p>
         </div>
 
