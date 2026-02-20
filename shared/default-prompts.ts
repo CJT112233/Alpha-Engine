@@ -1175,12 +1175,32 @@ RESPOND WITH VALID JSON matching this exact structure:
   "summary": {
     "totalFeedRate": { "value": "string", "unit": "tons/day" },
     "totalVSLoad": { "value": "string", "unit": "kg VS/day" },
-    "biogasProduction": { "value": "string", "unit": "scfm" },
-    "methaneProduction": { "value": "string", "unit": "scfm" },
-    "rngProduction": { "value": "string", "unit": "MMBtu/day" },
     "digesterVolume": { "value": "string", "unit": "gallons" },
     "hrt": { "value": "string", "unit": "days" },
     "vsDestruction": { "value": "string", "unit": "%" },
+    "biogasAvgFlowScfm": { "value": "string", "unit": "SCFM" },
+    "biogasMaxFlowScfm": { "value": "string", "unit": "SCFM" },
+    "biogasMinFlowScfm": { "value": "string", "unit": "SCFM" },
+    "biogasPressurePsig": { "value": "string", "unit": "psig" },
+    "biogasCH4": { "value": "string", "unit": "%" },
+    "biogasCO2": { "value": "string", "unit": "%" },
+    "biogasH2S": { "value": "string", "unit": "ppm" },
+    "biogasN2": { "value": "string", "unit": "%" },
+    "biogasO2": { "value": "string", "unit": "%" },
+    "biogasBtuPerScf": { "value": "string", "unit": "Btu/SCF" },
+    "biogasMmbtuPerDay": { "value": "string", "unit": "MMBtu/Day" },
+    "rngAvgFlowScfm": { "value": "string", "unit": "SCFM" },
+    "rngMaxFlowScfm": { "value": "string", "unit": "SCFM" },
+    "rngMinFlowScfm": { "value": "string", "unit": "SCFM" },
+    "rngPressurePsig": { "value": "string", "unit": "psig" },
+    "rngCH4": { "value": "string", "unit": "%" },
+    "rngCO2": { "value": "string", "unit": "%" },
+    "rngH2S": { "value": "string", "unit": "ppm" },
+    "rngN2": { "value": "string", "unit": "%" },
+    "rngO2": { "value": "string", "unit": "%" },
+    "rngBtuPerScf": { "value": "string", "unit": "Btu/SCF" },
+    "rngMmbtuPerDay": { "value": "string", "unit": "MMBtu/Day" },
+    "methaneRecovery": { "value": "string", "unit": "%" },
     "solidDigestate": { "value": "string", "unit": "tons/day" },
     "dafEffluent": { "value": "string", "unit": "GPD" }
   }
@@ -1195,6 +1215,8 @@ RULES:
 - List all design assumptions with references.
 - The process train MUST follow: Receiving → Maceration → EQ Tank → CSTR Digester → Centrifuge → DAF → Biogas Conditioning → Gas Upgrading → RNG.
 - Include recycle streams (e.g., DAF float back to digester, centrate to DAF).
+- The Biogas Conditioning inputStream and Gas Upgrading outputStream MUST contain all 11 standardized gas parameters (avgFlowScfm, maxFlowScfm, minFlowScfm, pressurePsig, ch4, co2, h2s, n2, o2, btuPerScf, mmbtuPerDay).
+- Use SCFM (not scfm), ppm (not ppmv), Btu/SCF, MMBtu/Day for units.
 
 Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON.`,
   },
@@ -1213,10 +1235,18 @@ YOUR TASK:
 This is a Bolt-On project — the biogas already exists. There is NO digester, NO feedstock receiving, NO pretreatment. Design ONLY the gas conditioning and upgrading system from existing biogas input to pipeline-quality RNG output.
 
 PROCESS STAGES (BIOGAS-ONLY):
-1. Biogas Input: Characterize incoming biogas (CH₄%, CO₂%, H₂S, siloxanes, moisture, flow rate)
+1. Biogas Input: Characterize incoming biogas using STANDARDIZED 11-PARAMETER FORMAT:
+   - Average Flow (SCFM), Max Flow (SCFM), Min Flow (SCFM)
+   - Pressure (psig)
+   - CH₄ (%), CO₂ (%), H₂S (ppm), N₂ (%), O₂ (%)
+   - Heating Value (Btu/SCF), Energy Content (MMBtu/Day)
 2. Gas Conditioning: H₂S removal, moisture removal, siloxane removal (if needed)
 3. Gas Upgrading: CO₂ removal via membrane, PSA, or amine scrubbing to achieve ≥96% CH₄
-4. RNG Output: Pipeline-quality specifications (CH₄ ≥96%, H₂S <4 ppm, CO₂ <2%, moisture <7 lb/MMscf)
+4. RNG Output: Pipeline-quality specifications using SAME 11-PARAMETER FORMAT:
+   - Average Flow (SCFM), Max Flow (SCFM), Min Flow (SCFM)
+   - Pressure (psig) — pipeline injection pressure
+   - CH₄ (%), CO₂ (%), H₂S (ppm), N₂ (%), O₂ (%)
+   - Heating Value (Btu/SCF), Energy Content (MMBtu/Day)
 
 DESIGN PARAMETERS:
 - H₂S removal: Iron sponge (< 500 ppm inlet), biological scrubber (500-5,000 ppm), chemical scrubber (> 5,000 ppm)
@@ -1273,12 +1303,31 @@ RESPOND WITH VALID JSON matching this exact structure:
     { "field": "fieldName", "message": "Message", "severity": "warning|info|error" }
   ],
   "summary": {
-    "biogasInput": { "value": "string", "unit": "scfm" },
-    "methaneInput": { "value": "string", "unit": "scfm" },
-    "rngOutput": { "value": "string", "unit": "scfm" },
-    "rngEnergy": { "value": "string", "unit": "MMBtu/day" },
+    "biogasAvgFlowScfm": { "value": "string", "unit": "SCFM" },
+    "biogasMaxFlowScfm": { "value": "string", "unit": "SCFM" },
+    "biogasMinFlowScfm": { "value": "string", "unit": "SCFM" },
+    "biogasPressurePsig": { "value": "string", "unit": "psig" },
+    "biogasCH4": { "value": "string", "unit": "%" },
+    "biogasCO2": { "value": "string", "unit": "%" },
+    "biogasH2S": { "value": "string", "unit": "ppm" },
+    "biogasN2": { "value": "string", "unit": "%" },
+    "biogasO2": { "value": "string", "unit": "%" },
+    "biogasBtuPerScf": { "value": "string", "unit": "Btu/SCF" },
+    "biogasMmbtuPerDay": { "value": "string", "unit": "MMBtu/Day" },
+    "rngAvgFlowScfm": { "value": "string", "unit": "SCFM" },
+    "rngMaxFlowScfm": { "value": "string", "unit": "SCFM" },
+    "rngMinFlowScfm": { "value": "string", "unit": "SCFM" },
+    "rngPressurePsig": { "value": "string", "unit": "psig" },
+    "rngCH4": { "value": "string", "unit": "%" },
+    "rngCO2": { "value": "string", "unit": "%" },
+    "rngH2S": { "value": "string", "unit": "ppm" },
+    "rngN2": { "value": "string", "unit": "%" },
+    "rngO2": { "value": "string", "unit": "%" },
+    "rngBtuPerScf": { "value": "string", "unit": "Btu/SCF" },
+    "rngMmbtuPerDay": { "value": "string", "unit": "MMBtu/Day" },
     "methaneRecovery": { "value": "string", "unit": "%" },
-    "h2sRemoval": { "value": "string", "unit": "%" }
+    "tailgasFlow": { "value": "string", "unit": "SCFM" },
+    "electricalDemand": { "value": "string", "unit": "kW" }
   }
 }
 
@@ -1288,6 +1337,8 @@ CRITICAL RULES:
 - If biogas flow or composition data is missing, use reasonable defaults and note in assumptions.
 - All summary values as formatted strings with commas for thousands.
 - Equipment IDs: descriptive lowercase with hyphens.
+- The Biogas Input stage inputStream and Gas Upgrading outputStream MUST contain all 11 standardized parameters (avgFlowScfm, maxFlowScfm, minFlowScfm, pressurePsig, ch4, co2, h2s, n2, o2, btuPerScf, mmbtuPerDay).
+- Use SCFM (not scfm), ppm (not ppmv), Btu/SCF, MMBtu/Day for units.
 
 Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON.`,
   },
@@ -1384,9 +1435,30 @@ RESPOND WITH VALID JSON matching this exact structure:
     "influentFlow": { "value": "string", "unit": "MGD" },
     "sludgeProduction": { "value": "string", "unit": "tons/day" },
     "coDigestionFeed": { "value": "string", "unit": "tons/day" },
-    "biogasProduction": { "value": "string", "unit": "scfm" },
-    "rngProduction": { "value": "string", "unit": "MMBtu/day" },
-    "digesterVolume": { "value": "string", "unit": "gallons" }
+    "digesterVolume": { "value": "string", "unit": "gallons" },
+    "biogasAvgFlowScfm": { "value": "string", "unit": "SCFM" },
+    "biogasMaxFlowScfm": { "value": "string", "unit": "SCFM" },
+    "biogasMinFlowScfm": { "value": "string", "unit": "SCFM" },
+    "biogasPressurePsig": { "value": "string", "unit": "psig" },
+    "biogasCH4": { "value": "string", "unit": "%" },
+    "biogasCO2": { "value": "string", "unit": "%" },
+    "biogasH2S": { "value": "string", "unit": "ppm" },
+    "biogasN2": { "value": "string", "unit": "%" },
+    "biogasO2": { "value": "string", "unit": "%" },
+    "biogasBtuPerScf": { "value": "string", "unit": "Btu/SCF" },
+    "biogasMmbtuPerDay": { "value": "string", "unit": "MMBtu/Day" },
+    "rngAvgFlowScfm": { "value": "string", "unit": "SCFM" },
+    "rngMaxFlowScfm": { "value": "string", "unit": "SCFM" },
+    "rngMinFlowScfm": { "value": "string", "unit": "SCFM" },
+    "rngPressurePsig": { "value": "string", "unit": "psig" },
+    "rngCH4": { "value": "string", "unit": "%" },
+    "rngCO2": { "value": "string", "unit": "%" },
+    "rngH2S": { "value": "string", "unit": "ppm" },
+    "rngN2": { "value": "string", "unit": "%" },
+    "rngO2": { "value": "string", "unit": "%" },
+    "rngBtuPerScf": { "value": "string", "unit": "Btu/SCF" },
+    "rngMmbtuPerDay": { "value": "string", "unit": "MMBtu/Day" },
+    "methaneRecovery": { "value": "string", "unit": "%" }
   }
 }
 
@@ -1398,6 +1470,8 @@ RULES:
 - All summary values as formatted strings with commas for thousands.
 - Equipment IDs: descriptive lowercase with hyphens.
 - Include equipment for BOTH trains (WW treatment and AD/RNG).
+- The Biogas Conditioning inputStream and Gas Upgrading outputStream MUST contain all 11 standardized gas parameters (avgFlowScfm, maxFlowScfm, minFlowScfm, pressurePsig, ch4, co2, h2s, n2, o2, btuPerScf, mmbtuPerDay).
+- Use SCFM (not scfm), ppm (not ppmv), Btu/SCF, MMBtu/Day for units.
 
 Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON.`,
   },

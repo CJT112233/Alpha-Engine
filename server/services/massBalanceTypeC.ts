@@ -113,28 +113,40 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
   const h2sPpmv = getSpecValue(fs, ["h2s", "hydrogen sulfide", "h₂s"], 1500);
   const siloxanePpbv = getSpecValue(fs, ["siloxane", "siloxanes"], 5000);
 
-  assumptions.push({ parameter: "Biogas Flow", value: `${roundTo(biogasScfm)} scfm`, source: flowSource });
+  const biogasMaxScfm = getSpecValue(fs, ["max flow", "maxFlowScfm", "maximum flow", "peak flow"], biogasScfm * 1.3);
+  const biogasMinScfm = getSpecValue(fs, ["min flow", "minFlowScfm", "minimum flow"], biogasScfm * 0.6);
+  const biogasPressurePsig = getSpecValue(fs, ["pressure", "pressurePsig", "gas pressure", "inlet pressure"], 1.0);
+  const biogasBtuPerScf = getSpecValue(fs, ["btu/scf", "btuPerScf", "heating value", "btu", "hhv", "lhv"], ch4Pct * 10.12);
+
+  assumptions.push({ parameter: "Biogas Average Flow", value: `${roundTo(biogasScfm).toLocaleString()} SCFM`, source: flowSource });
+  if (biogasMaxScfm === biogasScfm * 1.3) assumptions.push({ parameter: "Biogas Max Flow", value: `${roundTo(biogasMaxScfm).toLocaleString()} SCFM`, source: "Default 1.3× average flow" });
+  if (biogasMinScfm === biogasScfm * 0.6) assumptions.push({ parameter: "Biogas Min Flow", value: `${roundTo(biogasMinScfm).toLocaleString()} SCFM`, source: "Default 0.6× average flow" });
   if (ch4Pct === 60) assumptions.push({ parameter: "CH₄ Content", value: "60%", source: "Default assumption — typical AD biogas" });
-  if (h2sPpmv === 1500) assumptions.push({ parameter: "H₂S", value: "1,500 ppmv", source: "Default assumption — typical AD biogas" });
+  if (h2sPpmv === 1500) assumptions.push({ parameter: "H₂S", value: "1,500 ppm", source: "Default assumption — typical AD biogas" });
 
   const biogasScfPerDay = biogasScfm * 1440;
   const biogasM3PerDay = biogasScfPerDay / 35.3147;
+  const biogasMmbtuPerDay = (biogasScfPerDay * biogasBtuPerScf) / 1_000_000;
 
   const inletStage: ADProcessStage = {
     name: "Existing Biogas Supply",
     type: "biogasInlet",
     inputStream: {
-      biogasFlow: { value: roundTo(biogasScfm), unit: "scfm" },
-      biogasFlowDaily: { value: roundTo(biogasScfPerDay), unit: "scf/day" },
+      avgFlowScfm: { value: roundTo(biogasScfm), unit: "SCFM" },
+      maxFlowScfm: { value: roundTo(biogasMaxScfm), unit: "SCFM" },
+      minFlowScfm: { value: roundTo(biogasMinScfm), unit: "SCFM" },
+      pressurePsig: { value: roundTo(biogasPressurePsig, 1), unit: "psig" },
       ch4: { value: roundTo(ch4Pct, 1), unit: "%" },
       co2: { value: roundTo(co2Pct, 1), unit: "%" },
+      h2s: { value: roundTo(h2sPpmv), unit: "ppm" },
       n2: { value: roundTo(n2Pct, 1), unit: "%" },
       o2: { value: roundTo(o2Pct, 1), unit: "%" },
-      h2s: { value: roundTo(h2sPpmv), unit: "ppmv" },
+      btuPerScf: { value: roundTo(biogasBtuPerScf), unit: "Btu/SCF" },
+      mmbtuPerDay: { value: roundTo(biogasMmbtuPerDay, 1), unit: "MMBtu/Day" },
       siloxanes: { value: roundTo(siloxanePpbv), unit: "ppbv" },
     },
     outputStream: {
-      biogasFlow: { value: roundTo(biogasScfm), unit: "scfm" },
+      avgFlowScfm: { value: roundTo(biogasScfm), unit: "SCFM" },
     },
     designCriteria: {},
     notes: ["Existing digester biogas supply — no digester sizing included in Type C"],
@@ -234,25 +246,41 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
   const tailgasScfm = conditionedScfm - rngScfm;
   const electricalDemandKW = biogasM3PerDay * GAS_CONDITIONING_DEFAULTS.gasUpgrading.electricalDemand.value / 24;
 
+  const rngMaxScfm = (biogasMaxScfm / biogasScfm) * rngScfm;
+  const rngMinScfm = (biogasMinScfm / biogasScfm) * rngScfm;
+  const rngPressurePsig = GAS_CONDITIONING_DEFAULTS.gasUpgrading.pressureOut.value;
+  const rngBtuPerScf = productCH4 * 10.12;
+  const rngCO2Pct = 100 - productCH4 - 0.5 - 0.1;
+  const rngH2SPpm = outH2sPpmv < 4 ? roundTo(outH2sPpmv, 1) : 4;
+  const rngN2Pct = 0.4;
+  const rngO2Pct = 0.1;
+
   const upgradingStage: ADProcessStage = {
     name: "Gas Upgrading to RNG",
     type: "gasUpgrading",
     inputStream: {
-      biogasFlow: { value: roundTo(conditionedScfm), unit: "scfm" },
-      ch4Content: { value: roundTo(ch4Pct, 1), unit: "%" },
+      avgFlowScfm: { value: roundTo(conditionedScfm), unit: "SCFM" },
+      ch4: { value: roundTo(ch4Pct, 1), unit: "%" },
     },
     outputStream: {
-      rngFlow: { value: roundTo(rngScfm), unit: "scfm" },
-      rngFlowDaily: { value: roundTo(rngScfPerDay), unit: "scf/day" },
-      rngCH4: { value: productCH4, unit: "%" },
-      rngEnergy: { value: roundTo(rngMMBtuPerDay, 1), unit: "MMBtu/day" },
-      tailgasFlow: { value: roundTo(tailgasScfm), unit: "scfm" },
+      avgFlowScfm: { value: roundTo(rngScfm), unit: "SCFM" },
+      maxFlowScfm: { value: roundTo(rngMaxScfm), unit: "SCFM" },
+      minFlowScfm: { value: roundTo(rngMinScfm), unit: "SCFM" },
+      pressurePsig: { value: rngPressurePsig, unit: "psig" },
+      ch4: { value: productCH4, unit: "%" },
+      co2: { value: roundTo(rngCO2Pct, 1), unit: "%" },
+      h2s: { value: rngH2SPpm, unit: "ppm" },
+      n2: { value: rngN2Pct, unit: "%" },
+      o2: { value: rngO2Pct, unit: "%" },
+      btuPerScf: { value: roundTo(rngBtuPerScf), unit: "Btu/SCF" },
+      mmbtuPerDay: { value: roundTo(rngMMBtuPerDay, 1), unit: "MMBtu/Day" },
+      tailgasFlow: { value: roundTo(tailgasScfm), unit: "SCFM" },
       methaneRecovery: { value: roundTo(methaneRecovery * 100), unit: "%" },
     },
     designCriteria: GAS_CONDITIONING_DEFAULTS.gasUpgrading,
     notes: [
       "Membrane or PSA upgrading system",
-      `Tail gas: ${roundTo(tailgasScfm)} scfm — route to flare or thermal oxidizer`,
+      `Tail gas: ${roundTo(tailgasScfm)} SCFM — route to flare or thermal oxidizer`,
       `Electrical demand: ${roundTo(electricalDemandKW)} kW`,
     ],
   };
@@ -311,15 +339,30 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
   });
 
   const summary: Record<string, { value: string; unit: string }> = {
-    biogasInletFlow: { value: roundTo(biogasScfm).toLocaleString(), unit: "scfm" },
-    biogasInletCH4: { value: roundTo(ch4Pct, 1).toString(), unit: "%" },
-    biogasInletH2S: { value: roundTo(h2sPpmv).toLocaleString(), unit: "ppmv" },
-    rngProduction: { value: roundTo(rngScfm).toLocaleString(), unit: "scfm" },
-    rngProductionDaily: { value: roundTo(rngScfPerDay).toLocaleString(), unit: "scf/day" },
-    rngCH4Purity: { value: productCH4.toString(), unit: "%" },
-    rngEnergy: { value: roundTo(rngMMBtuPerDay, 1).toLocaleString(), unit: "MMBtu/day" },
+    biogasAvgFlowScfm: { value: roundTo(biogasScfm).toLocaleString(), unit: "SCFM" },
+    biogasMaxFlowScfm: { value: roundTo(biogasMaxScfm).toLocaleString(), unit: "SCFM" },
+    biogasMinFlowScfm: { value: roundTo(biogasMinScfm).toLocaleString(), unit: "SCFM" },
+    biogasPressurePsig: { value: roundTo(biogasPressurePsig, 1).toString(), unit: "psig" },
+    biogasCH4: { value: roundTo(ch4Pct, 1).toString(), unit: "%" },
+    biogasCO2: { value: roundTo(co2Pct, 1).toString(), unit: "%" },
+    biogasH2S: { value: roundTo(h2sPpmv).toLocaleString(), unit: "ppm" },
+    biogasN2: { value: roundTo(n2Pct, 1).toString(), unit: "%" },
+    biogasO2: { value: roundTo(o2Pct, 1).toString(), unit: "%" },
+    biogasBtuPerScf: { value: roundTo(biogasBtuPerScf).toLocaleString(), unit: "Btu/SCF" },
+    biogasMmbtuPerDay: { value: roundTo(biogasMmbtuPerDay, 1).toLocaleString(), unit: "MMBtu/Day" },
+    rngAvgFlowScfm: { value: roundTo(rngScfm).toLocaleString(), unit: "SCFM" },
+    rngMaxFlowScfm: { value: roundTo(rngMaxScfm).toLocaleString(), unit: "SCFM" },
+    rngMinFlowScfm: { value: roundTo(rngMinScfm).toLocaleString(), unit: "SCFM" },
+    rngPressurePsig: { value: rngPressurePsig.toString(), unit: "psig" },
+    rngCH4: { value: productCH4.toString(), unit: "%" },
+    rngCO2: { value: roundTo(rngCO2Pct, 1).toString(), unit: "%" },
+    rngH2S: { value: rngH2SPpm.toString(), unit: "ppm" },
+    rngN2: { value: rngN2Pct.toString(), unit: "%" },
+    rngO2: { value: rngO2Pct.toString(), unit: "%" },
+    rngBtuPerScf: { value: roundTo(rngBtuPerScf).toLocaleString(), unit: "Btu/SCF" },
+    rngMmbtuPerDay: { value: roundTo(rngMMBtuPerDay, 1).toLocaleString(), unit: "MMBtu/Day" },
     methaneRecovery: { value: roundTo(methaneRecovery * 100).toString(), unit: "%" },
-    tailgasFlow: { value: roundTo(tailgasScfm).toLocaleString(), unit: "scfm" },
+    tailgasFlow: { value: roundTo(tailgasScfm).toLocaleString(), unit: "SCFM" },
     electricalDemand: { value: roundTo(electricalDemandKW).toLocaleString(), unit: "kW" },
   };
 

@@ -58,6 +58,9 @@ type UpifFormValues = z.infer<typeof upifFormSchema>;
 
 const groupIcons: Record<string, React.ReactNode> = {
   identity: <Layers className="h-3.5 w-3.5" />,
+  flow: <Flame className="h-3.5 w-3.5" />,
+  composition: <Flame className="h-3.5 w-3.5" />,
+  energy: <Sparkles className="h-3.5 w-3.5" />,
   physical: <Beaker className="h-3.5 w-3.5" />,
   biochemical: <FlaskConical className="h-3.5 w-3.5" />,
   contaminants: <Bug className="h-3.5 w-3.5" />,
@@ -448,6 +451,9 @@ function FeedstockSpecsTable({
 }
 
 const outputGroupIcons: Record<string, React.ReactNode> = {
+  rng_flow: <Flame className="h-3.5 w-3.5" />,
+  rng_composition: <Flame className="h-3.5 w-3.5" />,
+  rng_energy: <Sparkles className="h-3.5 w-3.5" />,
   gas_quality: <Flame className="h-3.5 w-3.5" />,
   delivery: <Settings2 className="h-3.5 w-3.5" />,
   physical: <Beaker className="h-3.5 w-3.5" />,
