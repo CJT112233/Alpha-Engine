@@ -1,7 +1,12 @@
 import { llmComplete, isProviderAvailable, getAvailableProviders, providerLabels, type LLMProvider } from "../llm";
-import type { MassBalanceResults } from "@shared/schema";
+import type { MassBalanceResults, EquipmentItem } from "@shared/schema";
 import type { PromptKey } from "@shared/default-prompts";
 import { DEFAULT_PROMPTS } from "@shared/default-prompts";
+import {
+  selectProdevalUnit,
+  getProdevalEquipmentList,
+  type ProdevalEquipmentItem,
+} from "@shared/prodeval-equipment-library";
 
 const massBalancePromptMap: Record<string, PromptKey> = {
   a: "mass_balance_type_a",
@@ -151,6 +156,191 @@ function repairTruncatedJSON(raw: string): any {
   return JSON.parse(s);
 }
 
+const RNG_PROJECT_TYPES = new Set(["b", "c", "d"]);
+
+const PRODEVAL_EQUIPMENT_IDENTIFIERS = [
+  "prodeval",
+  "valogaz",
+  "valopack",
+  "valopur",
+  "fu 100",
+  "fu 200",
+  "fu 300",
+  "fu 500",
+  "fu 800",
+];
+
+function extractBiogasScfmFromResults(results: MassBalanceResults): number {
+  for (const stage of (results.adStages || [])) {
+    const output = stage.outputStream || {};
+    for (const [key, spec] of Object.entries(output)) {
+      const keyLower = key.toLowerCase();
+      if (
+        (keyLower.includes("biogas") && keyLower.includes("flow")) ||
+        keyLower === "biogasflow" ||
+        keyLower === "biogasproduction"
+      ) {
+        const val = typeof spec === "object" && spec !== null ? (spec as any).value : spec;
+        const numVal = typeof val === "number" ? val : parseFloat(String(val).replace(/,/g, ""));
+        if (!isNaN(numVal) && numVal > 0) {
+          const unit = typeof spec === "object" && spec !== null ? ((spec as any).unit || "").toLowerCase() : "";
+          if (unit.includes("scfm")) return numVal;
+          if (unit.includes("scfh")) return numVal / 60;
+          if (unit.includes("scfd") || unit.includes("day")) return numVal / 1440;
+          return numVal;
+        }
+      }
+    }
+  }
+
+  for (const eq of (results.equipment || [])) {
+    const typeLower = (eq.equipmentType || "").toLowerCase();
+    const descLower = (eq.description || "").toLowerCase();
+    if (typeLower.includes("digester") || descLower.includes("digester") || descLower.includes("anaerobic")) {
+      for (const [key, spec] of Object.entries(eq.specs || {})) {
+        const keyLower = key.toLowerCase();
+        if (keyLower.includes("biogas") && (keyLower.includes("flow") || keyLower.includes("production"))) {
+          const numVal = parseFloat(String(spec.value).replace(/,/g, ""));
+          if (!isNaN(numVal) && numVal > 0) {
+            const unit = (spec.unit || "").toLowerCase();
+            if (unit.includes("scfm")) return numVal;
+            if (unit.includes("scfh")) return numVal / 60;
+            if (unit.includes("scfd") || unit.includes("day")) return numVal / 1440;
+            return numVal;
+          }
+        }
+      }
+    }
+  }
+
+  if (results.summary) {
+    for (const [key, val] of Object.entries(results.summary)) {
+      const keyLower = key.toLowerCase();
+      if (keyLower.includes("biogas") && (keyLower.includes("flow") || keyLower.includes("scfm"))) {
+        const parsed = typeof val === "object" && val !== null
+          ? parseFloat(String((val as any).value).replace(/,/g, ""))
+          : parseFloat(String(val).replace(/,/g, ""));
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+      }
+    }
+  }
+
+  return 300;
+}
+
+function isProdevalEquipment(eq: EquipmentItem): boolean {
+  const searchText = `${eq.equipmentType} ${eq.description} ${eq.process}`.toLowerCase();
+  return PRODEVAL_EQUIPMENT_IDENTIFIERS.some(id => searchText.includes(id));
+}
+
+function enforceProdevalEquipment(
+  results: MassBalanceResults,
+  normalizedType: string,
+): { results: MassBalanceResults; corrections: string[] } {
+  if (!RNG_PROJECT_TYPES.has(normalizedType)) {
+    return { results, corrections: [] };
+  }
+
+  const corrections: string[] = [];
+  const existingProdeval = results.equipment.filter(isProdevalEquipment);
+
+  const requiredCategories = [
+    { keyword: "condenser", label: "VALOGAZ® Condenser (FU 100)" },
+    { keyword: "blower", label: "VALOGAZ® Blower (FU 200)" },
+    { keyword: "activated carbon", label: "VALOPACK® AC Filter (FU 300)" },
+    { keyword: "dust filter", label: "Dust Filter" },
+    { keyword: "mixing bottle", label: "VALOPUR® Mixing Bottle (FU 500)" },
+    { keyword: "biogas compressor", label: "VALOPUR® Biogas Compressor (FU 500)" },
+    { keyword: "hp filtration", label: "VALOPUR® HP Filtration (FU 800)" },
+    { keyword: "membrane", label: "VALOPUR® Membrane System (FU 500)" },
+    { keyword: "rng compressor", label: "VALOPUR® RNG Compressor (FU 800)" },
+  ];
+
+  const missingCategories: string[] = [];
+  for (const cat of requiredCategories) {
+    const found = existingProdeval.some(eq => {
+      const text = `${eq.equipmentType} ${eq.description}`.toLowerCase();
+      return text.includes(cat.keyword);
+    });
+    if (!found) {
+      missingCategories.push(cat.label);
+    }
+  }
+
+  if (missingCategories.length === 0) {
+    console.log("Prodeval Validation: All required Prodeval gas train equipment present in AI output");
+    return { results, corrections: [] };
+  }
+
+  console.log(`Prodeval Validation: Missing ${missingCategories.length} Prodeval components: ${missingCategories.join(", ")}`);
+
+  const biogasScfm = extractBiogasScfmFromResults(results);
+  const unit = selectProdevalUnit(biogasScfm);
+  console.log(`Prodeval Validation: Estimated biogas flow ${Math.round(biogasScfm)} SCFM → selected ${unit.modelSize} unit (${unit.numberOfTrains} train(s))`);
+
+  const nonProdevalGasTrain = results.equipment.filter(eq => {
+    const text = `${eq.equipmentType} ${eq.description} ${eq.process}`.toLowerCase();
+    const isGasTrainProcess = text.includes("gas conditioning") || text.includes("gas upgrading") ||
+      text.includes("biogas conditioning") || text.includes("biogas upgrading") ||
+      text.includes("rng") || text.includes("membrane") || text.includes("h₂s") ||
+      text.includes("h2s") || text.includes("siloxane") || text.includes("amine");
+    return isGasTrainProcess && !isProdevalEquipment(eq);
+  });
+
+  if (nonProdevalGasTrain.length > 0) {
+    corrections.push(`Replaced ${nonProdevalGasTrain.length} non-Prodeval gas train equipment item(s)`);
+    const nonProdevalIds = new Set(nonProdevalGasTrain.map(eq => eq.id));
+    results.equipment = results.equipment.filter(eq => !nonProdevalIds.has(eq.id));
+  }
+
+  let idCounter = 0;
+  const makeId = (suffix?: string) => `prodeval-validated-${suffix || (idCounter++).toString()}`;
+  const prodevalItems = getProdevalEquipmentList(biogasScfm, makeId);
+
+  const existingProdevalTypes = new Set(
+    existingProdeval.map(eq => eq.equipmentType.toLowerCase())
+  );
+
+  const newItems: EquipmentItem[] = [];
+  for (const item of prodevalItems) {
+    if (!existingProdevalTypes.has(item.equipmentType.toLowerCase())) {
+      newItems.push({
+        ...item,
+        isOverridden: false,
+        isLocked: false,
+      });
+    }
+  }
+
+  if (newItems.length > 0) {
+    corrections.push(`Injected ${newItems.length} Prodeval gas train equipment item(s): ${newItems.map(i => i.equipmentType).join(", ")}`);
+
+    const insertIndex = results.equipment.findIndex(eq => {
+      const text = `${eq.equipmentType} ${eq.description}`.toLowerCase();
+      return text.includes("flare") || text.includes("thermal oxidizer");
+    });
+
+    if (insertIndex >= 0) {
+      results.equipment.splice(insertIndex, 0, ...newItems);
+    } else {
+      results.equipment.push(...newItems);
+    }
+  }
+
+  if (corrections.length > 0) {
+    const warningMsg = `Prodeval Validation: AI output was missing required Prodeval gas train equipment. ${corrections.join(". ")}. Biogas flow: ${Math.round(biogasScfm)} SCFM, unit size: ${unit.modelSize}.`;
+    if (!results.warnings) results.warnings = [];
+    results.warnings.push({
+      field: "equipment",
+      message: warningMsg,
+      severity: "warning",
+    });
+    console.log(`Prodeval Validation: ${warningMsg}`);
+  }
+
+  return { results, corrections };
+}
+
 export interface MassBalanceAIResult {
   results: MassBalanceResults;
   provider: LLMProvider;
@@ -212,7 +402,13 @@ export async function generateMassBalanceWithAI(
     }
   }
 
-  const results = validateMassBalanceResults(parsed);
+  let results = validateMassBalanceResults(parsed);
+
+  const { results: enforced, corrections } = enforceProdevalEquipment(results, normalizedType);
+  results = enforced;
+  if (corrections.length > 0) {
+    console.log(`Mass Balance AI: Prodeval enforcement applied ${corrections.length} correction(s)`);
+  }
 
   const stageCount = results.stages.length + (results.adStages?.length || 0);
   const equipCount = results.equipment.length;
