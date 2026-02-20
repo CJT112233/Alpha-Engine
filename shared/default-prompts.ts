@@ -976,7 +976,14 @@ RESPOND WITH VALID JSON matching this exact structure:
       "equipmentType": "Type",
       "description": "Brief description",
       "quantity": number,
-      "specs": { "specName": { "value": "string", "unit": "string" } },
+      "specs": {
+        "specName": { "value": "string", "unit": "string" },
+        "dimensionsL": { "value": "string", "unit": "ft" },
+        "dimensionsW": { "value": "string", "unit": "ft" },
+        "dimensionsH": { "value": "string", "unit": "ft" },
+        "volume": { "value": "string", "unit": "gal" },
+        "power": { "value": "string", "unit": "HP" }
+      },
       "designBasis": "Design basis description",
       "notes": "Additional notes",
       "isOverridden": false,
@@ -999,6 +1006,7 @@ RULES:
 - All numeric flow values should be in the same units as the UPIF input (typically GPD or MGD).
 - All concentration values in mg/L.
 - Equipment IDs should be descriptive lowercase with hyphens (e.g., "eq-tank-1", "daf-unit-1", "ph-neutralization-1").
+- EVERY equipment item MUST include in its specs: dimensionsL (ft), dimensionsW (ft), dimensionsH (ft), volume (gal, if applicable), and power (HP). Use "ft (dia)" for cylindrical vessels. Calculate dimensions from design volumes/areas using standard aspect ratios.
 - Include at least one warning if any input parameter seems unusual or if assumptions had to be made.
 - List all design assumptions with their sources.
 - Size equipment for average design flow unless peak flow handling is specifically mentioned.
@@ -1181,7 +1189,14 @@ RESPOND WITH VALID JSON matching this exact structure:
       "equipmentType": "Type",
       "description": "Brief description",
       "quantity": number,
-      "specs": { "specName": { "value": "string", "unit": "string" } },
+      "specs": {
+        "specName": { "value": "string", "unit": "string" },
+        "dimensionsL": { "value": "string", "unit": "ft" },
+        "dimensionsW": { "value": "string", "unit": "ft" },
+        "dimensionsH": { "value": "string", "unit": "ft" },
+        "volume": { "value": "string", "unit": "gal" },
+        "power": { "value": "string", "unit": "HP" }
+      },
       "designBasis": "Design basis",
       "notes": "Notes",
       "isOverridden": false,
@@ -1250,6 +1265,7 @@ RULES:
 - If feedstock TS/VS data is not provided, use typical values for the feedstock type and note in assumptions.
 - All summary values should be formatted as strings with commas for thousands (e.g., "1,250,000").
 - Equipment IDs should be descriptive lowercase with hyphens (e.g., "cstr-digester-1", "decanter-centrifuge-1", "daf-unit-1").
+- EVERY equipment item MUST include in its specs: dimensionsL (ft), dimensionsW (ft), dimensionsH (ft), volume (gal, if applicable), and power (HP). Use "ft (dia)" for cylindrical vessels. Calculate dimensions from design volumes/areas using standard aspect ratios.
 - Include warnings for any missing critical data or unusual parameter values.
 - List all design assumptions with references.
 - The process train MUST follow: Receiving → Maceration → EQ Tank → CSTR Digester → Centrifuge → DAF → Biogas Conditioning → Gas Upgrading → RNG.
@@ -1330,7 +1346,14 @@ RESPOND WITH VALID JSON matching this exact structure:
       "equipmentType": "Type",
       "description": "Description",
       "quantity": number,
-      "specs": { "specName": { "value": "string", "unit": "string" } },
+      "specs": {
+        "specName": { "value": "string", "unit": "string" },
+        "dimensionsL": { "value": "string", "unit": "ft" },
+        "dimensionsW": { "value": "string", "unit": "ft" },
+        "dimensionsH": { "value": "string", "unit": "ft" },
+        "volume": { "value": "string", "unit": "gal" },
+        "power": { "value": "string", "unit": "HP" }
+      },
       "designBasis": "Design basis",
       "notes": "Notes",
       "isOverridden": false,
@@ -1380,6 +1403,7 @@ CRITICAL RULES:
 - If biogas flow or composition data is missing, use reasonable defaults and note in assumptions.
 - All summary values as formatted strings with commas for thousands.
 - Equipment IDs: descriptive lowercase with hyphens.
+- EVERY equipment item MUST include in its specs: dimensionsL (ft), dimensionsW (ft), dimensionsH (ft), volume (gal, if applicable), and power (HP). Use "ft (dia)" for cylindrical vessels.
 - The Biogas Input stage inputStream and Gas Upgrading outputStream MUST contain all 11 standardized parameters (avgFlowScfm, maxFlowScfm, minFlowScfm, pressurePsig, ch4, co2, h2s, n2, o2, btuPerScf, mmbtuPerDay).
 - Use SCFM (not scfm), ppm (not ppmv), Btu/SCF, MMBtu/Day for units.
 
@@ -1512,6 +1536,7 @@ RULES:
 - If co-digestion feedstocks are present, include them in the AD train calculations.
 - All summary values as formatted strings with commas for thousands.
 - Equipment IDs: descriptive lowercase with hyphens.
+- EVERY equipment item MUST include in its specs: dimensionsL (ft), dimensionsW (ft), dimensionsH (ft), volume (gal, if applicable), and power (HP). Use "ft (dia)" for cylindrical vessels.
 - Include equipment for BOTH trains (WW treatment and AD/RNG).
 - The Biogas Conditioning inputStream and Gas Upgrading outputStream MUST contain all 11 standardized gas parameters (avgFlowScfm, maxFlowScfm, minFlowScfm, pressurePsig, ch4, co2, h2s, n2, o2, btuPerScf, mmbtuPerDay).
 - Use SCFM (not scfm), ppm (not ppmv), Btu/SCF, MMBtu/Day for units.

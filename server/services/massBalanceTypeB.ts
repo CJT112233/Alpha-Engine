@@ -96,6 +96,21 @@ function roundTo(val: number, decimals: number = 1): number {
 function m3ToGal(m3: number): number { return m3 * 264.172; }
 function m3ToScf(m3: number): number { return m3 * 35.3147; }
 function m3PerMinToGpm(m3min: number): number { return m3min * 264.172; }
+function kWToHP(kw: number): number { return roundTo(kw * 1.341, 1); }
+function galToFt3(gal: number): number { return gal / 7.481; }
+function cylinderDimensions(volumeGal: number, aspectRatio: number = 1.5): { diameterFt: number; heightFt: number } {
+  const volFt3 = galToFt3(volumeGal);
+  const diameterFt = roundTo(Math.pow((4 * volFt3) / (Math.PI * aspectRatio), 1 / 3), 1);
+  const heightFt = roundTo(diameterFt * aspectRatio, 1);
+  return { diameterFt, heightFt };
+}
+function rectDimensions(volumeGal: number, depthFt: number = 8): { lengthFt: number; widthFt: number; heightFt: number } {
+  const volFt3 = galToFt3(volumeGal);
+  const footprint = volFt3 / depthFt;
+  const lengthFt = roundTo(Math.sqrt(footprint * 1.5), 1);
+  const widthFt = roundTo(footprint / lengthFt, 1);
+  return { lengthFt, widthFt, heightFt: depthFt };
+}
 
 function hasPackagedWaste(feedstocks: FeedstockEntry[]): boolean {
   const keywords = ["packaged", "package", "depackag", "wrapped", "containerized", "bagged"];
@@ -328,6 +343,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   adStages.push(receivingStage);
 
   const storageVolM3 = (totalFeedTpd * 1000 / 1.05) * AD_DESIGN_DEFAULTS.receiving.storageTime.value;
+  const receivingVolGal = roundTo(m3ToGal(storageVolM3));
+  const receivingDims = rectDimensions(receivingVolGal, 10);
   equipment.push({
     id: makeId("receiving-hopper"),
     process: "Feedstock Receiving",
@@ -335,9 +352,13 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Covered receiving area with truck tipping floor and hopper for feedstock unloading",
     quantity: feedstocks.length > 2 ? 2 : 1,
     specs: {
-      volume: { value: String(roundTo(m3ToGal(storageVolM3))), unit: "gallons" },
+      volume: { value: String(receivingVolGal), unit: "gal" },
       storageTime: { value: "3", unit: "days" },
       capacity: { value: String(roundTo(totalFeedTpd * 1.5)), unit: "tons/day" },
+      dimensionsL: { value: String(receivingDims.lengthFt), unit: "ft" },
+      dimensionsW: { value: String(receivingDims.widthFt), unit: "ft" },
+      dimensionsH: { value: String(receivingDims.heightFt), unit: "ft" },
+      power: { value: String(roundTo(totalFeedTpd * 2, 0)), unit: "HP" },
     },
     designBasis: "1.5x design throughput with 3-day storage",
     notes: "Includes weigh scale, odor control, and leak detection",
@@ -375,6 +396,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   };
   adStages.push(macerationStage);
 
+  const maceratorPowerKW = roundTo(totalFeedTpd * 3, 0);
   equipment.push({
     id: makeId("macerator"),
     process: "Feedstock Preparation",
@@ -384,7 +406,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     specs: {
       capacity: { value: String(roundTo(totalFeedTpd * 1.25)), unit: "tons/day" },
       targetSize: { value: "15", unit: "mm" },
-      power: { value: String(roundTo(totalFeedTpd * 3, 0)), unit: "kW" },
+      dimensionsL: { value: "12", unit: "ft" },
+      dimensionsW: { value: "6", unit: "ft" },
+      dimensionsH: { value: "8", unit: "ft" },
+      power: { value: String(kWToHP(maceratorPowerKW)), unit: "HP" },
     },
     designBasis: "1.25x design feed rate, < 15 mm particle output",
     notes: "Includes magnetic separator for ferrous metal removal",
@@ -403,6 +428,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
         capacity: { value: String(roundTo(totalFeedTpd * 1.25)), unit: "tons/day" },
         rejectRate: { value: "18", unit: "%" },
         organicRecovery: { value: "82", unit: "%" },
+        dimensionsL: { value: "16", unit: "ft" },
+        dimensionsW: { value: "8", unit: "ft" },
+        dimensionsH: { value: "10", unit: "ft" },
+        power: { value: String(kWToHP(totalFeedTpd * 4)), unit: "HP" },
       },
       designBasis: "1.25x design feed rate, 15-20% packaging reject",
       notes: "Rejects conveyed to waste bin for disposal",
@@ -457,6 +486,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
 
   const heatDutyKW = roundTo(eqOutputTpd * 1000 * 4.18 * (AD_DESIGN_DEFAULTS.equalization.preheatTemp.value - 15) / 3600, 0);
 
+  const eqTankVolGal = roundTo(m3ToGal(eqVolumeM3));
+  const eqTankDims = cylinderDimensions(eqTankVolGal, 1.2);
   equipment.push({
     id: makeId("eq-tank"),
     process: "Equalization",
@@ -464,9 +495,13 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Insulated blending and homogenization tank with continuous mixing",
     quantity: 1,
     specs: {
-      volume: { value: String(roundTo(m3ToGal(eqVolumeM3))), unit: "gallons" },
+      volume: { value: String(eqTankVolGal), unit: "gal" },
       retentionTime: { value: String(eqRetentionDays), unit: "days" },
       throughput: { value: String(roundTo(eqOutputTpd)), unit: "tons/day" },
+      dimensionsH: { value: String(eqTankDims.heightFt), unit: "ft" },
+      dimensionsW: { value: String(eqTankDims.diameterFt), unit: "ft (dia)" },
+      dimensionsL: { value: String(eqTankDims.diameterFt), unit: "ft (dia)" },
+      power: { value: String(kWToHP(eqVolumeM3 * 3 / 1000)), unit: "HP" },
     },
     designBasis: `${eqRetentionDays}-day retention time for consistent digester feed`,
     notes: "Insulated concrete or steel tank with top-entry mixer",
@@ -474,6 +509,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
+  const eqMixerPowerKW = roundTo(eqVolumeM3 * 3 / 1000, 1);
   equipment.push({
     id: makeId("eq-mixer"),
     process: "Equalization",
@@ -481,8 +517,11 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Top-entry mechanical mixer for slurry homogenization",
     quantity: 1,
     specs: {
-      power: { value: String(roundTo(eqVolumeM3 * 3 / 1000, 1)), unit: "kW" },
       specificPower: { value: "3", unit: "W/m³" },
+      dimensionsL: { value: "4", unit: "ft" },
+      dimensionsW: { value: "4", unit: "ft" },
+      dimensionsH: { value: String(roundTo(eqTankDims.heightFt + 3, 0)), unit: "ft" },
+      power: { value: String(kWToHP(eqMixerPowerKW)), unit: "HP" },
     },
     designBasis: "3 W/m³ mixing intensity for slurry homogenization",
     notes: "Prevents settling and ensures consistent feed composition",
@@ -500,6 +539,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       heatDuty: { value: String(heatDutyKW), unit: "kW" },
       targetTemp: { value: String(AD_DESIGN_DEFAULTS.equalization.preheatTemp.value), unit: "°C" },
       inletTemp: { value: "15", unit: "°C" },
+      dimensionsL: { value: "10", unit: "ft" },
+      dimensionsW: { value: "3", unit: "ft" },
+      dimensionsH: { value: "4", unit: "ft" },
+      power: { value: "2", unit: "HP" },
     },
     designBasis: `Heating from 15°C ambient to ${AD_DESIGN_DEFAULTS.equalization.preheatTemp.value}°C mesophilic`,
     notes: "Waste heat recovery from biogas utilization where available",
@@ -507,6 +550,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
+  const feedPumpGPM = roundTo(m3PerMinToGpm(eqOutputTpd * 1000 / 24 / 60), 1);
+  const feedPumpPowerHP = roundTo(Math.max(5, feedPumpGPM * 43.56 * 0.7 / (3960 * 0.6)), 1);
   equipment.push({
     id: makeId("feed-pump"),
     process: "Equalization",
@@ -514,8 +559,12 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Progressive cavity pump for feeding slurry from EQ tank to digester",
     quantity: 2,
     specs: {
-      capacity: { value: String(roundTo(m3PerMinToGpm(eqOutputTpd * 1000 / 24 / 60), 1)), unit: "gpm" },
+      capacity: { value: String(feedPumpGPM), unit: "gpm" },
       headPressure: { value: "3", unit: "bar" },
+      dimensionsL: { value: "6", unit: "ft" },
+      dimensionsW: { value: "3", unit: "ft" },
+      dimensionsH: { value: "3", unit: "ft" },
+      power: { value: String(feedPumpPowerHP), unit: "HP" },
     },
     designBasis: "Duty + standby (N+1 redundancy)",
     notes: "Progressive cavity type suitable for high-solids slurry",
@@ -595,6 +644,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   };
   adStages.push(digesterStage);
 
+  const perDigesterVolGal = roundTo(m3ToGal(perDigesterVol));
+  const digesterDims = cylinderDimensions(perDigesterVolGal, 0.8);
   equipment.push({
     id: makeId("cstr-digester"),
     process: "Anaerobic Digestion",
@@ -602,12 +653,16 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Continuously Stirred Tank Reactor, mesophilic operation with gas collection dome",
     quantity: numDigesters,
     specs: {
-      volume: { value: String(roundTo(m3ToGal(perDigesterVol))), unit: "gallons" },
-      activeVolume: { value: String(roundTo(m3ToGal(activeDigesterVolM3 / numDigesters))), unit: "gallons" },
-      totalVolume: { value: String(roundTo(m3ToGal(totalDigesterVolM3))), unit: "gallons" },
+      volume: { value: String(perDigesterVolGal), unit: "gal" },
+      activeVolume: { value: String(roundTo(m3ToGal(activeDigesterVolM3 / numDigesters))), unit: "gal" },
+      totalVolume: { value: String(roundTo(m3ToGal(totalDigesterVolM3))), unit: "gal" },
       hrt: { value: String(actualHRT), unit: "days" },
       olr: { value: String(actualOLR), unit: "kg VS/m³·d" },
       temperature: { value: "37", unit: "°C" },
+      dimensionsH: { value: String(digesterDims.heightFt), unit: "ft" },
+      dimensionsW: { value: String(digesterDims.diameterFt), unit: "ft (dia)" },
+      dimensionsL: { value: String(digesterDims.diameterFt), unit: "ft (dia)" },
+      power: { value: String(kWToHP(AD_DESIGN_DEFAULTS.digester.mixingPower.value * (activeDigesterVolM3 / numDigesters) / 1000)), unit: "HP" },
     },
     designBasis: `${hrt}-day HRT, OLR ≤ ${olr} kg VS/m³·d, ${roundTo(headspacePct * 100)}% headspace`,
     notes: "Includes gas collection dome, internal heating coils, and insulation",
@@ -615,6 +670,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
+  const digesterMixerPowerKW = roundTo(AD_DESIGN_DEFAULTS.digester.mixingPower.value * (activeDigesterVolM3 / numDigesters) / 1000, 1);
   equipment.push({
     id: makeId("digester-mixer"),
     process: "Anaerobic Digestion",
@@ -622,8 +678,11 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Mechanical mixing system for digester contents",
     quantity: numDigesters,
     specs: {
-      power: { value: String(roundTo(AD_DESIGN_DEFAULTS.digester.mixingPower.value * (activeDigesterVolM3 / numDigesters) / 1000, 1)), unit: "kW" },
       specificPower: { value: String(AD_DESIGN_DEFAULTS.digester.mixingPower.value), unit: "W/m³" },
+      dimensionsL: { value: "5", unit: "ft" },
+      dimensionsW: { value: "5", unit: "ft" },
+      dimensionsH: { value: String(roundTo(digesterDims.heightFt + 4, 0)), unit: "ft" },
+      power: { value: String(kWToHP(digesterMixerPowerKW)), unit: "HP" },
     },
     designBasis: `${AD_DESIGN_DEFAULTS.digester.mixingPower.value} W/m³ mixing intensity`,
     notes: "Draft tube or top-entry mechanical mixer",
@@ -689,6 +748,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   };
   adStages.push(centrifugeStage);
 
+  const centrifugePowerHP = roundTo(Math.max(30, digestateTPD * 0.8), 0);
   equipment.push({
     id: makeId("decanter-centrifuge"),
     process: "Solids-Liquid Separation",
@@ -700,6 +760,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       solidsCaptureEff: { value: String(roundTo(centSolidsCaptureEff * 100)), unit: "%" },
       cakeSolids: { value: String(centCakeSolidsPct), unit: "% TS" },
       polymerDose: { value: String(AD_DESIGN_DEFAULTS.centrifuge.polymerDose.value), unit: "kg/ton DS" },
+      dimensionsL: { value: "14", unit: "ft" },
+      dimensionsW: { value: "5", unit: "ft" },
+      dimensionsH: { value: "6", unit: "ft" },
+      power: { value: String(centrifugePowerHP), unit: "HP" },
     },
     designBasis: `${roundTo(centSolidsCaptureEff * 100)}% solids capture, ${centCakeSolidsPct}% cake solids`,
     notes: "Includes polymer make-down and dosing system",
@@ -707,6 +771,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
+  const cakeStorageVolGal = roundTo(m3ToGal(cakeTPD * 3 / 1.1));
+  const cakeStorageDims = rectDimensions(cakeStorageVolGal, 8);
   equipment.push({
     id: makeId("cake-conveyor"),
     process: "Solids-Liquid Separation",
@@ -715,7 +781,11 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     quantity: 1,
     specs: {
       capacity: { value: String(roundTo(cakeTPD)), unit: "tons/day" },
-      storageVolume: { value: String(roundTo(m3ToGal(cakeTPD * 3 / 1.1))), unit: "gallons" },
+      volume: { value: String(cakeStorageVolGal), unit: "gal" },
+      dimensionsL: { value: String(cakeStorageDims.lengthFt), unit: "ft" },
+      dimensionsW: { value: String(cakeStorageDims.widthFt), unit: "ft" },
+      dimensionsH: { value: String(cakeStorageDims.heightFt), unit: "ft" },
+      power: { value: String(roundTo(Math.max(5, cakeTPD * 1.5), 0)), unit: "HP" },
     },
     designBasis: "3-day cake storage capacity",
     notes: "Covered storage with truck loadout capability",
@@ -778,6 +848,9 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   };
   adStages.push(dafStage);
 
+  const dafLengthFt = roundTo(Math.sqrt(dafSurfaceAreaFt2 * 2), 1);
+  const dafWidthFt = roundTo(dafSurfaceAreaFt2 / dafLengthFt, 1);
+  const dafPowerHP = roundTo(Math.max(10, centrateFlowGPM * 0.15), 0);
   equipment.push({
     id: makeId("daf-unit"),
     process: "Liquid Cleanup",
@@ -790,6 +863,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       designFlow: { value: String(roundTo(centrateFlowGPM, 1)), unit: "gpm" },
       tssRemoval: { value: String(roundTo(dafTSSRemoval * 100)), unit: "%" },
       fogRemoval: { value: String(roundTo(dafFOGRemoval * 100)), unit: "%" },
+      dimensionsL: { value: String(dafLengthFt), unit: "ft" },
+      dimensionsW: { value: String(dafWidthFt), unit: "ft" },
+      dimensionsH: { value: "8", unit: "ft" },
+      power: { value: String(dafPowerHP), unit: "HP" },
     },
     designBasis: `${AD_DESIGN_DEFAULTS.daf.hydraulicLoading.value} gpm/ft² hydraulic loading rate`,
     notes: "Includes recycle pump, saturator, chemical feed system (coagulant + polymer)",
@@ -797,6 +874,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
+  const centrateTankVolGal = roundTo(centrateTPD * 1000 / 1.0 * 0.5 * 0.264172);
+  const centrateTankDims = cylinderDimensions(centrateTankVolGal, 1.0);
   equipment.push({
     id: makeId("centrate-tank"),
     process: "Liquid Cleanup",
@@ -804,8 +883,12 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Holding tank for centrate equalization before DAF treatment",
     quantity: 1,
     specs: {
-      volume: { value: String(roundTo(centrateTPD * 1000 / 1.0 * 0.5 * 0.264172)), unit: "gallons" },
+      volume: { value: String(centrateTankVolGal), unit: "gal" },
       retentionTime: { value: "0.5", unit: "days" },
+      dimensionsH: { value: String(centrateTankDims.heightFt), unit: "ft" },
+      dimensionsW: { value: String(centrateTankDims.diameterFt), unit: "ft (dia)" },
+      dimensionsL: { value: String(centrateTankDims.diameterFt), unit: "ft (dia)" },
+      power: { value: "3", unit: "HP" },
     },
     designBasis: "0.5-day equalization for consistent DAF feed",
     notes: "Level-controlled pump to DAF unit",
@@ -843,6 +926,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   };
   adStages.push(conditioningStage);
 
+  const scrubberH = roundTo(Math.max(8, Math.sqrt(biogasScfm) * 1.5), 0);
+  const scrubberDia = roundTo(Math.max(3, Math.sqrt(biogasScfm) * 0.5), 1);
   equipment.push({
     id: makeId("h2s-scrubber"),
     process: "Biogas Conditioning",
@@ -856,6 +941,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       outletH2S: { value: String(roundTo(outH2sPpmv, 1)), unit: "ppmv" },
       removalEff: { value: "99.5", unit: "%" },
       gasFlow: { value: String(roundTo(biogasScfm)), unit: "scfm" },
+      dimensionsL: { value: String(scrubberDia), unit: "ft (dia)" },
+      dimensionsW: { value: String(scrubberDia), unit: "ft (dia)" },
+      dimensionsH: { value: String(scrubberH), unit: "ft" },
+      power: { value: String(roundTo(Math.max(3, biogasScfm * 0.05), 0)), unit: "HP" },
     },
     designBasis: "99.5% H₂S removal to < 10 ppmv",
     notes: "Includes media replacement schedule and monitoring",
@@ -863,6 +952,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
+  const blowerPowerKW = roundTo(biogasScfm * 0.1, 1);
   equipment.push({
     id: makeId("biogas-blower"),
     process: "Biogas Conditioning",
@@ -872,7 +962,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     specs: {
       gasFlow: { value: String(roundTo(biogasScfm)), unit: "scfm" },
       pressure: { value: "2", unit: "psig" },
-      power: { value: String(roundTo(biogasScfm * 0.1, 1)), unit: "kW" },
+      dimensionsL: { value: "6", unit: "ft" },
+      dimensionsW: { value: "4", unit: "ft" },
+      dimensionsH: { value: "4", unit: "ft" },
+      power: { value: String(kWToHP(blowerPowerKW)), unit: "HP" },
     },
     designBasis: "Duty + standby (N+1 redundancy)",
     notes: "Low-pressure transport of biogas through conditioning equipment",
@@ -889,6 +982,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     specs: {
       gasFlow: { value: String(roundTo(biogasScfm)), unit: "scfm" },
       outletDewpoint: { value: "-40", unit: "°F" },
+      dimensionsL: { value: "8", unit: "ft" },
+      dimensionsW: { value: "4", unit: "ft" },
+      dimensionsH: { value: "6", unit: "ft" },
+      power: { value: String(roundTo(Math.max(5, biogasScfm * 0.08), 0)), unit: "HP" },
     },
     designBasis: "Reduce moisture to pipeline specifications",
     notes: "Condensate drainage to plant drain",
@@ -937,6 +1034,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   };
   adStages.push(upgradingStage);
 
+  const upgradingPowerHP = roundTo(kWToHP(electricalDemandKW * 0.4), 0);
   equipment.push({
     id: makeId("membrane-psa"),
     process: "Gas Upgrading",
@@ -948,6 +1046,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       productFlow: { value: String(roundTo(rngScfm)), unit: "scfm" },
       productCH4: { value: String(productCH4), unit: "%" },
       methaneRecovery: { value: "97", unit: "%" },
+      dimensionsL: { value: String(roundTo(Math.max(20, biogasScfm * 0.08), 0)), unit: "ft" },
+      dimensionsW: { value: String(roundTo(Math.max(10, biogasScfm * 0.04), 0)), unit: "ft" },
+      dimensionsH: { value: "12", unit: "ft" },
+      power: { value: String(upgradingPowerHP), unit: "HP" },
     },
     designBasis: "97% methane recovery, pipeline quality RNG (≥96% CH₄)",
     notes: "Includes monitoring and control system",
@@ -955,6 +1057,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
+  const compressorPowerHP = roundTo(kWToHP(electricalDemandKW * 0.6), 0);
   equipment.push({
     id: makeId("rng-compressor"),
     process: "Gas Upgrading",
@@ -964,7 +1067,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     specs: {
       flow: { value: String(roundTo(rngScfm)), unit: "scfm" },
       dischargePressure: { value: String(AD_DESIGN_DEFAULTS.gasUpgrading.pressureOut.value), unit: "psig" },
-      power: { value: String(roundTo(electricalDemandKW * 0.6)), unit: "kW" },
+      dimensionsL: { value: "8", unit: "ft" },
+      dimensionsW: { value: "5", unit: "ft" },
+      dimensionsH: { value: "6", unit: "ft" },
+      power: { value: String(compressorPowerHP), unit: "HP" },
     },
     designBasis: `Pipeline injection at ${AD_DESIGN_DEFAULTS.gasUpgrading.pressureOut.value} psig`,
     notes: "Includes aftercooler and moisture knockout",
@@ -975,6 +1081,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   // ══════════════════════════════════════════════════════════
   // STAGE 9: EMERGENCY GAS MANAGEMENT
   // ══════════════════════════════════════════════════════════
+  const flareHeight = roundTo(Math.max(15, Math.sqrt(biogasScfm) * 2), 0);
   equipment.push({
     id: makeId("enclosed-flare"),
     process: "Gas Management",
@@ -984,6 +1091,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     specs: {
       capacity: { value: String(roundTo(biogasScfm * 1.1)), unit: "scfm" },
       destructionEff: { value: "99.5", unit: "%" },
+      dimensionsL: { value: "8", unit: "ft (dia)" },
+      dimensionsW: { value: "8", unit: "ft (dia)" },
+      dimensionsH: { value: String(flareHeight), unit: "ft" },
+      power: { value: "5", unit: "HP" },
     },
     designBasis: "110% of maximum biogas production",
     notes: "Required for startup, upset, and maintenance periods",

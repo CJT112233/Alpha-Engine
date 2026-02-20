@@ -211,6 +211,29 @@ function roundTo(val: number, decimals: number = 1): number {
   return Math.round(val * factor) / factor;
 }
 
+function kWToHP(kw: number): number {
+  return roundTo(kw * 1.341);
+}
+
+function galToFt3(gal: number): number {
+  return roundTo(gal / 7.481);
+}
+
+function cylinderDimensions(volumeGal: number, aspectRatio: number = 1.5): { diameter: number; height: number } {
+  const volumeFt3 = volumeGal / 7.481;
+  const diameter = roundTo(Math.pow((4 * volumeFt3) / (Math.PI * aspectRatio), 1 / 3));
+  const height = roundTo(diameter * aspectRatio);
+  return { diameter, height };
+}
+
+function rectDimensions(volumeGal: number, depthFt: number = 8): { length: number; width: number; height: number } {
+  const volumeFt3 = volumeGal / 7.481;
+  const footprint = volumeFt3 / depthFt;
+  const width = roundTo(Math.sqrt(footprint / 2));
+  const length = roundTo(width * 2);
+  return { length, width, height: depthFt };
+}
+
 function roundStream(s: StreamData): StreamData {
   return {
     flow: roundTo(s.flow, 4),
@@ -292,6 +315,10 @@ function sizeEquipment(
           barSpacing: { value: String(criteria.screenBarSpacing?.value || 6), unit: "mm" },
           channelWidth: { value: String(roundTo(flowGPM / 449 / (criteria.channelVelocity?.value || 0.9) * 3.281, 1)), unit: "ft" },
           capacity: { value: String(roundTo(peakFlowGPM)), unit: "gpm" },
+          dimensionsL: { value: "8", unit: "ft" },
+          dimensionsW: { value: "4", unit: "ft" },
+          dimensionsH: { value: "6", unit: "ft" },
+          power: { value: "2", unit: "HP" },
         },
         designBasis: "Peak flow with N+1 redundancy",
         notes: "Two units: one duty, one standby",
@@ -305,11 +332,19 @@ function sizeEquipment(
         equipmentType: "Vortex Grit Chamber",
         description: "Vortex-type grit removal system for removal of inorganic grit and sand",
         quantity: 2,
-        specs: {
-          detentionTime: { value: String(criteria.gritRemovalDetentionTime?.value || 3), unit: "min" },
-          volume: { value: String(roundTo(peakFlowGPM * (criteria.gritRemovalDetentionTime?.value || 3) / 7.481)), unit: "cf" },
-          capacity: { value: String(roundTo(peakFlowGPM)), unit: "gpm" },
-        },
+        specs: (() => {
+          const gritVolGal = roundTo(peakFlowGPM * (criteria.gritRemovalDetentionTime?.value || 3));
+          const gritDims = cylinderDimensions(gritVolGal);
+          return {
+            detentionTime: { value: String(criteria.gritRemovalDetentionTime?.value || 3), unit: "min" },
+            volume: { value: String(gritVolGal), unit: "gal" },
+            capacity: { value: String(roundTo(peakFlowGPM)), unit: "gpm" },
+            dimensionsL: { value: String(gritDims.diameter), unit: "ft (dia)" },
+            dimensionsW: { value: String(gritDims.diameter), unit: "ft (dia)" },
+            dimensionsH: { value: String(gritDims.height), unit: "ft" },
+            power: { value: "3", unit: "HP" },
+          };
+        })(),
         designBasis: "Peak flow with N+1 redundancy",
         notes: "Two chambers, one duty, one standby",
         isOverridden: false,
@@ -326,11 +361,19 @@ function sizeEquipment(
         equipmentType: "Equalization Basin",
         description: "Concrete basin for flow equalization and load dampening",
         quantity: 1,
-        specs: {
-          detentionTime: { value: String(eqDT), unit: "hr" },
-          volume: { value: String(roundTo(eqVolGal)), unit: "gal" },
-          volumeMG: { value: String(roundTo(eqVolGal / 1_000_000, 3)), unit: "MG" },
-        },
+        specs: (() => {
+          const eqDims = rectDimensions(eqVolGal, 12);
+          const eqMixHP = roundTo(eqVolGal * 0.01 / 1000);
+          return {
+            detentionTime: { value: String(eqDT), unit: "hr" },
+            volume: { value: String(roundTo(eqVolGal)), unit: "gal" },
+            volumeMG: { value: String(roundTo(eqVolGal / 1_000_000, 3)), unit: "MG" },
+            dimensionsL: { value: String(eqDims.length), unit: "ft" },
+            dimensionsW: { value: String(eqDims.width), unit: "ft" },
+            dimensionsH: { value: String(eqDims.height), unit: "ft" },
+            power: { value: String(eqMixHP), unit: "HP" },
+          };
+        })(),
         designBasis: `${eqDT}-hour detention time at average flow`,
         notes: "Includes submersible mixers and aeration to prevent septicity",
         isOverridden: false,
@@ -349,13 +392,22 @@ function sizeEquipment(
         equipmentType: "Primary Clarifier",
         description: "Circular primary clarifier for settleable solids and FOG removal",
         quantity: 2,
-        specs: {
-          surfaceOverflowRate: { value: String(sor), unit: "gpd/sf" },
-          surfaceArea: { value: String(roundTo(areaRequired / 2)), unit: "sf" },
-          diameter: { value: String(roundTo(Math.sqrt(areaRequired / 2 * 4 / Math.PI))), unit: "ft" },
-          sidewaterDepth: { value: String(depth), unit: "ft" },
-          detentionTime: { value: String(criteria.detentionTime?.value || 2), unit: "hr" },
-        },
+        specs: (() => {
+          const primDia = roundTo(Math.sqrt(areaRequired / 2 * 4 / Math.PI));
+          const primVolGal = roundTo(Math.PI * Math.pow(primDia / 2, 2) * depth * 7.481);
+          return {
+            surfaceOverflowRate: { value: String(sor), unit: "gpd/sf" },
+            surfaceArea: { value: String(roundTo(areaRequired / 2)), unit: "sf" },
+            diameter: { value: String(primDia), unit: "ft" },
+            sidewaterDepth: { value: String(depth), unit: "ft" },
+            detentionTime: { value: String(criteria.detentionTime?.value || 2), unit: "hr" },
+            volume: { value: String(primVolGal), unit: "gal" },
+            dimensionsL: { value: String(primDia), unit: "ft (dia)" },
+            dimensionsW: { value: String(primDia), unit: "ft (dia)" },
+            dimensionsH: { value: String(depth), unit: "ft" },
+            power: { value: "1", unit: "HP" },
+          };
+        })(),
         designBasis: `SOR = ${sor} gpd/sf at average flow, ${depth} ft SWD`,
         notes: "Two clarifiers operating in parallel",
         isOverridden: false,
@@ -378,14 +430,22 @@ function sizeEquipment(
         equipmentType: "Aeration Basin",
         description: "Concrete aeration basin with fine bubble diffusers",
         quantity: 2,
-        specs: {
-          hrt: { value: String(hrt), unit: "hr" },
-          volume: { value: String(roundTo(aerationVolGal / 2)), unit: "gal each" },
-          volumeMG: { value: String(roundTo(aerationVolGal / 2_000_000, 3)), unit: "MG each" },
-          mlss: { value: String(criteria.mlss?.value || 3000), unit: "mg/L" },
-          srt: { value: String(criteria.srt?.value || 10), unit: "days" },
-          fmRatio: { value: String(roundTo(criteria.fmRatio?.value || 0.3, 2)), unit: "lb BOD/lb MLSS·d" },
-        },
+        specs: (() => {
+          const aerDims = rectDimensions(aerationVolGal / 2, 15);
+          const blowerHP = roundTo(airRequired / 100);
+          return {
+            hrt: { value: String(hrt), unit: "hr" },
+            volume: { value: String(roundTo(aerationVolGal / 2)), unit: "gal" },
+            volumeMG: { value: String(roundTo(aerationVolGal / 2_000_000, 3)), unit: "MG" },
+            mlss: { value: String(criteria.mlss?.value || 3000), unit: "mg/L" },
+            srt: { value: String(criteria.srt?.value || 10), unit: "days" },
+            fmRatio: { value: String(roundTo(criteria.fmRatio?.value || 0.3, 2)), unit: "lb BOD/lb MLSS·d" },
+            dimensionsL: { value: String(aerDims.length), unit: "ft" },
+            dimensionsW: { value: String(aerDims.width), unit: "ft" },
+            dimensionsH: { value: String(aerDims.height), unit: "ft" },
+            power: { value: String(blowerHP), unit: "HP" },
+          };
+        })(),
         designBasis: `HRT = ${hrt} hr, SRT = ${criteria.srt?.value || 10} days, MLSS = ${criteria.mlss?.value || 3000} mg/L`,
         notes: "Two basins operating in parallel, fine bubble diffused aeration",
         isOverridden: false,
@@ -400,13 +460,23 @@ function sizeEquipment(
         equipmentType: "Secondary Clarifier",
         description: "Circular secondary clarifier for mixed liquor separation",
         quantity: 2,
-        specs: {
-          surfaceOverflowRate: { value: String(clarSOR), unit: "gpd/sf" },
-          surfaceArea: { value: String(roundTo(clarArea / 2)), unit: "sf each" },
-          diameter: { value: String(roundTo(Math.sqrt(clarArea / 2 * 4 / Math.PI))), unit: "ft" },
-          sidewaterDepth: { value: String(criteria.secondaryClarifierDepth?.value || 14), unit: "ft" },
-          solidsLoadingRate: { value: String(criteria.secondaryClarifierSLR?.value || 25), unit: "lb/sf·d" },
-        },
+        specs: (() => {
+          const secDia = roundTo(Math.sqrt(clarArea / 2 * 4 / Math.PI));
+          const secDepth = criteria.secondaryClarifierDepth?.value || 14;
+          const secVolGal = roundTo(Math.PI * Math.pow(secDia / 2, 2) * secDepth * 7.481);
+          return {
+            surfaceOverflowRate: { value: String(clarSOR), unit: "gpd/sf" },
+            surfaceArea: { value: String(roundTo(clarArea / 2)), unit: "sf each" },
+            diameter: { value: String(secDia), unit: "ft" },
+            sidewaterDepth: { value: String(secDepth), unit: "ft" },
+            solidsLoadingRate: { value: String(criteria.secondaryClarifierSLR?.value || 25), unit: "lb/sf·d" },
+            volume: { value: String(secVolGal), unit: "gal" },
+            dimensionsL: { value: String(secDia), unit: "ft (dia)" },
+            dimensionsW: { value: String(secDia), unit: "ft (dia)" },
+            dimensionsH: { value: String(secDepth), unit: "ft" },
+            power: { value: "1", unit: "HP" },
+          };
+        })(),
         designBasis: `SOR = ${clarSOR} gpd/sf at average flow`,
         notes: "Two clarifiers operating in parallel",
         isOverridden: false,
@@ -426,12 +496,25 @@ function sizeEquipment(
         equipmentType: "Bioreactor Basin",
         description: "MBR bioreactor basin with submerged membrane modules",
         quantity: 2,
-        specs: {
-          hrt: { value: String(hrt), unit: "hr" },
-          volume: { value: String(roundTo(aerationVolGal / 2)), unit: "gal each" },
-          mlss: { value: String(criteria.mlss?.value || 8000), unit: "mg/L" },
-          srt: { value: String(criteria.srt?.value || 15), unit: "days" },
-        },
+        specs: (() => {
+          const mbrDims = rectDimensions(aerationVolGal / 2, 15);
+          const mbrBodLoad = influent.bod * flowMGD * 8.34;
+          const mbrO2 = mbrBodLoad * (criteria.oxygenDemand?.value || 1.8);
+          const mbrOte = criteria.oxygenTransferEfficiency?.value || 0.20;
+          const mbrSf = criteria.safetyFactor?.value || 1.5;
+          const mbrAirReq = mbrO2 / mbrOte * mbrSf;
+          const mbrBlowerHP = roundTo(mbrAirReq / 100);
+          return {
+            hrt: { value: String(hrt), unit: "hr" },
+            volume: { value: String(roundTo(aerationVolGal / 2)), unit: "gal" },
+            mlss: { value: String(criteria.mlss?.value || 8000), unit: "mg/L" },
+            srt: { value: String(criteria.srt?.value || 15), unit: "days" },
+            dimensionsL: { value: String(mbrDims.length), unit: "ft" },
+            dimensionsW: { value: String(mbrDims.width), unit: "ft" },
+            dimensionsH: { value: String(mbrDims.height), unit: "ft" },
+            power: { value: String(mbrBlowerHP), unit: "HP" },
+          };
+        })(),
         designBasis: `HRT = ${hrt} hr, SRT = ${criteria.srt?.value || 15} days, MLSS = ${criteria.mlss?.value || 8000} mg/L`,
         notes: "Two trains with submerged flat-sheet or hollow-fiber membranes",
         isOverridden: false,
@@ -444,11 +527,18 @@ function sizeEquipment(
         equipmentType: "Membrane Modules",
         description: "Submerged membrane filtration modules",
         quantity: Math.ceil(membraneArea / 5000),
-        specs: {
-          flux: { value: String(membraneFlux), unit: "gfd" },
-          totalArea: { value: String(roundTo(membraneArea)), unit: "sf" },
-          moduleArea: { value: "5,000", unit: "sf/module" },
-        },
+        specs: (() => {
+          const numModules = Math.ceil(membraneArea / 5000);
+          return {
+            flux: { value: String(membraneFlux), unit: "gfd" },
+            totalArea: { value: String(roundTo(membraneArea)), unit: "sf" },
+            moduleArea: { value: "5,000", unit: "sf/module" },
+            dimensionsL: { value: "8", unit: "ft" },
+            dimensionsW: { value: "4", unit: "ft" },
+            dimensionsH: { value: "6", unit: "ft" },
+            power: { value: String(roundTo(numModules * 5)), unit: "HP" },
+          };
+        })(),
         designBasis: `Net flux = ${membraneFlux} gfd at average flow`,
         notes: "Includes spare capacity for cleaning cycles",
         isOverridden: false,
@@ -465,12 +555,26 @@ function sizeEquipment(
         equipmentType: "Gravity Media Filter",
         description: "Dual-media gravity filter for tertiary polishing",
         quantity: Math.max(2, Math.ceil(filtArea / 200)),
-        specs: {
-          filtrationRate: { value: String(filtRate), unit: "gpm/sf" },
-          totalArea: { value: String(roundTo(filtArea)), unit: "sf" },
-          mediaDepth: { value: String(criteria.mediaDepth?.value || 24), unit: "in" },
-          backwashRate: { value: String(criteria.backwashRate?.value || 15), unit: "gpm/sf" },
-        },
+        specs: (() => {
+          const numCells = Math.max(2, Math.ceil(filtArea / 200));
+          const cellArea = filtArea / numCells;
+          const cellWidth = roundTo(Math.sqrt(cellArea));
+          const cellLength = roundTo(cellArea / cellWidth);
+          const mediaDepthFt = roundTo((criteria.mediaDepth?.value || 24) / 12);
+          const filtDepth = roundTo(mediaDepthFt + 3);
+          const cellVolGal = roundTo(cellWidth * cellLength * filtDepth * 7.481);
+          return {
+            filtrationRate: { value: String(filtRate), unit: "gpm/sf" },
+            totalArea: { value: String(roundTo(filtArea)), unit: "sf" },
+            mediaDepth: { value: String(criteria.mediaDepth?.value || 24), unit: "in" },
+            backwashRate: { value: String(criteria.backwashRate?.value || 15), unit: "gpm/sf" },
+            volume: { value: String(cellVolGal), unit: "gal" },
+            dimensionsL: { value: String(cellLength), unit: "ft" },
+            dimensionsW: { value: String(cellWidth), unit: "ft" },
+            dimensionsH: { value: String(filtDepth), unit: "ft" },
+            power: { value: "3", unit: "HP" },
+          };
+        })(),
         designBasis: `Filtration rate = ${filtRate} gpm/sf at average flow`,
         notes: "Multiple cells, one cell out of service during backwash",
         isOverridden: false,
@@ -492,6 +596,10 @@ function sizeEquipment(
           dose: { value: String(doseMg), unit: "mg/L" },
           feedRate: { value: String(roundTo(doseRate)), unit: "lb/day" },
           storageTank: { value: String(roundTo(doseRate * 30 / 12.0)), unit: "gal" },
+          dimensionsL: { value: "8", unit: "ft" },
+          dimensionsW: { value: "6", unit: "ft" },
+          dimensionsH: { value: "8", unit: "ft" },
+          power: { value: "2", unit: "HP" },
         },
         designBasis: `${doseMg} mg/L dose at average flow`,
         notes: "Includes chemical storage, metering pump, and mixing chamber",
@@ -509,12 +617,23 @@ function sizeEquipment(
         equipmentType: "UV Disinfection System",
         description: "Open-channel UV disinfection system",
         quantity: 1,
-        specs: {
-          uvDose: { value: String(criteria.uvDose?.value || 40), unit: "mJ/cm²" },
-          contactTime: { value: String(ct), unit: "min" },
-          channelVolume: { value: String(roundTo(contactVolGal)), unit: "gal" },
-          peakCapacity: { value: String(roundTo(peakFlowGPM)), unit: "gpm" },
-        },
+        specs: (() => {
+          const uvDims = rectDimensions(contactVolGal, 3);
+          const uvDoseVal = criteria.uvDose?.value || 40;
+          const uvPowerKW = roundTo(uvDoseVal * flowGPM * 0.001, 1);
+          const uvPowerHP = kWToHP(uvPowerKW);
+          return {
+            uvDose: { value: String(uvDoseVal), unit: "mJ/cm²" },
+            contactTime: { value: String(ct), unit: "min" },
+            channelVolume: { value: String(roundTo(contactVolGal)), unit: "gal" },
+            peakCapacity: { value: String(roundTo(peakFlowGPM)), unit: "gpm" },
+            volume: { value: String(roundTo(contactVolGal)), unit: "gal" },
+            dimensionsL: { value: String(uvDims.length), unit: "ft" },
+            dimensionsW: { value: String(uvDims.width), unit: "ft" },
+            dimensionsH: { value: String(uvDims.height), unit: "ft" },
+            power: { value: String(uvPowerHP), unit: "HP" },
+          };
+        })(),
         designBasis: `UV dose = ${criteria.uvDose?.value || 40} mJ/cm², contact time = ${ct} min`,
         notes: "Includes redundant UV bank and automatic cleaning system",
         isOverridden: false,
@@ -522,6 +641,25 @@ function sizeEquipment(
       });
     }
   }
+
+  equipment.push({
+    id: makeId(),
+    process: "Solids Handling",
+    equipmentType: "Sludge Dewatering",
+    description: "Mechanical sludge dewatering system (belt filter press or screw press)",
+    quantity: 1,
+    specs: {
+      capacity: { value: String(roundTo(flowMGD * 0.01 * 1_000_000 / 1440)), unit: "gpm" },
+      dimensionsL: { value: "12", unit: "ft" },
+      dimensionsW: { value: "5", unit: "ft" },
+      dimensionsH: { value: "6", unit: "ft" },
+      power: { value: "25", unit: "HP" },
+    },
+    designBasis: "Sized for waste sludge processing",
+    notes: "Includes polymer feed system and sludge cake conveyor",
+    isOverridden: false,
+    isLocked: false,
+  });
 
   return equipment;
 }

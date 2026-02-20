@@ -26,6 +26,7 @@ function roundTo(val: number, decimals: number = 1): number {
   const factor = Math.pow(10, decimals);
   return Math.round(val * factor) / factor;
 }
+function kWToHP(kw: number): number { return roundTo(kw * 1.341, 1); }
 
 function getSpecValue(fs: FeedstockEntry, keys: string[], defaultVal: number): number {
   if (!fs.feedstockSpecs) return defaultVal;
@@ -182,6 +183,8 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
   };
   adStages.push(conditioningStage);
 
+  const cScrubberH = roundTo(Math.max(8, Math.sqrt(biogasScfm) * 1.5), 0);
+  const cScrubberDia = roundTo(Math.max(3, Math.sqrt(biogasScfm) * 0.5), 1);
   equipment.push({
     id: makeId(),
     process: "Gas Conditioning",
@@ -193,6 +196,10 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
       outletH2S: { value: String(roundTo(outH2sPpmv, 1)), unit: "ppmv" },
       removalEff: { value: "99.5", unit: "%" },
       gasFlow: { value: String(roundTo(biogasScfm)), unit: "scfm" },
+      dimensionsL: { value: String(cScrubberDia), unit: "ft (dia)" },
+      dimensionsW: { value: String(cScrubberDia), unit: "ft (dia)" },
+      dimensionsH: { value: String(cScrubberH), unit: "ft" },
+      power: { value: String(roundTo(Math.max(3, biogasScfm * 0.05), 0)), unit: "HP" },
     },
     designBasis: "99.5% H₂S removal to < 10 ppmv",
     notes: "Includes media replacement schedule",
@@ -201,6 +208,8 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
   });
 
   if (siloxanePpbv > 100) {
+    const silDia = roundTo(Math.max(2, Math.sqrt(biogasScfm) * 0.3), 1);
+    const silH = roundTo(Math.max(6, Math.sqrt(biogasScfm) * 1.0), 0);
     equipment.push({
       id: makeId(),
       process: "Gas Conditioning",
@@ -212,6 +221,10 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
         outletSiloxane: { value: String(roundTo(outSiloxanePpbv)), unit: "ppbv" },
         removalEff: { value: "95", unit: "%" },
         gasFlow: { value: String(roundTo(biogasScfm)), unit: "scfm" },
+        dimensionsL: { value: String(silDia), unit: "ft (dia)" },
+        dimensionsW: { value: String(silDia), unit: "ft (dia)" },
+        dimensionsH: { value: String(silH), unit: "ft" },
+        power: { value: "1", unit: "HP" },
       },
       designBasis: "Lead/lag configuration, 95% removal",
       notes: "Carbon replacement on breakthrough detection",
@@ -229,6 +242,10 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
     specs: {
       gasFlow: { value: String(roundTo(biogasScfm)), unit: "scfm" },
       outletDewpoint: { value: "-40", unit: "°F" },
+      dimensionsL: { value: "8", unit: "ft" },
+      dimensionsW: { value: "4", unit: "ft" },
+      dimensionsH: { value: "6", unit: "ft" },
+      power: { value: String(roundTo(Math.max(5, biogasScfm * 0.08), 0)), unit: "HP" },
     },
     designBasis: "Reduce moisture to pipeline specifications",
     notes: "Condensate drainage included",
@@ -286,6 +303,7 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
   };
   adStages.push(upgradingStage);
 
+  const cUpgradingPowerHP = roundTo(kWToHP(electricalDemandKW * 0.4), 0);
   equipment.push({
     id: makeId(),
     process: "Gas Upgrading",
@@ -298,6 +316,10 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
       productCH4: { value: String(productCH4), unit: "%" },
       methaneRecovery: { value: "97", unit: "%" },
       pressure: { value: "200", unit: "psig" },
+      dimensionsL: { value: String(roundTo(Math.max(20, biogasScfm * 0.08), 0)), unit: "ft" },
+      dimensionsW: { value: String(roundTo(Math.max(10, biogasScfm * 0.04), 0)), unit: "ft" },
+      dimensionsH: { value: "12", unit: "ft" },
+      power: { value: String(cUpgradingPowerHP), unit: "HP" },
     },
     designBasis: "97% methane recovery, pipeline quality RNG",
     notes: "Includes compression, monitoring, and control system",
@@ -305,6 +327,7 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
+  const cCompressorPowerHP = roundTo(kWToHP(electricalDemandKW * 0.6), 0);
   equipment.push({
     id: makeId(),
     process: "Gas Upgrading",
@@ -314,7 +337,10 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
     specs: {
       flow: { value: String(roundTo(rngScfm)), unit: "scfm" },
       dischargePressure: { value: "200", unit: "psig" },
-      power: { value: String(roundTo(electricalDemandKW * 0.6)), unit: "kW" },
+      dimensionsL: { value: "8", unit: "ft" },
+      dimensionsW: { value: "5", unit: "ft" },
+      dimensionsH: { value: "6", unit: "ft" },
+      power: { value: String(cCompressorPowerHP), unit: "HP" },
     },
     designBasis: "Pipeline injection pressure",
     notes: "Includes aftercooler and moisture knockout",
@@ -322,6 +348,7 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
+  const cFlareH = roundTo(Math.max(15, Math.sqrt(biogasScfm) * 2), 0);
   equipment.push({
     id: makeId(),
     process: "Gas Management",
@@ -331,6 +358,10 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
     specs: {
       capacity: { value: String(roundTo(biogasScfm * 1.1)), unit: "scfm" },
       destructionEff: { value: "99.5", unit: "%" },
+      dimensionsL: { value: "8", unit: "ft (dia)" },
+      dimensionsW: { value: "8", unit: "ft (dia)" },
+      dimensionsH: { value: String(cFlareH), unit: "ft" },
+      power: { value: "5", unit: "HP" },
     },
     designBasis: "110% of maximum biogas flow",
     notes: "Required for startup, upset, and maintenance",
