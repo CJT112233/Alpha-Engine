@@ -198,6 +198,33 @@ function validateOpexResults(parsed: any, totalProjectCapex: number): OpexResult
   };
 }
 
+function repairTruncatedJSON(raw: string): any {
+  let s = raw.trim();
+  const maxAttempts = 20;
+  for (let i = 0; i < maxAttempts; i++) {
+    const openBraces = (s.match(/\{/g) || []).length;
+    const closeBraces = (s.match(/\}/g) || []).length;
+    const openBrackets = (s.match(/\[/g) || []).length;
+    const closeBrackets = (s.match(/\]/g) || []).length;
+
+    if (openBraces === closeBraces && openBrackets === closeBrackets) {
+      break;
+    }
+
+    s = s.replace(/,\s*$/, "");
+
+    if (openBrackets > closeBrackets) {
+      s += "]";
+    } else if (openBraces > closeBraces) {
+      s += "}";
+    } else {
+      break;
+    }
+  }
+
+  return JSON.parse(s);
+}
+
 export interface OpexAIResult {
   results: OpexResults;
   provider: LLMProvider;
@@ -241,9 +268,9 @@ export async function generateOpexWithAI(
     model,
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only.` },
+      { role: "user", content: `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep the response concise to stay within output limits.` },
     ],
-    maxTokens: 16384,
+    maxTokens: 32768,
     jsonMode: true,
   });
 
@@ -256,8 +283,14 @@ export async function generateOpexWithAI(
   try {
     parsed = JSON.parse(rawContent);
   } catch (parseError) {
-    console.error("OpEx AI: Failed to parse JSON response:", rawContent.substring(0, 500));
-    throw new Error(`AI returned invalid JSON. Parse error: ${(parseError as Error).message}`);
+    console.log("OpEx AI: Initial JSON parse failed, attempting truncation repair...");
+    try {
+      parsed = repairTruncatedJSON(rawContent);
+      console.log("OpEx AI: Successfully repaired truncated JSON");
+    } catch (repairError) {
+      console.error("OpEx AI: Failed to parse or repair JSON response:", rawContent.substring(0, 500));
+      throw new Error(`AI returned invalid JSON. Parse error: ${(parseError as Error).message}`);
+    }
   }
 
   const totalProjectCapex = capexResults?.summary?.totalProjectCost || 0;

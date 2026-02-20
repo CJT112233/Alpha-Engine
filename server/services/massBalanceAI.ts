@@ -124,6 +124,33 @@ function validateMassBalanceResults(parsed: any): MassBalanceResults {
   return results;
 }
 
+function repairTruncatedJSON(raw: string): any {
+  let s = raw.trim();
+  const maxAttempts = 20;
+  for (let i = 0; i < maxAttempts; i++) {
+    const openBraces = (s.match(/\{/g) || []).length;
+    const closeBraces = (s.match(/\}/g) || []).length;
+    const openBrackets = (s.match(/\[/g) || []).length;
+    const closeBrackets = (s.match(/\]/g) || []).length;
+
+    if (openBraces === closeBraces && openBrackets === closeBrackets) {
+      break;
+    }
+
+    s = s.replace(/,\s*$/, "");
+
+    if (openBrackets > closeBrackets) {
+      s += "]";
+    } else if (openBraces > closeBraces) {
+      s += "}";
+    } else {
+      break;
+    }
+  }
+
+  return JSON.parse(s);
+}
+
 export interface MassBalanceAIResult {
   results: MassBalanceResults;
   provider: LLMProvider;
@@ -160,9 +187,9 @@ export async function generateMassBalanceWithAI(
     model,
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Generate a complete mass balance and equipment list based on the UPIF data provided. Return valid JSON only.` },
+      { role: "user", content: `Generate a complete mass balance and equipment list based on the UPIF data provided. Return valid JSON only. Keep descriptions concise to stay within output limits.` },
     ],
-    maxTokens: 16384,
+    maxTokens: 32768,
     jsonMode: true,
   });
 
@@ -175,8 +202,14 @@ export async function generateMassBalanceWithAI(
   try {
     parsed = JSON.parse(rawContent);
   } catch (parseError) {
-    console.error("Mass Balance AI: Failed to parse JSON response:", rawContent.substring(0, 500));
-    throw new Error(`AI returned invalid JSON. Parse error: ${(parseError as Error).message}`);
+    console.log("Mass Balance AI: Initial JSON parse failed, attempting truncation repair...");
+    try {
+      parsed = repairTruncatedJSON(rawContent);
+      console.log("Mass Balance AI: Successfully repaired truncated JSON");
+    } catch (repairError) {
+      console.error("Mass Balance AI: Failed to parse or repair JSON response:", rawContent.substring(0, 500));
+      throw new Error(`AI returned invalid JSON. Parse error: ${(parseError as Error).message}`);
+    }
   }
 
   const results = validateMassBalanceResults(parsed);
