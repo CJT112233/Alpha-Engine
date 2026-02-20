@@ -664,7 +664,7 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
         <Card data-testid="card-outputs-ad">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <Flame className="h-4 w-4" /> AD / RNG Process Mass Balance
+              <Flame className="h-4 w-4" /> Process Mass Balance
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -1279,7 +1279,7 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
   const tabItems: { value: string; label: string }[] = [];
   if (hasOutputs) tabItems.push({ value: "outputs", label: "Outputs" });
   if (hasWWStages) tabItems.push({ value: "treatment-train", label: "Treatment Train" });
-  if (hasADStages) tabItems.push({ value: "ad-process", label: "AD / RNG Process" });
+  if (hasADStages) tabItems.push({ value: "ad-process", label: "Process" });
   tabItems.push({ value: "equipment", label: `Equipment (${results?.equipment?.length || 0})` });
   if (hasSummary) tabItems.push({ value: "stats", label: "Stats" });
   tabItems.push({ value: "assumptions", label: "Assumptions" });
@@ -1538,14 +1538,7 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
                   </TabsContent>
                 )}
 
-                <TabsContent value="equipment" className="mt-4">
-                  <EquipmentTable
-                    equipment={results.equipment}
-                    locks={locks}
-                    overrides={overrides}
-                    onToggleLock={handleToggleLock}
-                    onSaveOverride={handleSaveOverride}
-                  />
+                <TabsContent value="equipment" className="mt-4 space-y-4">
                   {latestRun && latestRun.status === "finalized" && (
                     <VendorListSection
                       vendorList={latestRun.vendorList}
@@ -1554,6 +1547,13 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
                       onGenerate={() => vendorListMutation.mutate()}
                     />
                   )}
+                  <EquipmentTable
+                    equipment={results.equipment}
+                    locks={locks}
+                    overrides={overrides}
+                    onToggleLock={handleToggleLock}
+                    onSaveOverride={handleSaveOverride}
+                  />
                 </TabsContent>
 
                 {hasSummary && results.summary && (
