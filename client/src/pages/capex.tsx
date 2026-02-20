@@ -37,8 +37,6 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
-  Wallet,
-  ArrowRight,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { ElapsedTimer } from "@/components/elapsed-timer";
@@ -263,8 +261,7 @@ function AssumptionsList({ assumptions }: { assumptions: CapexResults["assumptio
   );
 }
 
-export default function CapexPage() {
-  const { scenarioId } = useParams<{ scenarioId: string }>();
+export function CapexContent({ scenarioId }: { scenarioId: string }) {
   const { toast } = useToast();
 
   const { data: estimates, isLoading } = useQuery<CapexEstimate[]>({
@@ -445,7 +442,7 @@ export default function CapexPage() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -453,24 +450,13 @@ export default function CapexPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <Link href={`/scenarios/${scenarioId}/mass-balance`}>
-          <Button variant="ghost" size="icon" data-testid="button-back">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold flex items-center gap-2" data-testid="text-page-title">
-            <DollarSign className="h-5 w-5" />
-            Capital Cost Estimate
-          </h1>
-          {results && (
-            <p className="text-sm text-muted-foreground">
-              {results.methodology} &middot; {results.costYear} &middot; {results.currency}
-            </p>
-          )}
-        </div>
+        {results && (
+          <p className="text-sm text-muted-foreground">
+            {results.methodology} &middot; {results.costYear} &middot; {results.currency}
+          </p>
+        )}
 
         {latestEstimate && (
           <div className="flex items-center gap-2 flex-wrap">
@@ -569,11 +555,6 @@ export default function CapexPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Link href={`/scenarios/${scenarioId}/opex`}>
-              <Button variant="outline" data-testid="button-view-opex">
-                <Wallet className="h-4 w-4 mr-2" /> OpEx <ArrowRight className="h-3 w-3 ml-1" />
-              </Button>
-            </Link>
             {Object.keys(overrides).length > 0 && (
               <Badge variant="secondary" data-testid="badge-overrides-count">
                 {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}
@@ -861,6 +842,26 @@ export default function CapexPage() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+export default function CapexPage() {
+  const { scenarioId } = useParams<{ scenarioId: string }>();
+  return (
+    <div className="flex-1 overflow-y-auto p-4 md:p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <Link href={`/scenarios/${scenarioId}/mass-balance`}>
+          <Button variant="ghost" size="icon" data-testid="button-back">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <h1 className="text-xl font-semibold flex items-center gap-2" data-testid="text-page-title">
+          <DollarSign className="h-5 w-5" />
+          Capital Cost Estimate
+        </h1>
+      </div>
+      <CapexContent scenarioId={scenarioId!} />
     </div>
   );
 }

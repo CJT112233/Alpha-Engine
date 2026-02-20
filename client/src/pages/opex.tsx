@@ -247,8 +247,7 @@ function getCategoryColor(category: string): string {
   return CATEGORY_COLORS["Other"];
 }
 
-export default function OpexPage() {
-  const { scenarioId } = useParams<{ scenarioId: string }>();
+export function OpexContent({ scenarioId }: { scenarioId: string }) {
   const { toast } = useToast();
 
   const { data: estimates, isLoading } = useQuery<OpexEstimate[]>({
@@ -369,7 +368,7 @@ export default function OpexPage() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -377,38 +376,19 @@ export default function OpexPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link href={`/scenarios/${scenarioId}/capex`}>
-          <Button variant="ghost" size="icon" data-testid="button-back-opex">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold flex items-center gap-2" data-testid="text-opex-page-title">
-            <Wallet className="h-5 w-5" />
-            Annual Operating Cost Estimate
-          </h1>
-          {results && (
-            <p className="text-sm text-muted-foreground">
-              {results.methodology} &middot; {results.costYear} &middot; {results.currency}
-            </p>
-          )}
+    <div className="space-y-4">
+      {latestEstimate && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant={latestEstimate.status === "finalized" ? "default" : "outline"} data-testid="badge-opex-status">
+            {latestEstimate.status === "finalized" ? (
+              <><CheckCircle2 className="h-3 w-3 mr-1" /> Finalized</>
+            ) : (
+              "Draft"
+            )}
+          </Badge>
+          <Badge variant="secondary" data-testid="badge-opex-version">v{latestEstimate.version}</Badge>
         </div>
-
-        {latestEstimate && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant={latestEstimate.status === "finalized" ? "default" : "outline"} data-testid="badge-opex-status">
-              {latestEstimate.status === "finalized" ? (
-                <><CheckCircle2 className="h-3 w-3 mr-1" /> Finalized</>
-              ) : (
-                "Draft"
-              )}
-            </Badge>
-            <Badge variant="secondary" data-testid="badge-opex-version">v{latestEstimate.version}</Badge>
-          </div>
-        )}
-      </div>
+      )}
 
       {!latestEstimate ? (
         <Card>
@@ -723,6 +703,26 @@ export default function OpexPage() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+export default function OpexPage() {
+  const { scenarioId } = useParams<{ scenarioId: string }>();
+  return (
+    <div className="flex-1 overflow-y-auto p-4 md:p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <Link href={`/scenarios/${scenarioId}/capex`}>
+          <Button variant="ghost" size="icon" data-testid="button-back-opex">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <h1 className="text-xl font-semibold flex items-center gap-2" data-testid="text-opex-page-title">
+          <Wallet className="h-5 w-5" />
+          Annual Operating Cost Estimate
+        </h1>
+      </div>
+      <OpexContent scenarioId={scenarioId!} />
     </div>
   );
 }

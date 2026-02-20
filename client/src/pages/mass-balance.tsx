@@ -937,8 +937,7 @@ function getProjectTypeDescription(pt: string | undefined): string {
   }
 }
 
-export default function MassBalancePage() {
-  const { scenarioId } = useParams<{ scenarioId: string }>();
+export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
   const { toast } = useToast();
 
   const { data: runs, isLoading } = useQuery<MassBalanceRun[]>({
@@ -1065,7 +1064,7 @@ export default function MassBalancePage() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -1082,41 +1081,26 @@ export default function MassBalancePage() {
   const defaultTab = tabItems[0]?.value || "summary";
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link href={`/scenarios/${scenarioId}`}>
-          <Button variant="ghost" size="icon" data-testid="button-back">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold flex items-center gap-2" data-testid="text-page-title">
-            <Droplets className="h-5 w-5" />
-            Mass Balance & Equipment
-          </h1>
-          <p className="text-sm text-muted-foreground">{getProjectTypeDescription(projectType)}</p>
-        </div>
-
-        {latestRun && (
-          <div className="flex items-center gap-2 flex-wrap">
-            {projectType && (
-              <Badge variant="outline" data-testid="badge-project-type">
-                {getProjectTypeLabel(projectType)}
-              </Badge>
-            )}
-            <Badge variant={latestRun.status === "finalized" ? "default" : "outline"} data-testid="badge-status">
-              {latestRun.status === "finalized" ? (
-                <><CheckCircle2 className="h-3 w-3 mr-1" /> Finalized</>
-              ) : latestRun.status === "reviewed" ? (
-                "Reviewed"
-              ) : (
-                "Draft"
-              )}
+    <div className="space-y-4">
+      {latestRun && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {projectType && (
+            <Badge variant="outline" data-testid="badge-project-type">
+              {getProjectTypeLabel(projectType)}
             </Badge>
-            <Badge variant="secondary" data-testid="badge-version">v{latestRun.version}</Badge>
-          </div>
-        )}
-      </div>
+          )}
+          <Badge variant={latestRun.status === "finalized" ? "default" : "outline"} data-testid="badge-status">
+            {latestRun.status === "finalized" ? (
+              <><CheckCircle2 className="h-3 w-3 mr-1" /> Finalized</>
+            ) : latestRun.status === "reviewed" ? (
+              "Reviewed"
+            ) : (
+              "Draft"
+            )}
+          </Badge>
+          <Badge variant="secondary" data-testid="badge-version">v{latestRun.version}</Badge>
+        </div>
+      )}
 
       {!latestRun ? (
         <Card>
@@ -1196,13 +1180,6 @@ export default function MassBalancePage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            {latestRun.status === "finalized" && (
-              <Link href={`/scenarios/${scenarioId}/capex`}>
-                <Button variant="default" data-testid="button-go-to-capex">
-                  <DollarSign className="h-4 w-4 mr-2" /> Generate CapEx
-                </Button>
-              </Link>
-            )}
             {Object.keys(overrides).length > 0 && (
               <Badge variant="secondary" data-testid="badge-overrides-count">
                 {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}
@@ -1363,7 +1340,7 @@ export default function MassBalancePage() {
                   {latestRun && latestRun.status === "finalized" && (
                     <VendorListSection
                       vendorList={latestRun.vendorList}
-                      scenarioId={scenarioId!}
+                      scenarioId={scenarioId}
                       isGenerating={vendorListMutation.isPending}
                       onGenerate={() => vendorListMutation.mutate()}
                     />
@@ -1385,6 +1362,26 @@ export default function MassBalancePage() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+export default function MassBalancePage() {
+  const { scenarioId } = useParams<{ scenarioId: string }>();
+  return (
+    <div className="flex-1 overflow-y-auto p-4 md:p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <Link href={`/scenarios/${scenarioId}`}>
+          <Button variant="ghost" size="icon" data-testid="button-back">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <h1 className="text-xl font-semibold flex items-center gap-2" data-testid="text-page-title">
+          <Droplets className="h-5 w-5" />
+          Mass Balance & Equipment
+        </h1>
+      </div>
+      <MassBalanceContent scenarioId={scenarioId!} />
     </div>
   );
 }
