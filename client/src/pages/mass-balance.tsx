@@ -550,6 +550,121 @@ function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLoc
   );
 }
 
+const SOLIDS_LIQUIDS_TYPES = new Set(["receiving", "maceration", "equalization", "digester", "sludgeThickening", "biogasInlet"]);
+const LIQUID_DIGESTATE_TYPES = new Set(["solidsSeparation", "daf", "dewatering"]);
+const GAS_TYPES = new Set(["gasConditioning", "gasUpgrading"]);
+
+function ADStageSubTable({ title, icon, testId, stageEntries, allAdStages, overrides, locks, onSaveOverride, onToggleLock }: {
+  title: string;
+  icon: React.ReactNode;
+  testId: string;
+  stageEntries: { stage: ADProcessStage; originalIndex: number }[];
+  allAdStages: ADProcessStage[];
+  overrides: MassBalanceOverrides;
+  locks: Record<string, boolean>;
+  onSaveOverride: (key: string, value: string, originalValue: string) => void;
+  onToggleLock: (key: string, currentValue?: string) => void;
+}) {
+  const paramKeys = new Set<string>();
+  stageEntries.forEach(({ stage }) => {
+    Object.keys(stage.inputStream || {}).forEach(k => paramKeys.add(k));
+    Object.keys(stage.outputStream || {}).forEach(k => paramKeys.add(k));
+  });
+  const sortedParams = Array.from(paramKeys).sort();
+
+  if (sortedParams.length === 0) return null;
+
+  return (
+    <Card data-testid={testId}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          {icon} {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <Table data-testid={`table-${testId}`}>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="min-w-[140px] sticky left-0 bg-background z-10">Parameter</TableHead>
+                {stageEntries.map(({ stage }, i) => (
+                  <TableHead key={i} className="text-center min-w-[100px]" colSpan={2}>
+                    {stage.name}
+                  </TableHead>
+                ))}
+              </TableRow>
+              <TableRow>
+                <TableHead className="sticky left-0 bg-background z-10" />
+                {stageEntries.map((_, i) => (
+                  <Fragment key={`subhdr-${i}`}>
+                    <TableHead className="text-center text-xs text-muted-foreground">In</TableHead>
+                    <TableHead className="text-center text-xs text-muted-foreground">Out</TableHead>
+                  </Fragment>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedParams.map(paramKey => (
+                <TableRow key={paramKey}>
+                  <TableCell className="font-medium sticky left-0 bg-background z-10">
+                    {formatLabel(paramKey)}
+                    {stageEntries.some(({ stage }) => (stage.inputStream?.[paramKey]?.unit || stage.outputStream?.[paramKey]?.unit)) && (
+                      <span className="text-xs text-muted-foreground ml-1">
+                        ({stageEntries.find(({ stage }) => stage.inputStream?.[paramKey]?.unit || stage.outputStream?.[paramKey]?.unit)?.stage.inputStream?.[paramKey]?.unit ||
+                          stageEntries.find(({ stage }) => stage.outputStream?.[paramKey]?.unit)?.stage.outputStream?.[paramKey]?.unit || ""})
+                      </span>
+                    )}
+                  </TableCell>
+                  {stageEntries.map(({ stage, originalIndex }) => {
+                    const inVal = stage.inputStream?.[paramKey];
+                    const outVal = stage.outputStream?.[paramKey];
+                    const inFieldKey = `adStages.${originalIndex}.inputStream.${paramKey}`;
+                    const outFieldKey = `adStages.${originalIndex}.outputStream.${paramKey}`;
+                    const inIsNumeric = inVal?.value !== undefined && typeof inVal.value === 'number';
+                    const outIsNumeric = outVal?.value !== undefined && typeof outVal.value === 'number';
+                    const inDisplay = inVal?.value !== undefined ? (inIsNumeric ? (inVal.value as number).toLocaleString() : String(inVal.value)) : "\u2014";
+                    const outDisplay = outVal?.value !== undefined ? (outIsNumeric ? (outVal.value as number).toLocaleString() : String(outVal.value)) : "\u2014";
+                    return (
+                      <Fragment key={`${paramKey}-${originalIndex}`}>
+                        {inIsNumeric ? (
+                          <EditableTableCell
+                            fieldKey={inFieldKey}
+                            displayValue={inVal.value as number}
+                            decimals={1}
+                            isLocked={!!locks[inFieldKey]}
+                            isOverridden={!!overrides[inFieldKey]}
+                            onSaveOverride={onSaveOverride}
+                            onToggleLock={onToggleLock}
+                          />
+                        ) : (
+                          <TableCell className="text-center text-muted-foreground">{inDisplay}</TableCell>
+                        )}
+                        {outIsNumeric ? (
+                          <EditableTableCell
+                            fieldKey={outFieldKey}
+                            displayValue={outVal.value as number}
+                            decimals={1}
+                            isLocked={!!locks[outFieldKey]}
+                            isOverridden={!!overrides[outFieldKey]}
+                            onSaveOverride={onSaveOverride}
+                            onToggleLock={onToggleLock}
+                          />
+                        ) : (
+                          <TableCell className="text-center text-muted-foreground">{outDisplay}</TableCell>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, onToggleLock }: {
   results: MassBalanceResults;
   overrides: MassBalanceOverrides;
@@ -584,12 +699,26 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
     fog: "FOG (mg/L)",
   };
 
-  const allADParamKeys = new Set<string>();
-  adStages.forEach(stage => {
-    Object.keys(stage.inputStream || {}).forEach(k => allADParamKeys.add(k));
-    Object.keys(stage.outputStream || {}).forEach(k => allADParamKeys.add(k));
+  const solidsLiquidsStages: { stage: ADProcessStage; originalIndex: number }[] = [];
+  const liquidDigestateStages: { stage: ADProcessStage; originalIndex: number }[] = [];
+  const gasStages: { stage: ADProcessStage; originalIndex: number }[] = [];
+  const uncategorizedStages: { stage: ADProcessStage; originalIndex: number }[] = [];
+
+  adStages.forEach((stage, i) => {
+    const entry = { stage, originalIndex: i };
+    if (SOLIDS_LIQUIDS_TYPES.has(stage.type)) {
+      solidsLiquidsStages.push(entry);
+    } else if (LIQUID_DIGESTATE_TYPES.has(stage.type)) {
+      liquidDigestateStages.push(entry);
+    } else if (GAS_TYPES.has(stage.type)) {
+      gasStages.push(entry);
+    } else {
+      uncategorizedStages.push(entry);
+    }
   });
-  const adParamKeys = Array.from(allADParamKeys).sort();
+
+  const hasSplitTables = solidsLiquidsStages.length > 0 || liquidDigestateStages.length > 0 || gasStages.length > 0;
+  const showSingleTable = hasAD && !hasSplitTables;
 
   return (
     <div className="space-y-4">
@@ -660,94 +789,75 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
         </Card>
       )}
 
-      {hasAD && (
-        <Card data-testid="card-outputs-ad">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Flame className="h-4 w-4" /> Process Mass Balance
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table data-testid="table-outputs-ad">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-[140px] sticky left-0 bg-background z-10">Parameter</TableHead>
-                    {adStages.map((stage, i) => (
-                      <TableHead key={i} className="text-center min-w-[100px]" colSpan={2}>
-                        {stage.name}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                  <TableRow>
-                    <TableHead className="sticky left-0 bg-background z-10" />
-                    {adStages.map((_, i) => (
-                      <Fragment key={`subhdr-${i}`}>
-                        <TableHead className="text-center text-xs text-muted-foreground">In</TableHead>
-                        <TableHead className="text-center text-xs text-muted-foreground">Out</TableHead>
-                      </Fragment>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {adParamKeys.map(paramKey => (
-                    <TableRow key={paramKey}>
-                      <TableCell className="font-medium sticky left-0 bg-background z-10">
-                        {formatLabel(paramKey)}
-                        {adStages.some(s => (s.inputStream?.[paramKey]?.unit || s.outputStream?.[paramKey]?.unit)) && (
-                          <span className="text-xs text-muted-foreground ml-1">
-                            ({adStages.find(s => s.inputStream?.[paramKey]?.unit || s.outputStream?.[paramKey]?.unit)?.inputStream?.[paramKey]?.unit ||
-                              adStages.find(s => s.outputStream?.[paramKey]?.unit)?.outputStream?.[paramKey]?.unit || ""})
-                          </span>
-                        )}
-                      </TableCell>
-                      {adStages.map((stage, i) => {
-                        const inVal = stage.inputStream?.[paramKey];
-                        const outVal = stage.outputStream?.[paramKey];
-                        const inFieldKey = `adStages.${i}.inputStream.${paramKey}`;
-                        const outFieldKey = `adStages.${i}.outputStream.${paramKey}`;
-                        const inIsNumeric = inVal?.value !== undefined && typeof inVal.value === 'number';
-                        const outIsNumeric = outVal?.value !== undefined && typeof outVal.value === 'number';
-                        const inDisplay = inVal?.value !== undefined ? (inIsNumeric ? (inVal.value as number).toLocaleString() : String(inVal.value)) : "\u2014";
-                        const outDisplay = outVal?.value !== undefined ? (outIsNumeric ? (outVal.value as number).toLocaleString() : String(outVal.value)) : "\u2014";
-                        return (
-                          <Fragment key={`${paramKey}-${i}`}>
-                            {inIsNumeric ? (
-                              <EditableTableCell
-                                fieldKey={inFieldKey}
-                                displayValue={inVal.value as number}
-                                decimals={1}
-                                isLocked={!!locks[inFieldKey]}
-                                isOverridden={!!overrides[inFieldKey]}
-                                onSaveOverride={onSaveOverride}
-                                onToggleLock={onToggleLock}
-                              />
-                            ) : (
-                              <TableCell className="text-center text-muted-foreground">{inDisplay}</TableCell>
-                            )}
-                            {outIsNumeric ? (
-                              <EditableTableCell
-                                fieldKey={outFieldKey}
-                                displayValue={outVal.value as number}
-                                decimals={1}
-                                isLocked={!!locks[outFieldKey]}
-                                isOverridden={!!overrides[outFieldKey]}
-                                onSaveOverride={onSaveOverride}
-                                onToggleLock={onToggleLock}
-                              />
-                            ) : (
-                              <TableCell className="text-center text-muted-foreground">{outDisplay}</TableCell>
-                            )}
-                          </Fragment>
-                        );
-                      })}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+      {hasSplitTables && (
+        <>
+          {solidsLiquidsStages.length > 0 && (
+            <ADStageSubTable
+              title="Solids & Liquids (Feed through Digester)"
+              icon={<Beaker className="h-4 w-4" />}
+              testId="card-outputs-solids-liquids"
+              stageEntries={solidsLiquidsStages}
+              allAdStages={adStages}
+              overrides={overrides}
+              locks={locks}
+              onSaveOverride={onSaveOverride}
+              onToggleLock={onToggleLock}
+            />
+          )}
+          {liquidDigestateStages.length > 0 && (
+            <ADStageSubTable
+              title="Liquid Digestate"
+              icon={<Droplets className="h-4 w-4" />}
+              testId="card-outputs-liquid-digestate"
+              stageEntries={liquidDigestateStages}
+              allAdStages={adStages}
+              overrides={overrides}
+              locks={locks}
+              onSaveOverride={onSaveOverride}
+              onToggleLock={onToggleLock}
+            />
+          )}
+          {gasStages.length > 0 && (
+            <ADStageSubTable
+              title="Gas Train"
+              icon={<Wind className="h-4 w-4" />}
+              testId="card-outputs-gas"
+              stageEntries={gasStages}
+              allAdStages={adStages}
+              overrides={overrides}
+              locks={locks}
+              onSaveOverride={onSaveOverride}
+              onToggleLock={onToggleLock}
+            />
+          )}
+          {uncategorizedStages.length > 0 && (
+            <ADStageSubTable
+              title="Other Process Stages"
+              icon={<Factory className="h-4 w-4" />}
+              testId="card-outputs-other"
+              stageEntries={uncategorizedStages}
+              allAdStages={adStages}
+              overrides={overrides}
+              locks={locks}
+              onSaveOverride={onSaveOverride}
+              onToggleLock={onToggleLock}
+            />
+          )}
+        </>
+      )}
+
+      {showSingleTable && (
+        <ADStageSubTable
+          title="Process Mass Balance"
+          icon={<Flame className="h-4 w-4" />}
+          testId="card-outputs-ad"
+          stageEntries={adStages.map((stage, i) => ({ stage, originalIndex: i }))}
+          allAdStages={adStages}
+          overrides={overrides}
+          locks={locks}
+          onSaveOverride={onSaveOverride}
+          onToggleLock={onToggleLock}
+        />
       )}
     </div>
   );
