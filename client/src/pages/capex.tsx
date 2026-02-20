@@ -451,15 +451,14 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        {results && (
-          <p className="text-sm text-muted-foreground">
-            {results.methodology} &middot; {results.costYear} &middot; {results.currency}
-          </p>
-        )}
-
-        {latestEstimate && (
+      {latestEstimate && (
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2 flex-wrap">
+            {results && (
+              <span className="text-sm text-muted-foreground">
+                {results.methodology} &middot; {results.costYear} &middot; {results.currency}
+              </span>
+            )}
             <Badge variant={latestEstimate.status === "finalized" ? "default" : "outline"} data-testid="badge-status">
               {latestEstimate.status === "finalized" ? (
                 <><CheckCircle2 className="h-3 w-3 mr-1" /> Finalized</>
@@ -470,9 +469,52 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
               )}
             </Badge>
             <Badge variant="secondary" data-testid="badge-version">v{latestEstimate.version}</Badge>
+            {Object.keys(overrides).length > 0 && (
+              <Badge variant="secondary" data-testid="badge-overrides-count">
+                {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}
+              </Badge>
+            )}
+            {Object.values(locks).filter(Boolean).length > 0 && (
+              <Badge variant="outline" data-testid="badge-locks-count">
+                <Lock className="h-3 w-3 mr-1" />
+                {Object.values(locks).filter(Boolean).length} locked
+              </Badge>
+            )}
           </div>
-        )}
-      </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {latestEstimate.status !== "finalized" && (
+              <Button
+                onClick={handleFinalize}
+                disabled={patchMutation.isPending}
+                data-testid="button-finalize"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-2" /> Finalize
+              </Button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" data-testid="button-export-capex">
+                  <Download className="h-4 w-4 mr-2" /> Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  data-testid="button-export-capex-pdf"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/capex/export-pdf`, "_blank")}
+                >
+                  <FileText className="h-4 w-4 mr-2" /> Download PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="button-export-capex-excel"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/capex/export-excel`, "_blank")}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Download Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      )}
 
       {!latestEstimate ? (
         <Card>
@@ -515,16 +557,6 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
               <RefreshCw className={`h-4 w-4 mr-2 ${recomputeMutation.isPending ? "animate-spin" : ""}`} />
               Recompute
             </Button>
-            {latestEstimate.status !== "finalized" && (
-              <Button
-                variant="outline"
-                onClick={handleFinalize}
-                disabled={patchMutation.isPending}
-                data-testid="button-finalize"
-              >
-                <CheckCircle2 className="h-4 w-4 mr-2" /> Finalize
-              </Button>
-            )}
             <Button
               variant="outline"
               onClick={() => generateMutation.mutate()}
@@ -534,38 +566,6 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
               New Version
             </Button>
             <ElapsedTimer isRunning={generateMutation.isPending || recomputeMutation.isPending} />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" data-testid="button-export-capex">
-                  <Download className="h-4 w-4 mr-2" /> Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem
-                  data-testid="button-export-capex-pdf"
-                  onClick={() => window.open(`/api/scenarios/${scenarioId}/capex/export-pdf`, "_blank")}
-                >
-                  <FileText className="h-4 w-4 mr-2" /> Download PDF
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  data-testid="button-export-capex-excel"
-                  onClick={() => window.open(`/api/scenarios/${scenarioId}/capex/export-excel`, "_blank")}
-                >
-                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Download Excel
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {Object.keys(overrides).length > 0 && (
-              <Badge variant="secondary" data-testid="badge-overrides-count">
-                {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}
-              </Badge>
-            )}
-            {Object.values(locks).filter(Boolean).length > 0 && (
-              <Badge variant="outline" data-testid="badge-locks-count">
-                <Lock className="h-3 w-3 mr-1" />
-                {Object.values(locks).filter(Boolean).length} locked
-              </Badge>
-            )}
           </div>
 
           {results && (

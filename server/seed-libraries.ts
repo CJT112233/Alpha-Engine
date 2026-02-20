@@ -7,55 +7,61 @@ export async function seedLibraryProfiles() {
   const existingWastewater = await storage.getLibraryProfilesByType("wastewater_influent");
   const existingOutput = await storage.getLibraryProfilesByType("output_criteria");
 
-  if (existingFeedstock.length === 0) {
-    console.log("Seeding feedstock library profiles...");
-    for (let i = 0; i < FEEDSTOCK_LIBRARY.length; i++) {
-      const f = FEEDSTOCK_LIBRARY[i];
+  const existingFeedstockNames = new Set(existingFeedstock.map(p => p.name));
+  const missingFeedstock = FEEDSTOCK_LIBRARY.filter(f => !existingFeedstockNames.has(f.name));
+  if (missingFeedstock.length > 0) {
+    console.log(`Seeding ${missingFeedstock.length} missing feedstock library profiles (${existingFeedstock.length} already exist)...`);
+    for (const f of missingFeedstock) {
+      const sortOrder = FEEDSTOCK_LIBRARY.indexOf(f);
       await storage.createLibraryProfile({
         libraryType: "feedstock",
         name: f.name,
         aliases: f.aliases,
         category: f.category,
         properties: f.properties,
-        sortOrder: i,
+        sortOrder,
         isCustomized: false,
       });
     }
-    console.log(`Seeded ${FEEDSTOCK_LIBRARY.length} feedstock profiles.`);
+    console.log(`Seeded ${missingFeedstock.length} new feedstock profiles. Total: ${existingFeedstock.length + missingFeedstock.length}.`);
   }
 
-  if (existingWastewater.length === 0) {
-    console.log("Seeding wastewater influent library profiles...");
-    for (let i = 0; i < WASTEWATER_INFLUENT_LIBRARY.length; i++) {
-      const w = WASTEWATER_INFLUENT_LIBRARY[i];
+  const existingWastewaterNames = new Set(existingWastewater.map(p => p.name));
+  const missingWastewater = WASTEWATER_INFLUENT_LIBRARY.filter(w => !existingWastewaterNames.has(w.name));
+  if (missingWastewater.length > 0) {
+    console.log(`Seeding ${missingWastewater.length} missing wastewater influent library profiles...`);
+    for (const w of missingWastewater) {
+      const sortOrder = WASTEWATER_INFLUENT_LIBRARY.indexOf(w);
       await storage.createLibraryProfile({
         libraryType: "wastewater_influent",
         name: w.name,
         aliases: w.aliases,
         category: w.category,
         properties: w.properties,
-        sortOrder: i,
+        sortOrder,
         isCustomized: false,
       });
     }
-    console.log(`Seeded ${WASTEWATER_INFLUENT_LIBRARY.length} wastewater influent profiles.`);
+    console.log(`Seeded ${missingWastewater.length} new wastewater influent profiles.`);
   }
 
-  if (existingOutput.length === 0) {
-    console.log("Seeding output criteria library profiles...");
-    for (let i = 0; i < OUTPUT_CRITERIA_LIBRARY.length; i++) {
-      const o = OUTPUT_CRITERIA_LIBRARY[i];
+  const existingOutputNames = new Set(existingOutput.map(p => p.name));
+  const missingOutput = OUTPUT_CRITERIA_LIBRARY.filter(o => !existingOutputNames.has(o.name));
+  if (missingOutput.length > 0) {
+    console.log(`Seeding ${missingOutput.length} missing output criteria library profiles...`);
+    for (const o of missingOutput) {
+      const sortOrder = OUTPUT_CRITERIA_LIBRARY.indexOf(o);
       await storage.createLibraryProfile({
         libraryType: "output_criteria",
         name: o.name,
         aliases: o.aliases,
         category: o.category,
         properties: o.criteria,
-        sortOrder: i,
+        sortOrder,
         isCustomized: false,
       });
     }
-    console.log(`Seeded ${OUTPUT_CRITERIA_LIBRARY.length} output criteria profiles.`);
+    console.log(`Seeded ${missingOutput.length} new output criteria profiles.`);
   }
 }
 

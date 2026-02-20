@@ -1083,22 +1083,67 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
   return (
     <div className="space-y-4">
       {latestRun && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {projectType && (
-            <Badge variant="outline" data-testid="badge-project-type">
-              {getProjectTypeLabel(projectType)}
-            </Badge>
-          )}
-          <Badge variant={latestRun.status === "finalized" ? "default" : "outline"} data-testid="badge-status">
-            {latestRun.status === "finalized" ? (
-              <><CheckCircle2 className="h-3 w-3 mr-1" /> Finalized</>
-            ) : latestRun.status === "reviewed" ? (
-              "Reviewed"
-            ) : (
-              "Draft"
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {projectType && (
+              <Badge variant="outline" data-testid="badge-project-type">
+                {getProjectTypeLabel(projectType)}
+              </Badge>
             )}
-          </Badge>
-          <Badge variant="secondary" data-testid="badge-version">v{latestRun.version}</Badge>
+            <Badge variant={latestRun.status === "finalized" ? "default" : "outline"} data-testid="badge-status">
+              {latestRun.status === "finalized" ? (
+                <><CheckCircle2 className="h-3 w-3 mr-1" /> Finalized</>
+              ) : latestRun.status === "reviewed" ? (
+                "Reviewed"
+              ) : (
+                "Draft"
+              )}
+            </Badge>
+            <Badge variant="secondary" data-testid="badge-version">v{latestRun.version}</Badge>
+            {Object.keys(overrides).length > 0 && (
+              <Badge variant="secondary" data-testid="badge-overrides-count">
+                {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}
+              </Badge>
+            )}
+            {Object.values(locks).filter(Boolean).length > 0 && (
+              <Badge variant="outline" data-testid="badge-locks-count">
+                <Lock className="h-3 w-3 mr-1" />
+                {Object.values(locks).filter(Boolean).length} locked
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {latestRun.status !== "finalized" && (
+              <Button
+                onClick={() => statusMutation.mutate("finalized")}
+                disabled={statusMutation.isPending}
+                data-testid="button-finalize"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-2" /> Finalize
+              </Button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" data-testid="button-export-mass-balance">
+                  <Download className="h-4 w-4 mr-2" /> Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  data-testid="button-export-mb-pdf"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/mass-balance/export-pdf`, "_blank")}
+                >
+                  <FileText className="h-4 w-4 mr-2" /> Download PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="button-export-mb-excel"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/mass-balance/export-excel`, "_blank")}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Download Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       )}
 
@@ -1140,16 +1185,6 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
               <RefreshCw className={`h-4 w-4 mr-2 ${recomputeMutation.isPending ? "animate-spin" : ""}`} />
               Recompute
             </Button>
-            {latestRun.status !== "finalized" && (
-              <Button
-                variant="outline"
-                onClick={() => statusMutation.mutate("finalized")}
-                disabled={statusMutation.isPending}
-                data-testid="button-finalize"
-              >
-                <CheckCircle2 className="h-4 w-4 mr-2" /> Finalize
-              </Button>
-            )}
             <Button
               variant="outline"
               onClick={() => generateMutation.mutate()}
@@ -1159,38 +1194,6 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
               New Version
             </Button>
             <ElapsedTimer isRunning={generateMutation.isPending || recomputeMutation.isPending} />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" data-testid="button-export-mass-balance">
-                  <Download className="h-4 w-4 mr-2" /> Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem
-                  data-testid="button-export-mb-pdf"
-                  onClick={() => window.open(`/api/scenarios/${scenarioId}/mass-balance/export-pdf`, "_blank")}
-                >
-                  <FileText className="h-4 w-4 mr-2" /> Download PDF
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  data-testid="button-export-mb-excel"
-                  onClick={() => window.open(`/api/scenarios/${scenarioId}/mass-balance/export-excel`, "_blank")}
-                >
-                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Download Excel
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {Object.keys(overrides).length > 0 && (
-              <Badge variant="secondary" data-testid="badge-overrides-count">
-                {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}
-              </Badge>
-            )}
-            {Object.values(locks).filter(Boolean).length > 0 && (
-              <Badge variant="outline" data-testid="badge-locks-count">
-                <Lock className="h-3 w-3 mr-1" />
-                {Object.values(locks).filter(Boolean).length} locked
-              </Badge>
-            )}
           </div>
 
           {results && (

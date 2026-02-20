@@ -378,15 +378,54 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
   return (
     <div className="space-y-4">
       {latestEstimate && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant={latestEstimate.status === "finalized" ? "default" : "outline"} data-testid="badge-opex-status">
-            {latestEstimate.status === "finalized" ? (
-              <><CheckCircle2 className="h-3 w-3 mr-1" /> Finalized</>
-            ) : (
-              "Draft"
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant={latestEstimate.status === "finalized" ? "default" : "outline"} data-testid="badge-opex-status">
+              {latestEstimate.status === "finalized" ? (
+                <><CheckCircle2 className="h-3 w-3 mr-1" /> Finalized</>
+              ) : (
+                "Draft"
+              )}
+            </Badge>
+            <Badge variant="secondary" data-testid="badge-opex-version">v{latestEstimate.version}</Badge>
+            {Object.keys(overrides).length > 0 && (
+              <Badge variant="secondary" data-testid="badge-opex-overrides-count">
+                {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}
+              </Badge>
             )}
-          </Badge>
-          <Badge variant="secondary" data-testid="badge-opex-version">v{latestEstimate.version}</Badge>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {latestEstimate.status !== "finalized" && (
+              <Button
+                onClick={handleFinalize}
+                disabled={patchMutation.isPending}
+                data-testid="button-finalize-opex"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-2" /> Finalize
+              </Button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" data-testid="button-export-opex">
+                  <Download className="h-4 w-4 mr-2" /> Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  data-testid="button-export-opex-pdf"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/opex/export-pdf`, "_blank")}
+                >
+                  <FileText className="h-4 w-4 mr-2" /> Download PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="button-export-opex-excel"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/opex/export-excel`, "_blank")}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Download Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       )}
 
@@ -431,43 +470,7 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
               <RefreshCw className={`h-4 w-4 mr-2 ${generateMutation.isPending ? "animate-spin" : ""}`} />
               Regenerate
             </Button>
-            {latestEstimate.status !== "finalized" && (
-              <Button
-                variant="outline"
-                onClick={handleFinalize}
-                disabled={patchMutation.isPending}
-                data-testid="button-finalize-opex"
-              >
-                <CheckCircle2 className="h-4 w-4 mr-2" /> Finalize
-              </Button>
-            )}
             <ElapsedTimer isRunning={generateMutation.isPending} />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" data-testid="button-export-opex">
-                  <Download className="h-4 w-4 mr-2" /> Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem
-                  data-testid="button-export-opex-pdf"
-                  onClick={() => window.open(`/api/scenarios/${scenarioId}/opex/export-pdf`, "_blank")}
-                >
-                  <FileText className="h-4 w-4 mr-2" /> Download PDF
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  data-testid="button-export-opex-excel"
-                  onClick={() => window.open(`/api/scenarios/${scenarioId}/opex/export-excel`, "_blank")}
-                >
-                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Download Excel
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            {Object.keys(overrides).length > 0 && (
-              <Badge variant="secondary" data-testid="badge-opex-overrides-count">
-                {Object.keys(overrides).length} override{Object.keys(overrides).length !== 1 ? "s" : ""}
-              </Badge>
-            )}
           </div>
 
           {results && (
