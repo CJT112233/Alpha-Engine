@@ -30,7 +30,8 @@ import {
   ExternalLink,
   Import,
 } from "lucide-react";
-import type { Scenario, Project, TextEntry, Document, UpifRecord, MassBalanceRun, MassBalanceResults, CapexEstimate, CapexResults } from "@shared/schema";
+import type { Scenario, Project, TextEntry, Document, UpifRecord, MassBalanceRun, MassBalanceResults, CapexEstimate, CapexResults, OpexEstimate, OpexResults } from "@shared/schema";
+import { Receipt } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -77,6 +78,10 @@ export default function ScenarioDetail() {
 
   const { data: capexData, isLoading: capexLoading } = useQuery<CapexEstimate[]>({
     queryKey: ["/api/scenarios", id, "capex"],
+  });
+
+  const { data: opexData, isLoading: opexLoading } = useQuery<OpexEstimate[]>({
+    queryKey: ["/api/scenarios", id, "opex"],
   });
 
   const { data: llmProviders } = useQuery<{ providers: Array<{ id: string; label: string }>; default: string }>({
@@ -146,6 +151,34 @@ export default function ScenarioDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", id, "capex"] });
       toast({ title: "CapEx Estimate Generated", description: "Capital cost estimation complete." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const generateOpexMutation = useMutation({
+    mutationFn: async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000);
+      try {
+        const res = await fetch(`/api/scenarios/${id}/opex/generate`, {
+          method: "POST",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || res.statusText);
+        }
+        return res.json();
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", id, "opex"] });
+      toast({ title: "OpEx Estimate Generated", description: "Annual operating cost estimation complete." });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -227,6 +260,8 @@ export default function ScenarioDetail() {
   const mbResults = latestMB?.results as MassBalanceResults | null | undefined;
   const latestCapex = capexData && capexData.length > 0 ? capexData[0] : null;
   const capexResults = latestCapex?.results as CapexResults | null | undefined;
+  const latestOpex = opexData && opexData.length > 0 ? opexData[0] : null;
+  const opexResults = latestOpex?.results as OpexResults | null | undefined;
   const isConfirmed = scenario.status === "confirmed";
 
   return (
@@ -316,7 +351,7 @@ export default function ScenarioDetail() {
         </div>
 
         <Tabs defaultValue="input" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-5" data-testid="tabs-scenario">
+          <TabsList className="grid w-full grid-cols-6" data-testid="tabs-scenario">
             <TabsTrigger value="input" className="flex items-center gap-1.5" data-testid="tab-input">
               <MessageSquare className="h-4 w-4 shrink-0" />
               <span className="hidden md:inline">Input</span>
@@ -336,6 +371,10 @@ export default function ScenarioDetail() {
             <TabsTrigger value="capex" className="flex items-center gap-1.5" data-testid="tab-capex">
               <DollarSign className="h-4 w-4 shrink-0" />
               <span className="hidden md:inline">CapEx</span>
+            </TabsTrigger>
+            <TabsTrigger value="opex" className="flex items-center gap-1.5" data-testid="tab-opex">
+              <Receipt className="h-4 w-4 shrink-0" />
+              <span className="hidden md:inline">OpEx</span>
             </TabsTrigger>
           </TabsList>
 
@@ -693,6 +732,125 @@ export default function ScenarioDetail() {
                               <TableCell className="text-right">{formatCurrency(item.baseCost)}</TableCell>
                               <TableCell className="text-right">{formatNum(item.installationFactor, 2)}x</TableCell>
                               <TableCell className="text-right font-medium">{formatCurrency(item.totalCost)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="opex" className="space-y-4">
+            {opexLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-32 w-full" />
+                <Skeleton className="h-32 w-full" />
+              </div>
+            ) : !latestOpex ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
+                  <Receipt className="h-12 w-12 text-muted-foreground" />
+                  <div className="text-center">
+                    <h3 className="font-medium">No OpEx Estimate Generated</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {latestCapex
+                        ? "Generate an annual operating cost estimate from the CapEx and mass balance data."
+                        : latestMB?.status === "finalized"
+                        ? "Generate a CapEx estimate first, then generate OpEx."
+                        : "Generate and finalize a mass balance, then CapEx, before generating OpEx."}
+                    </p>
+                  </div>
+                  {latestCapex && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button
+                        onClick={() => generateOpexMutation.mutate()}
+                        disabled={generateOpexMutation.isPending}
+                        data-testid="button-generate-opex"
+                      >
+                        {generateOpexMutation.isPending ? (
+                          <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Generating with AI...</>
+                        ) : (
+                          <><Receipt className="h-4 w-4 mr-2" /> Generate OpEx Estimate</>
+                        )}
+                      </Button>
+                      <ElapsedTimer isRunning={generateOpexMutation.isPending} />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="secondary" data-testid="badge-opex-version">v{latestOpex.version}</Badge>
+                    {opexResults?.lineItems && (
+                      <span className="text-sm text-muted-foreground">
+                        {opexResults.lineItems.length} line item{opexResults.lineItems.length !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                  <Link href={`/scenarios/${id}/opex`}>
+                    <Button variant="outline" data-testid="button-open-opex">
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Open Full View
+                    </Button>
+                  </Link>
+                </div>
+
+                {opexResults?.summary && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <Card data-testid="card-opex-total-annual">
+                      <CardContent className="p-4">
+                        <div className="text-xs text-muted-foreground">Total Annual OpEx</div>
+                        <div className="text-lg font-semibold mt-1">{formatCurrency(opexResults.summary.totalAnnualOpex)}</div>
+                      </CardContent>
+                    </Card>
+                    <Card data-testid="card-opex-labor">
+                      <CardContent className="p-4">
+                        <div className="text-xs text-muted-foreground">Labor</div>
+                        <div className="text-lg font-semibold mt-1">{formatCurrency(opexResults.summary.totalLaborCost)}</div>
+                      </CardContent>
+                    </Card>
+                    <Card data-testid="card-opex-energy">
+                      <CardContent className="p-4">
+                        <div className="text-xs text-muted-foreground">Energy</div>
+                        <div className="text-lg font-semibold mt-1">{formatCurrency(opexResults.summary.totalEnergyCost)}</div>
+                      </CardContent>
+                    </Card>
+                    <Card data-testid="card-opex-net">
+                      <CardContent className="p-4">
+                        <div className="text-xs text-muted-foreground">Net Annual OpEx</div>
+                        <div className="text-lg font-semibold mt-1">{formatCurrency(opexResults.summary.netAnnualOpex)}</div>
+                        {opexResults.summary.opexAsPercentOfCapex != null && (
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {formatNum(opexResults.summary.opexAsPercentOfCapex, 1)}% of CapEx
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {opexResults?.lineItems && opexResults.lineItems.length > 0 && (
+                  <Card>
+                    <CardContent className="p-0">
+                      <Table data-testid="table-opex-summary">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Item</TableHead>
+                            <TableHead>Category</TableHead>
+                            <TableHead className="text-right">Annual Cost</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {opexResults.lineItems.map((item: any) => (
+                            <TableRow key={item.id} data-testid={`row-opex-${item.id}`}>
+                              <TableCell className="font-medium">{item.itemName}</TableCell>
+                              <TableCell>{item.category}</TableCell>
+                              <TableCell className="text-right font-medium">{formatCurrency(item.annualCost)}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
