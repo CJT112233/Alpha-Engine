@@ -49,7 +49,7 @@ function formatDate(dateStr: string): string {
 function modelLabel(model: string): string {
   const labels: Record<string, string> = {
     gpt5: "GPT-5",
-    claude: "Claude Sonnet 4.5",
+    claude: "Claude Sonnet 4.6",
     "claude-opus": "Claude Opus 4.6",
     deterministic: "Deterministic Engine",
   };
