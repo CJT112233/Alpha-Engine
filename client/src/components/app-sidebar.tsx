@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { FolderKanban, Plus, LayoutDashboard, Beaker, FileText, BarChart3 } from "lucide-react";
+import burnhamLogo from "@assets/Burnham_with_logo_1771619885304.png";
 import {
   Sidebar,
   SidebarContent,
@@ -28,11 +29,9 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-            <Beaker className="h-5 w-5" />
-          </div>
+          <img src={burnhamLogo} alt="Burnham" className="h-9 w-auto" />
           <div>
-            <h1 className="text-sm font-semibold text-sidebar-foreground">Project Alpha</h1>
+            <h1 className="text-sm font-semibold text-sidebar-foreground">Project Factory</h1>
             <p className="text-xs text-muted-foreground">Intake System</p>
           </div>
         </div>
