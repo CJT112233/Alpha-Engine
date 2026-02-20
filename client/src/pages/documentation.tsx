@@ -163,6 +163,14 @@ export default function Documentation() {
                 <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
                 AI Prompt Templates (Full Text)
               </Link>
+              <Link
+                href="/docs/validation-config"
+                className="flex items-center gap-2 text-sm py-1.5 px-2 rounded hover-elevate transition-colors font-medium"
+                data-testid="link-toc-validation-config"
+              >
+                <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                Validation Configuration
+              </Link>
             </div>
           </CardContent>
         </Card>

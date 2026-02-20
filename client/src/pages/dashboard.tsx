@@ -4,7 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, FolderKanban, FileText, Beaker, ArrowRight, Clock } from "lucide-react";
+import {
+  Plus, FolderKanban, FileText, Beaker, ArrowRight, Clock,
+  Scale, Upload, Sparkles, MessageSquare, CheckCircle2, DollarSign, Wrench
+} from "lucide-react";
 import type { Project, Scenario } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -17,19 +20,23 @@ export default function Dashboard() {
     queryKey: ["/api/scenarios/recent"],
   });
 
+  const { data: dashboardStats, isLoading: statsLoading } = useQuery<{ confirmedMassBalances: number }>({
+    queryKey: ["/api/dashboard/stats"],
+  });
+
   return (
     <div className="flex-1 overflow-auto">
       <div className="container max-w-6xl mx-auto p-6 space-y-8">
         <div className="flex flex-col gap-2">
           <h1 className="text-3xl font-bold tracking-tight" data-testid="text-dashboard-title">
-            Welcome to Project Alpha
+            Welcome to Project Factory
           </h1>
           <p className="text-muted-foreground">
             Transform unstructured project inputs into standardized specifications with AI-powered extraction.
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <Link href="/projects">
             <Card className="hover-elevate cursor-pointer" data-testid="card-metric-projects">
               <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
@@ -83,6 +90,22 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </Link>
+
+          <Card className="hover-elevate" data-testid="card-metric-mass-balances">
+            <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Confirmed Mass Balances</CardTitle>
+              <Scale className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              {statsLoading ? (
+                <Skeleton className="h-8 w-16" />
+              ) : (
+                <div className="text-2xl font-bold" data-testid="text-mass-balance-count">
+                  {dashboardStats?.confirmedMassBalances ?? 0}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
@@ -213,46 +236,29 @@ export default function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle>How It Works</CardTitle>
-            <CardDescription>Transform unstructured inputs into standardized project specifications</CardDescription>
+            <CardDescription>From raw project data to complete cost estimates in 7 steps</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-6 md:grid-cols-4">
-              <div className="text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mx-auto mb-3">
-                  <span className="text-lg font-bold">1</span>
+            <div className="grid gap-4 md:grid-cols-7">
+              {[
+                { step: 1, title: "Input Capture", description: "Describe your project in natural language or upload documents (PDF, Excel, Word)", icon: Upload },
+                { step: 2, title: "AI Extraction", description: "AI extracts feedstock, output, and constraint parameters from your inputs", icon: Sparkles },
+                { step: 3, title: "Clarify & Enrich", description: "AI asks clarifying questions and enriches data with industry defaults", icon: MessageSquare },
+                { step: 4, title: "Review UPIF", description: "Review the Unified Project Intake Form, edit values, and confirm line items", icon: FileText },
+                { step: 5, title: "Mass Balance", description: "AI generates process mass balance with equipment sizing for your project type", icon: Scale },
+                { step: 6, title: "CapEx Estimate", description: "Capital cost estimates generated from confirmed mass balance equipment list", icon: DollarSign },
+                { step: 7, title: "OpEx Estimate", description: "Annual operating cost estimates with labor, energy, chemicals, and revenue offsets", icon: Wrench },
+              ].map(({ step, title, description, icon: Icon }) => (
+                <div key={step} className="text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mx-auto mb-3">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <h4 className="font-medium mb-1 text-sm">{title}</h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {description}
+                  </p>
                 </div>
-                <h4 className="font-medium mb-1">Input Capture</h4>
-                <p className="text-sm text-muted-foreground">
-                  Describe your project in natural language or upload documents
-                </p>
-              </div>
-              <div className="text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mx-auto mb-3">
-                  <span className="text-lg font-bold">2</span>
-                </div>
-                <h4 className="font-medium mb-1">AI Extraction</h4>
-                <p className="text-sm text-muted-foreground">
-                  Our engine extracts and predicts all necessary parameters
-                </p>
-              </div>
-              <div className="text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mx-auto mb-3">
-                  <span className="text-lg font-bold">3</span>
-                </div>
-                <h4 className="font-medium mb-1">Review & Edit</h4>
-                <p className="text-sm text-muted-foreground">
-                  Review extracted data and modify as needed
-                </p>
-              </div>
-              <div className="text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mx-auto mb-3">
-                  <span className="text-lg font-bold">4</span>
-                </div>
-                <h4 className="font-medium mb-1">Confirm UPIF</h4>
-                <p className="text-sm text-muted-foreground">
-                  Finalize the Unified Project Intake Form
-                </p>
-              </div>
+              ))}
             </div>
           </CardContent>
         </Card>

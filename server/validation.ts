@@ -1,5 +1,6 @@
 import type { EnrichedOutputSpec } from "@shared/output-criteria-library";
 import type { FeedstockEntry, EnrichedFeedstockSpecRecord } from "@shared/schema";
+import { getValidationConfigValue } from "./validation-config-loader";
 
 export interface ValidationWarning {
   field: string;
@@ -934,11 +935,11 @@ function detectIndustryType(feedstocks: FeedstockEntry[]): IndustryDefaults {
   return INDUSTRY_DEFAULTS.default;
 }
 
-export function validateTypeADesignDrivers(
+export async function validateTypeADesignDrivers(
   feedstocks: FeedstockEntry[],
   extractedParams: Array<{ name: string; value?: string | null; unit?: string | null; category?: string }>,
   projectType: string | null,
-): { warnings: ValidationWarning[]; feedstocks: FeedstockEntry[] } {
+): Promise<{ warnings: ValidationWarning[]; feedstocks: FeedstockEntry[] }> {
   const warnings: ValidationWarning[] = [];
 
   if (projectType !== "A" && projectType !== "D") {
@@ -1026,15 +1027,18 @@ export function validateTypeADesignDrivers(
         let value: string;
         let unit: string;
 
+        const minFlowFactorConfig = await getValidationConfigValue("min_flow_factor", { value: 0.6 });
+        const minFlowFactor = minFlowFactorConfig.value ?? 0.6;
+
         switch (missing) {
           case "Min Flow": {
             const avgFlowMin = fs.feedstockVolume ? parseFloat(fs.feedstockVolume.replace(/,/g, "")) : null;
             const avgUnitMin = fs.feedstockUnit || "GPD";
             if (avgFlowMin && !isNaN(avgFlowMin)) {
-              value = Math.round(avgFlowMin * 0.6).toLocaleString();
+              value = Math.round(avgFlowMin * minFlowFactor).toLocaleString();
               unit = avgUnitMin;
             } else {
-              value = "0.6x average";
+              value = `${minFlowFactor}x average`;
               unit = "multiplier";
             }
             key = "minFlowRate";

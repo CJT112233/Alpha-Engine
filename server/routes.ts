@@ -16,7 +16,9 @@ import fs from "fs";
 import { storage } from "./storage";
 import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema, type FeedstockEntry, type ConfirmedFields, type InsertUpif } from "@shared/schema";
 import { z } from "zod";
-import { enrichFeedstockSpecs, enrichBiogasSpecs, type EnrichedFeedstockSpec } from "@shared/feedstock-library";
+import { type EnrichedFeedstockSpec } from "@shared/feedstock-library";
+import { enrichFeedstockSpecsFromDb, enrichBiogasSpecsFromDb } from "./enrichment-db";
+import { syncPromptToDatabricks, syncLibraryProfileToDatabricks, syncValidationConfigToDatabricks } from "./databricks-sync";
 import { enrichOutputSpecs, matchOutputType, type EnrichedOutputSpec } from "@shared/output-criteria-library";
 import * as XLSX from "xlsx";
 import mammoth from "mammoth";
@@ -710,6 +712,9 @@ export async function registerRoutes(
         template: template.trim(),
         isSystemPrompt: defaults.isSystemPrompt,
       });
+      syncPromptToDatabricks(key, template.trim()).catch(err =>
+        console.error("[Databricks Sync] Background prompt sync failed:", err)
+      );
       res.json({
         ...saved,
         availableVariables: defaults.availableVariables,
@@ -776,6 +781,189 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating project type:", error);
       res.status(500).json({ error: "Failed to update project type" });
+    }
+  });
+
+  // =========================================================================
+  // Dashboard Stats
+  // =========================================================================
+
+  app.get("/api/dashboard/stats", async (_req: Request, res: Response) => {
+    try {
+      const allScenarios = await storage.getRecentScenarios();
+      const confirmedMassBalanceCount = await (async () => {
+        const { db } = await import("./storage");
+        const { massBalanceRuns } = await import("@shared/schema");
+        const { eq, sql } = await import("drizzle-orm");
+        const result = await db.select({ count: sql<number>`count(*)` })
+          .from(massBalanceRuns)
+          .where(eq(massBalanceRuns.status, "finalized"));
+        return Number(result[0]?.count ?? 0);
+      })();
+      res.json({
+        confirmedMassBalances: confirmedMassBalanceCount,
+      });
+    } catch (error) {
+      console.error("Error fetching dashboard stats:", error);
+      res.status(500).json({ error: "Failed to fetch dashboard stats" });
+    }
+  });
+
+  // =========================================================================
+  // Library Profiles CRUD
+  // =========================================================================
+
+  app.get("/api/library-profiles/:type", async (req: Request, res: Response) => {
+    try {
+      const profiles = await storage.getLibraryProfilesByType(req.params.type as string);
+      res.json(profiles);
+    } catch (error) {
+      console.error("Error fetching library profiles:", error);
+      res.status(500).json({ error: "Failed to fetch library profiles" });
+    }
+  });
+
+  app.get("/api/library-profiles/:type/:id", async (req: Request, res: Response) => {
+    try {
+      const profile = await storage.getLibraryProfile(req.params.id as string);
+      if (!profile) {
+        return res.status(404).json({ error: "Profile not found" });
+      }
+      res.json(profile);
+    } catch (error) {
+      console.error("Error fetching library profile:", error);
+      res.status(500).json({ error: "Failed to fetch library profile" });
+    }
+  });
+
+  app.patch("/api/library-profiles/:type/:id", async (req: Request, res: Response) => {
+    try {
+      const { name, aliases, category, properties } = req.body;
+      const updates: any = {};
+      if (name !== undefined) updates.name = name;
+      if (aliases !== undefined) updates.aliases = aliases;
+      if (category !== undefined) updates.category = category;
+      if (properties !== undefined) updates.properties = properties;
+
+      const updated = await storage.updateLibraryProfile(req.params.id as string, updates);
+      if (!updated) {
+        return res.status(404).json({ error: "Profile not found" });
+      }
+      syncLibraryProfileToDatabricks({
+        libraryType: updated.libraryType,
+        name: updated.name,
+        aliases: updated.aliases || [],
+        category: updated.category || "",
+        properties: updated.properties,
+        sortOrder: updated.sortOrder || 0,
+        isCustomized: updated.isCustomized || false,
+      }).catch(err =>
+        console.error("[Databricks Sync] Background library profile sync failed:", err)
+      );
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating library profile:", error);
+      res.status(500).json({ error: "Failed to update library profile" });
+    }
+  });
+
+  app.post("/api/library-profiles/:type", async (req: Request, res: Response) => {
+    try {
+      const { name, aliases, category, properties, sortOrder } = req.body;
+      const profile = await storage.createLibraryProfile({
+        libraryType: req.params.type as string,
+        name,
+        aliases: aliases || [],
+        category,
+        properties,
+        sortOrder: sortOrder || 0,
+        isCustomized: true,
+      });
+      syncLibraryProfileToDatabricks({
+        libraryType: profile.libraryType,
+        name: profile.name,
+        aliases: profile.aliases || [],
+        category: profile.category || "",
+        properties: profile.properties,
+        sortOrder: profile.sortOrder || 0,
+        isCustomized: true,
+      }).catch(err =>
+        console.error("[Databricks Sync] Background new library profile sync failed:", err)
+      );
+      res.status(201).json(profile);
+    } catch (error) {
+      console.error("Error creating library profile:", error);
+      res.status(500).json({ error: "Failed to create library profile" });
+    }
+  });
+
+  app.delete("/api/library-profiles/:type/:id", async (req: Request, res: Response) => {
+    try {
+      const deleted = await storage.deleteLibraryProfile(req.params.id as string);
+      if (!deleted) {
+        return res.status(404).json({ error: "Profile not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting library profile:", error);
+      res.status(500).json({ error: "Failed to delete library profile" });
+    }
+  });
+
+  // =========================================================================
+  // Validation Config CRUD
+  // =========================================================================
+
+  app.get("/api/validation-config", async (_req: Request, res: Response) => {
+    try {
+      const configs = await storage.getAllValidationConfig();
+      res.json(configs);
+    } catch (error) {
+      console.error("Error fetching validation config:", error);
+      res.status(500).json({ error: "Failed to fetch validation config" });
+    }
+  });
+
+  app.get("/api/validation-config/:key", async (req: Request, res: Response) => {
+    try {
+      const config = await storage.getValidationConfig(req.params.key as string);
+      if (!config) {
+        return res.status(404).json({ error: "Config not found" });
+      }
+      res.json(config);
+    } catch (error) {
+      console.error("Error fetching validation config:", error);
+      res.status(500).json({ error: "Failed to fetch validation config" });
+    }
+  });
+
+  app.patch("/api/validation-config/:key", async (req: Request, res: Response) => {
+    try {
+      const { configValue, description, category } = req.body;
+      const existing = await storage.getValidationConfig(req.params.key as string);
+      if (!existing) {
+        return res.status(404).json({ error: "Config not found" });
+      }
+      const updated = await storage.upsertValidationConfig({
+        configKey: req.params.key as string,
+        configValue: configValue !== undefined ? configValue : existing.configValue,
+        description: description !== undefined ? description : existing.description,
+        category: category !== undefined ? category : existing.category,
+      });
+      const { invalidateValidationConfigCache } = await import("./validation-config-loader");
+      invalidateValidationConfigCache();
+      syncValidationConfigToDatabricks({
+        configKey: updated.configKey,
+        configValue: updated.configValue,
+        description: updated.description || "",
+        category: updated.category || "",
+      }).catch(err =>
+        console.error("[Databricks Sync] Background validation config sync failed:", err)
+      );
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating validation config:", error);
+      res.status(500).json({ error: "Failed to update validation config" });
     }
   });
 
@@ -1294,7 +1482,7 @@ export async function registerRoutes(
         }
         
         if (isTypeC) {
-          const specs = enrichBiogasSpecs(feedstockType, userParams);
+          const specs = await enrichBiogasSpecsFromDb(feedstockType, userParams);
           console.log(`Enrichment (Type C biogas): Feedstock ${idx} "${feedstockType}" - ${Object.keys(specs).length} specs`);
           
           feedstockEntries.push({
@@ -1305,7 +1493,7 @@ export async function registerRoutes(
             feedstockSpecs: Object.keys(specs).length > 0 ? specs : undefined,
           });
         } else {
-          const specs = enrichFeedstockSpecs(feedstockType, userParams, projectType);
+          const specs = await enrichFeedstockSpecsFromDb(feedstockType, userParams, projectType);
           console.log(`Enrichment: Feedstock ${idx} "${feedstockType}" - ${Object.keys(specs).length} specs`);
           
           feedstockEntries.push({
@@ -1499,7 +1687,7 @@ export async function registerRoutes(
         : feedstockEntries;
       
       // V2c: Type A core design driver completeness check + auto-populate missing drivers
-      const { warnings: designDriverWarnings, feedstocks: designDriverFeedstocks } = validateTypeADesignDrivers(
+      const { warnings: designDriverWarnings, feedstocks: designDriverFeedstocks } = await validateTypeADesignDrivers(
         postTypeValidated, extractedParams, projectType
       );
       allValidationWarnings.push(...designDriverWarnings);

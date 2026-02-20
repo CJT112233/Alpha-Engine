@@ -27,6 +27,7 @@ import GenerationStatsPage from "@/pages/generation-stats";
 import DocsFeedstockLibrary from "@/pages/docs-feedstock-library";
 import DocsPrompts from "@/pages/docs-prompts";
 import DocsCalculators from "@/pages/docs-calculators";
+import DocsValidationConfig from "@/pages/docs-validation-config";
 
 function Router() {
   return (
@@ -41,6 +42,7 @@ function Router() {
       <Route path="/docs/feedstock-library" component={DocsFeedstockLibrary} />
       <Route path="/docs/prompts" component={DocsPrompts} />
       <Route path="/docs/calculators" component={DocsCalculators} />
+      <Route path="/docs/validation-config" component={DocsValidationConfig} />
       <Route path="/scenarios/:scenarioId/mass-balance" component={MassBalancePage} />
       <Route path="/scenarios/:scenarioId/capex" component={CapexPage} />
       <Route path="/scenarios/:scenarioId/opex" component={OpexPage} />

@@ -578,6 +578,44 @@ export type InsertGenerationLog = z.infer<typeof insertGenerationLogSchema>;
 export type GenerationLog = typeof generationLogs.$inferSelect;
 
 /**
+ * Library Profiles table: Stores editable feedstock, wastewater influent,
+ * and output criteria profiles in the database.
+ * Each row is one profile (e.g., "Potato Waste" or "RNG - Pipeline Injection").
+ */
+export const libraryProfiles = pgTable("library_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  libraryType: text("library_type").notNull(),
+  name: text("name").notNull(),
+  aliases: jsonb("aliases").$type<string[]>().default([]).notNull(),
+  category: text("category").notNull(),
+  properties: jsonb("properties").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  isCustomized: boolean("is_customized").default(false).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertLibraryProfileSchema = createInsertSchema(libraryProfiles).omit({ id: true, updatedAt: true });
+export type InsertLibraryProfile = z.infer<typeof insertLibraryProfileSchema>;
+export type LibraryProfile = typeof libraryProfiles.$inferSelect;
+
+/**
+ * Validation Config table: Stores configurable validation pipeline parameters
+ * (thresholds, blocked lists, auto-population factors).
+ */
+export const validationConfig = pgTable("validation_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  configKey: text("config_key").notNull().unique(),
+  configValue: jsonb("config_value").notNull(),
+  description: text("description"),
+  category: text("category").notNull().default("general"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertValidationConfigSchema = createInsertSchema(validationConfig).omit({ id: true, updatedAt: true });
+export type InsertValidationConfig = z.infer<typeof insertValidationConfigSchema>;
+export type ValidationConfig = typeof validationConfig.$inferSelect;
+
+/**
  * Users table: Basic auth user accounts for application access.
  * Stores user credentials used for authentication and session management.
  */

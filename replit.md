@@ -1,11 +1,9 @@
 # Project Factory - Intelligent Project Intake System
 
 ## Overview
-
-Project Factory is an AI-enabled system designed to convert unstructured project inputs (natural language, documents) into standardized project specifications. It generates a Unified Project Intake Form (UPIF) by intelligently extracting and categorizing parameters, enriching them with design defaults, and consolidating them for user review. The system supports a scenario-based workflow, allowing for independent project evaluations with distinct inputs, outputs, and constraints. Its primary goal is to streamline project initiation by providing comprehensive, validated project definitions.
+Project Factory is an AI-powered system that transforms unstructured project inputs (natural language, documents) into standardized project specifications. It generates a Unified Project Intake Form (UPIF) by extracting, categorizing, and enriching project parameters with design defaults. The system supports scenario-based workflows for independent project evaluations, aiming to streamline project initiation with comprehensive, validated project definitions. It provides AI-powered mass balance, CapEx, and OpEx estimations.
 
 ## User Preferences
-
 Preferred communication style: Simple, everyday language.
 Number formatting: Always display numbers with comma separators for thousands (e.g., 10,000 not 10000).
 Unit conventions (US-based):
@@ -21,59 +19,29 @@ Unit conventions (US-based):
 ## System Architecture
 
 ### Core Functionality
-- **Intelligent Parameter Extraction**: AI processes free-form text and document uploads to extract and categorize project parameters (feedstock, output requirements, location, constraints).
-- **Feedstock & Output Enrichment**: Extracted parameters are enriched with design defaults and acceptance criteria from built-in knowledge bases, including provenance tracking.
-- **Unified Project Intake Form (UPIF)**: Consolidated, standardized form for user review, supporting multi-feedstock projects and individual line-item confirmation. Confirmed fields are locked, preserving values during re-generation.
-- **Validation Guardrails**: A multi-step validation pipeline ensures data integrity and consistency before UPIF generation, identifying and categorizing warnings, unmapped specs, and performance targets. This includes specific guardrails for biosolids, wastewater, and gas quality.
-- **Clarifying Questions**: AI generates targeted questions based on missing or ambiguous information to improve UPIF accuracy.
-- **User-Selected Project Type**: Users select the project type (A: Wastewater Treatment, B: RNG Greenfield, C: RNG Bolt-On, D: Hybrid) when creating a scenario. AI classification has been removed — the user's selection drives type-specific prompts, validation, and enrichment.
-- **Reviewer Chat**: AI-powered chat allows users to suggest UPIF changes, with the system applying structured updates while respecting confirmed fields.
-- **Configurable Prompt Templates**: AI prompts are stored in the database and can be customized via a settings interface.
-- **Generation Stats**: Tracks timing and metadata for every AI-generated document (Classification, UPIF, Mass Balance, CapEx). Stats page at `/stats` shows date, document type, model used, project/scenario, generation time, and success/error status. Data stored in `generation_logs` table.
-- **AI-Powered Mass Balance & Equipment List**: Mass balances are generated using one of the three LLMs (GPT-5, Claude Sonnet 4.6, Claude Opus 4.6) via type-specific prompts. The system uses the scenario's preferred model selection. Deterministic calculators serve as fallback if AI generation fails. Results stored in `mass_balance_runs` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/mass-balance`.
-- **Multi-Type Mass Balance**: Supports all four project types with both AI and deterministic calculators:
-  - **Type A**: Wastewater treatment train with recycle streams (deterministic: server/services/massBalance.ts, AI prompt: mass_balance_type_a)
-  - **Type B**: RNG Greenfield — full AD pipeline: feedstock receiving → pretreatment → digestion → biogas conditioning → gas upgrading → RNG (deterministic: server/services/massBalanceTypeB.ts, AI prompt: mass_balance_type_b)
-  - **Type C**: RNG Bolt-On — biogas-only inputs (CH₄%, CO₂%, H₂S, siloxanes, flow scfm) through gas conditioning to RNG specs, no digester sizing (deterministic: server/services/massBalanceTypeC.ts, AI prompt: mass_balance_type_c)
-  - **Type D**: Hybrid — combines WW treatment (Type A) with sludge → AD → biogas → RNG, optional co-digestion with trucked feedstocks (deterministic: server/services/massBalanceTypeD.ts, AI prompt: mass_balance_type_d)
-  - AI generation service in server/services/massBalanceAI.ts handles prompt building, LLM calls, and JSON validation
-  - Route dispatcher in server/routes.ts attempts AI generation first, falls back to deterministic calculators on failure
-  - Generation stats log records which model was used (or "deterministic (AI fallback)" if fallback occurred)
-  - Frontend mass balance page renders project-type-specific views with AD process stages, summary cards, and equipment lists
-- **AI-Powered CapEx Estimation**: Capital cost estimates generated from confirmed mass balance equipment lists using AI with type-specific prompts. Gated on finalized mass balance. Results stored in `capex_estimates` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/capex`.
-  - Supports all four project types with type-specific prompts (capex_type_a through capex_type_d)
-  - AI generation service in server/services/capexAI.ts handles prompt building, LLM calls, and JSON validation
-  - Line items reference mass balance equipment IDs with base cost, installation factor, contingency, and total cost
-  - Summary includes total equipment cost, installed cost, contingency, engineering, and total project cost with cost-per-unit metrics
-  - Frontend renders editable/lockable line items with inline editing, override badges, and recompute with locked value preservation
-  - Navigation: "Generate CapEx" button appears on mass balance page when mass balance is finalized
-- **AI-Powered OpEx Estimation**: Annual operating cost estimates generated from finalized mass balance equipment lists and CapEx data using AI with type-specific prompts. Auto-triggered in background after CapEx generation. Results stored in `opex_estimates` table with versioning, override tracking, and lock toggles. Frontend page at `/scenarios/:scenarioId/opex`.
-  - Supports all four project types with type-specific prompts (opex_type_a through opex_type_d)
-  - AI generation service in server/services/opexAI.ts and databricks_app/services/opex_ai.py
-  - Categories: Labor, Energy, Chemical, Maintenance, Disposal, Other, Revenue Offset (negative for revenue)
-  - Summary includes total annual OpEx, category breakdowns, revenue offsets, net annual OpEx, OpEx per unit, OpEx as % of CapEx
-  - Frontend renders editable/lockable line items with inline editing, override badges, category color coding
-  - Navigation: "OpEx" button appears on CapEx page; auto-generates after CapEx generation completes
-- **PDF & Excel Export**: Mass balance, CapEx, and OpEx pages include Export dropdowns with PDF and Excel download options. Export service in `server/services/exportService.ts` generates professional multi-section PDFs (with table headers repeated on page breaks) and multi-sheet Excel workbooks. API endpoints at `/api/scenarios/:scenarioId/mass-balance/export-pdf`, `export-excel`, `/capex/export-pdf`, `export-excel`, `/opex/export-pdf`, `export-excel`.
+- **Intelligent Parameter Extraction**: AI extracts and categorizes project parameters from free-form text and documents.
+- **Feedstock & Output Enrichment**: Enriches parameters with design defaults and acceptance criteria from internal knowledge bases.
+- **Unified Project Intake Form (UPIF)**: A consolidated, standardized form for user review, supporting multi-feedstock projects.
+- **Validation Guardrails**: A multi-step pipeline ensures data integrity, identifies warnings, and categorizes unmapped specifications.
+- **Clarifying Questions**: AI generates questions for missing or ambiguous information to improve UPIF accuracy.
+- **User-Selected Project Type**: Users select project types (Wastewater Treatment, RNG Greenfield, RNG Bolt-On, Hybrid) to drive type-specific processes.
+- **Reviewer Chat**: AI-powered chat for suggesting UPIF changes, with structured updates.
+- **Configurable Prompt Templates**: AI prompts are customizable via a Documentation page.
+- **Editable Reference Libraries**: Feedstock, wastewater influent, and output criteria profiles are editable.
+- **Editable Validation Config**: Validation thresholds and rules are configurable via a Documentation page.
+- **Databricks Sync**: All configuration edits are automatically synced to Databricks.
+- **Generation Stats**: Tracks timing and metadata for all AI-generated documents (UPIF, Mass Balance, CapEx).
+- **AI-Powered Mass Balance**: Generates mass balances using LLMs for four project types, with deterministic calculators as fallback.
+- **AI-Powered CapEx Estimation**: Generates capital cost estimates from confirmed mass balance equipment lists for all project types.
+- **AI-Powered OpEx Estimation**: Generates annual operating cost estimates from mass balance and CapEx data for all project types.
+- **PDF & Excel Export**: Provides professional PDF and Excel export options for Mass Balance, CapEx, and OpEx reports.
 
 ### Technical Implementation
-- **Frontend**: React 18 with TypeScript, Wouter for routing, TanStack Query for state, shadcn/ui and Tailwind CSS for UI, React Hook Form with Zod for forms, Vite for building.
-- **Backend**: Express.js with TypeScript, RESTful API, Multer for file uploads.
-- **Data Storage**: PostgreSQL with Drizzle ORM for schema management, connect-pg-simple for session storage.
-- **Shared Architecture**: Shared types and schemas between client and server, centralized API request helper, modular UI components, path aliases for source organization.
-- **PDF Export**: Server-side generation of professional PDFs with project summaries, watermarks for unconfirmed UPIFs, and detailed content.
-
-### Databricks Migration
-The project is migrating to a Databricks environment with a FastAPI (Python) backend, Delta tables in Unity Catalog for data storage, and Databricks Model Serving for AI integration. The React frontend remains the same, served statically.
-
-**Ported Databricks Services (Python equivalents of Node.js features):**
-- **Mass Balance**: AI generation (`databricks_app/services/mass_balance_ai.py`) + deterministic calculators for all 4 types (`mass_balance_type_a.py` through `mass_balance_type_d.py`). AI-first with deterministic fallback.
-- **CapEx**: AI generation (`databricks_app/services/capex_ai.py`) from finalized mass balance equipment lists.
-- **OpEx**: AI generation (`databricks_app/services/opex_ai.py`) from finalized mass balance and CapEx data. Auto-triggered after CapEx.
-- **Export**: PDF (ReportLab) and Excel (openpyxl) export for mass balance, CapEx, and OpEx (`databricks_app/services/export_service.py`).
-- **Storage**: CRUD for mass_balance_runs, capex_estimates, opex_estimates, generation_logs tables (`databricks_app/services/storage.py`).
-- **Prompts**: 12 type-specific prompt templates (mass_balance_type_a/b/c/d, capex_type_a/b/c/d, opex_type_a/b/c/d) in `databricks_app/knowledge_base/default_prompts.py`.
-- **API Routes**: All mass balance, CapEx, OpEx, export, generation stats, and calculator endpoints in `databricks_app/api/routes.py`.
+- **Frontend**: React 18, TypeScript, Wouter, TanStack Query, shadcn/ui, Tailwind CSS, React Hook Form, Zod, Vite.
+- **Backend**: Express.js, TypeScript, RESTful API, Multer.
+- **Data Storage**: PostgreSQL, Drizzle ORM.
+- **Shared Architecture**: Shared types/schemas, modular UI components.
+- **Databricks Migration**: Transitioning to a Databricks environment with FastAPI (Python) backend, Delta tables, and Databricks Model Serving. Existing React frontend remains.
 
 ## External Dependencies
 
@@ -86,45 +54,26 @@ The project is migrating to a Databricks environment with a FastAPI (Python) bac
 - Lucide React (icons)
 
 ### AI/ML Integration
-- **Multi-LLM Support**: OpenAI (GPT-5), Anthropic (Claude Sonnet 4.5, Claude Opus 4.6).
-- **Feedstock Library**: Built-in knowledge base for common AD feedstocks (e.g., Potato Waste, Dairy Manure) used for Types B/C/D. Defined in `shared/feedstock-library.ts`.
-- **Wastewater Influent Library**: Built-in knowledge base for industrial wastewater influent profiles (e.g., Food Processing WW, Meat/Poultry WW, Dairy Processing WW, Brewery WW, Ethanol Plant WW) with mg/L parameters (BOD, COD, TSS, FOG, TKN, pH, flow). Used for Type A projects. Defined in `shared/feedstock-library.ts`.
-- **Output Criteria Library**: Built-in knowledge base for output acceptance criteria (e.g., RNG Pipeline Injection, Solid Digestate Land Application, Liquid Effluent to WWTP).
+- OpenAI (GPT-5)
+- Anthropic (Claude Sonnet 4.5, Claude Opus 4.6)
+- Built-in knowledge bases: Feedstock Library, Wastewater Influent Library, Output Criteria Library.
 
 ### Document Processing
-- Multer (file uploads)
-- XLSX (spreadsheet processing)
-- pdf-parse (PDF text extraction)
-- mammoth (DOCX text extraction)
+- Multer
+- XLSX
+- pdf-parse
+- mammoth
 
 ### Authentication & Security
-- Passport.js (authentication)
+- Passport.js
 - Express sessions
-- jsonwebtoken (JSON Web Tokens)
+- jsonwebtoken
 
 ### Additional Services
-- Stripe SDK (payment integration)
-- Nodemailer (email functionality)
+- Stripe SDK
+- Nodemailer
 
 ### Databricks Specific
-- Databricks Model Serving (for AI)
-- ReportLab (PDF generation in Databricks environment)
-- openpyxl (Excel generation in Databricks environment)
-
-## Validation Pipeline
-
-Between AI extraction and UPIF save, a multi-step validation pipeline runs:
-- `validationWarnings` JSONB stores errors/warnings/info from validation steps
-- `unmappedSpecs` JSONB stores parameters that failed validation (wrong section/unit mismatches)
-- `performanceTargets` JSONB stores removal efficiencies separated from concentration limits
-- Pipeline order: (V0) Universal biosolids rejection → (V1) Output specs sanitization → (V1b) Biogas/RNG separation → (V2) Type A wastewater gate → (V2b) Type D stream separation → (V2c) Type A design driver completeness → (V3) TS/TSS guardrail → (V4) Swap detection
-- Universal biosolids guardrail: "Solid Digestate - Land Application" profile rejected for ALL project types
-- Type A wastewater gate: if mg/L analytes (BOD/COD/TSS/FOG/TKN/TP) or flow units (MGD/gpm/GPD/m³/d) detected, hard-block ALL solids-basis parameters (VS/TS, BMP m³/kg VS, C:N, bulk density, moisture%, delivery form, preprocessing) regardless of source. Also blocks primary/WAS sludge terminology from feedstock names and spec values. Feedstock section must display influent analytes + flow only.
-- Type A design driver completeness (V2c): validates that all core design drivers are present in the Feedstock/Influent section — Flow (avg + min + peak), BOD, COD, TSS, FOG, pH. Generates error-severity warnings for each missing driver. Auto-populates missing Min Flow (0.6x average) and Peak Flow (industry-specific multiplier). When all present, emits info-level confirmation.
-- Type A dual-unit display: BOD, COD, and TN concentrations (mg/L) are displayed alongside computed mass loadings (ppd = mg/L × flow MGD × 8.34) in the UPIF review UI. Mass loading parameters are also extracted by AI as separate "Loading" parameters in ppd units.
-- Type A flow range: Clarifying questions prompt asks about min/max flow when only average is provided. AI extraction estimates Min Flow (0.6x avg) and Peak Flow (2x avg) when not stated.
-- Type A fail-fast: requires influent flow + at least one mg/L analyte before UPIF generation
-- Type D hard separation: wastewater must carry flow + mg/L analytes, trucked feedstocks carry TS/VS/BMP/C:N
-- Swap detection: wastewater-labeled streams with solids params but no flow/analytes flagged and re-routed to Unmapped
-- Gas separation: biogas CH₄ <90% rejected from RNG gas-quality table; RNG spec requires ≥96% pipeline quality
-- Server-side logic in `server/validation.ts` (Node.js) and `databricks_app/api/validation.py` (Python)
+- Databricks Model Serving
+- ReportLab (for PDF generation)
+- openpyxl (for Excel generation)

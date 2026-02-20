@@ -21,6 +21,8 @@ import {
   capexEstimates,
   opexEstimates,
   generationLogs,
+  libraryProfiles,
+  validationConfig,
   type Project,
   type InsertProject,
   type Scenario,
@@ -45,6 +47,10 @@ import {
   type InsertOpexEstimate,
   type GenerationLog,
   type InsertGenerationLog,
+  type LibraryProfile,
+  type InsertLibraryProfile,
+  type ValidationConfig,
+  type InsertValidationConfig,
 } from "@shared/schema";
 
 // Initialize PostgreSQL connection pool from environment DATABASE_URL
@@ -131,6 +137,18 @@ export interface IStorage {
   // Generation Logs
   getAllGenerationLogs(): Promise<GenerationLog[]>;
   createGenerationLog(log: InsertGenerationLog): Promise<GenerationLog>;
+
+  // Library Profiles
+  getLibraryProfilesByType(libraryType: string): Promise<LibraryProfile[]>;
+  getLibraryProfile(id: string): Promise<LibraryProfile | undefined>;
+  createLibraryProfile(profile: InsertLibraryProfile): Promise<LibraryProfile>;
+  updateLibraryProfile(id: string, updates: Partial<InsertLibraryProfile>): Promise<LibraryProfile | undefined>;
+  deleteLibraryProfile(id: string): Promise<boolean>;
+
+  // Validation Config
+  getAllValidationConfig(): Promise<ValidationConfig[]>;
+  getValidationConfig(configKey: string): Promise<ValidationConfig | undefined>;
+  upsertValidationConfig(config: InsertValidationConfig): Promise<ValidationConfig>;
 }
 
 /**
@@ -524,6 +542,69 @@ export class DatabaseStorage implements IStorage {
 
   async createGenerationLog(log: InsertGenerationLog): Promise<GenerationLog> {
     const result = await db.insert(generationLogs).values(log).returning();
+    return result[0];
+  }
+
+  // ============================================================================
+  // LIBRARY PROFILES
+  // ============================================================================
+
+  async getLibraryProfilesByType(libraryType: string): Promise<LibraryProfile[]> {
+    return db
+      .select()
+      .from(libraryProfiles)
+      .where(eq(libraryProfiles.libraryType, libraryType))
+      .orderBy(libraryProfiles.sortOrder);
+  }
+
+  async getLibraryProfile(id: string): Promise<LibraryProfile | undefined> {
+    const result = await db.select().from(libraryProfiles).where(eq(libraryProfiles.id, id));
+    return result[0];
+  }
+
+  async createLibraryProfile(profile: InsertLibraryProfile): Promise<LibraryProfile> {
+    const result = await db.insert(libraryProfiles).values(profile).returning();
+    return result[0];
+  }
+
+  async updateLibraryProfile(id: string, updates: Partial<InsertLibraryProfile>): Promise<LibraryProfile | undefined> {
+    const result = await db
+      .update(libraryProfiles)
+      .set({ ...updates, isCustomized: true, updatedAt: new Date() })
+      .where(eq(libraryProfiles.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteLibraryProfile(id: string): Promise<boolean> {
+    const result = await db.delete(libraryProfiles).where(eq(libraryProfiles.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // ============================================================================
+  // VALIDATION CONFIG
+  // ============================================================================
+
+  async getAllValidationConfig(): Promise<ValidationConfig[]> {
+    return db.select().from(validationConfig).orderBy(validationConfig.category);
+  }
+
+  async getValidationConfig(configKey: string): Promise<ValidationConfig | undefined> {
+    const result = await db.select().from(validationConfig).where(eq(validationConfig.configKey, configKey));
+    return result[0];
+  }
+
+  async upsertValidationConfig(config: InsertValidationConfig): Promise<ValidationConfig> {
+    const existing = await this.getValidationConfig(config.configKey);
+    if (existing) {
+      const result = await db
+        .update(validationConfig)
+        .set({ configValue: config.configValue, description: config.description, category: config.category, updatedAt: new Date() })
+        .where(eq(validationConfig.configKey, config.configKey))
+        .returning();
+      return result[0];
+    }
+    const result = await db.insert(validationConfig).values(config).returning();
     return result[0];
   }
 }
