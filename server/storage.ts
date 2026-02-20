@@ -45,6 +45,9 @@ import {
   type InsertCapexEstimate,
   type OpexEstimate,
   type InsertOpexEstimate,
+  financialModels,
+  type FinancialModel,
+  type InsertFinancialModel,
   type GenerationLog,
   type InsertGenerationLog,
   type LibraryProfile,
@@ -133,6 +136,12 @@ export interface IStorage {
   getOpexEstimate(id: string): Promise<OpexEstimate | undefined>;
   createOpexEstimate(estimate: InsertOpexEstimate): Promise<OpexEstimate>;
   updateOpexEstimate(id: string, updates: Partial<InsertOpexEstimate>): Promise<OpexEstimate | undefined>;
+
+  // Financial Models
+  getFinancialModelsByScenario(scenarioId: string): Promise<FinancialModel[]>;
+  getFinancialModel(id: string): Promise<FinancialModel | undefined>;
+  createFinancialModel(model: InsertFinancialModel): Promise<FinancialModel>;
+  updateFinancialModel(id: string, updates: Partial<InsertFinancialModel>): Promise<FinancialModel | undefined>;
 
   // Generation Logs
   getAllGenerationLogs(): Promise<GenerationLog[]>;
@@ -528,6 +537,37 @@ export class DatabaseStorage implements IStorage {
       .update(opexEstimates)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(opexEstimates.id, id))
+      .returning();
+    return result[0];
+  }
+
+  // ============================================================================
+  // FINANCIAL MODELS
+  // ============================================================================
+
+  async getFinancialModelsByScenario(scenarioId: string): Promise<FinancialModel[]> {
+    return db
+      .select()
+      .from(financialModels)
+      .where(eq(financialModels.scenarioId, scenarioId))
+      .orderBy(desc(financialModels.createdAt));
+  }
+
+  async getFinancialModel(id: string): Promise<FinancialModel | undefined> {
+    const result = await db.select().from(financialModels).where(eq(financialModels.id, id));
+    return result[0];
+  }
+
+  async createFinancialModel(model: InsertFinancialModel): Promise<FinancialModel> {
+    const result = await db.insert(financialModels).values(model).returning();
+    return result[0];
+  }
+
+  async updateFinancialModel(id: string, updates: Partial<InsertFinancialModel>): Promise<FinancialModel | undefined> {
+    const result = await db
+      .update(financialModels)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(financialModels.id, id))
       .returning();
     return result[0];
   }

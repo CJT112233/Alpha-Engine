@@ -556,6 +556,114 @@ export type InsertOpexEstimate = z.infer<typeof insertOpexEstimateSchema>;
 export type OpexEstimate = typeof opexEstimates.$inferSelect;
 
 /**
+ * Financial Model assumptions: User-editable inputs for the 10-year pro-forma.
+ */
+export type FinancialAssumptions = {
+  inflationRate: number;
+  projectLifeYears: number;
+  constructionMonths: number;
+  uptimePct: number;
+  biogasGrowthRate: number;
+  rngPricePerMMBtu: number;
+  rngPriceEscalator: number;
+  rinPricePerRIN: number;
+  rinPriceEscalator: number;
+  rinBrokeragePct: number;
+  rinPerMMBtu: number;
+  natGasPricePerMMBtu: number;
+  natGasPriceEscalator: number;
+  wheelHubCostPerMMBtu: number;
+  electricityCostPerKWh: number;
+  electricityEscalator: number;
+  gasCostPerMMBtu: number;
+  gasCostEscalator: number;
+  itcRate: number;
+  itcMonetizationPct: number;
+  maintenanceCapexPct: number;
+  discountRate: number;
+  feedstockCosts: Array<{
+    feedstockName: string;
+    costPerTon: number;
+    annualTons: number;
+    escalator: number;
+  }>;
+  debtFinancing: {
+    enabled: boolean;
+    loanAmountPct: number;
+    interestRate: number;
+    termYears: number;
+  };
+};
+
+export type ProFormaYear = {
+  year: number;
+  calendarYear: number;
+  biogasScfm: number;
+  rngProductionMMBtu: number;
+  rinRevenue: number;
+  rinBrokerage: number;
+  natGasRevenue: number;
+  totalRevenue: number;
+  utilityCost: number;
+  feedstockCost: number;
+  laborCost: number;
+  maintenanceCost: number;
+  chemicalCost: number;
+  insuranceCost: number;
+  otherOpex: number;
+  totalOpex: number;
+  ebitda: number;
+  maintenanceCapex: number;
+  debtService: number;
+  netCashFlow: number;
+  cumulativeCashFlow: number;
+};
+
+export type FinancialMetrics = {
+  irr: number | null;
+  npv10: number;
+  moic: number;
+  paybackYears: number | null;
+  totalRevenue: number;
+  totalOpex: number;
+  totalEbitda: number;
+  totalCapex: number;
+  itcProceeds: number;
+  totalMaintenanceCapex: number;
+  averageAnnualEbitda: number;
+};
+
+export type FinancialModelResults = {
+  projectType?: string;
+  assumptions: FinancialAssumptions;
+  proForma: ProFormaYear[];
+  metrics: FinancialMetrics;
+  capexTotal: number;
+  opexAnnualBase: number;
+  biogasScfmBase: number;
+  rngMMBtuPerDayBase: number;
+  warnings: Array<{ field: string; message: string; severity: "error" | "warning" | "info" }>;
+};
+
+export const financialModels = pgTable("financial_models", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  scenarioId: varchar("scenario_id").notNull().references(() => scenarios.id, { onDelete: "cascade" }),
+  massBalanceRunId: varchar("mass_balance_run_id").notNull().references(() => massBalanceRuns.id, { onDelete: "cascade" }),
+  capexEstimateId: varchar("capex_estimate_id").references(() => capexEstimates.id, { onDelete: "set null" }),
+  opexEstimateId: varchar("opex_estimate_id").references(() => opexEstimates.id, { onDelete: "set null" }),
+  version: text("version").notNull().default("1"),
+  status: text("status").notNull().default("draft"),
+  assumptions: jsonb("assumptions").$type<FinancialAssumptions>(),
+  results: jsonb("results").$type<FinancialModelResults>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFinancialModelSchema = createInsertSchema(financialModels).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFinancialModel = z.infer<typeof insertFinancialModelSchema>;
+export type FinancialModel = typeof financialModels.$inferSelect;
+
+/**
  * Generation Logs table: Tracks timing and metadata for AI-generated documents.
  * Records how long each generation takes, which model was used, and links to the project/scenario.
  */

@@ -27,6 +27,7 @@ import { UpifChat } from "@/components/upif-chat";
 import { MassBalanceContent } from "@/pages/mass-balance";
 import { CapexContent } from "@/pages/capex";
 import { OpexContent } from "@/pages/opex";
+import { FinancialModelContent } from "@/pages/financial-model";
 
 export default function ScenarioDetail() {
   const { id } = useParams<{ id: string }>();
@@ -226,7 +227,7 @@ export default function ScenarioDetail() {
         </div>
 
         <Tabs defaultValue="input" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-5" data-testid="tabs-scenario">
+          <TabsList className="grid w-full grid-cols-6" data-testid="tabs-scenario">
             <TabsTrigger value="input" className="flex items-center gap-1.5" data-testid="tab-input">
               <MessageSquare className="h-4 w-4 shrink-0" />
               <span className="hidden md:inline">Input</span>
@@ -246,6 +247,10 @@ export default function ScenarioDetail() {
             <TabsTrigger value="opex" className="flex items-center gap-1.5" data-testid="tab-opex">
               <Receipt className="h-4 w-4 shrink-0" />
               <span className="hidden md:inline">OpEx</span>
+            </TabsTrigger>
+            <TabsTrigger value="financial-model" className="flex items-center gap-1.5" data-testid="tab-financial-model">
+              <DollarSign className="h-4 w-4 shrink-0" />
+              <span className="hidden md:inline">Financial</span>
             </TabsTrigger>
           </TabsList>
 
@@ -320,6 +325,10 @@ export default function ScenarioDetail() {
 
           <TabsContent value="opex">
             <OpexContent scenarioId={id!} />
+          </TabsContent>
+
+          <TabsContent value="financial-model">
+            <FinancialModelContent scenarioId={id!} />
           </TabsContent>
         </Tabs>
       </div>

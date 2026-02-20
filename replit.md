@@ -1,7 +1,7 @@
 # Project Factory - Intelligent Project Intake System
 
 ## Overview
-Project Factory is an AI-powered system that transforms unstructured project inputs (natural language, documents) into standardized project specifications. It generates a Unified Project Intake Form (UPIF) by extracting, categorizing, and enriching project parameters with design defaults. The system supports scenario-based workflows for independent project evaluations, aiming to streamline project initiation with comprehensive, validated project definitions. It provides AI-powered mass balance, CapEx, and OpEx estimations.
+Project Factory is an AI-powered system that transforms unstructured project inputs (natural language, documents) into standardized project specifications. It generates a Unified Project Intake Form (UPIF) by extracting, categorizing, and enriching project parameters with design defaults. The system supports scenario-based workflows for independent project evaluations, aiming to streamline project initiation with comprehensive, validated project definitions. It provides AI-powered mass balance, CapEx, OpEx estimations, and deterministic 10-year pro-forma financial modeling.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -34,6 +34,7 @@ Unit conventions (US-based):
 - **AI-Powered Mass Balance**: Generates mass balances using LLMs for four project types, with deterministic calculators as fallback.
 - **AI-Powered CapEx Estimation**: Generates capital cost estimates from confirmed mass balance equipment lists for all project types.
 - **AI-Powered OpEx Estimation**: Generates annual operating cost estimates from mass balance and CapEx data for all project types.
+- **Deterministic Financial Model**: 10-year pro-forma financial projections with editable assumptions (inflation, ITC, RIN pricing, debt financing), calculating IRR, NPV@10%, MOIC, and payback period. Available after CapEx+OpEx are confirmed.
 - **PDF & Excel Export**: Provides professional PDF and Excel export options for Mass Balance, CapEx, and OpEx reports.
 
 ### Technical Implementation

@@ -3725,6 +3725,188 @@ export async function registerRoutes(
     }
   });
 
+  // ========================================================================
+  // FINANCIAL MODEL ROUTES
+  // ========================================================================
+
+  app.get("/api/scenarios/:scenarioId/financial-model", async (req: Request, res: Response) => {
+    try {
+      const models = await storage.getFinancialModelsByScenario(req.params.scenarioId as string);
+      res.json(models);
+    } catch (error) {
+      console.error("Error fetching financial models:", error);
+      res.status(500).json({ error: "Failed to fetch financial models" });
+    }
+  });
+
+  app.get("/api/financial-model/:id", async (req: Request, res: Response) => {
+    try {
+      const model = await storage.getFinancialModel(req.params.id as string);
+      if (!model) return res.status(404).json({ error: "Financial model not found" });
+      res.json(model);
+    } catch (error) {
+      console.error("Error fetching financial model:", error);
+      res.status(500).json({ error: "Failed to fetch financial model" });
+    }
+  });
+
+  app.post("/api/scenarios/:scenarioId/financial-model/generate", async (req: Request, res: Response) => {
+    const startTime = Date.now();
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+
+      const upif = await storage.getUpifByScenario(scenarioId);
+      if (!upif) return res.status(400).json({ error: "No UPIF found for this scenario." });
+
+      const mbRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const latestMB = mbRuns[0];
+      if (!latestMB || latestMB.status !== "finalized") {
+        return res.status(400).json({ error: "Mass balance must be finalized first." });
+      }
+
+      const capexEstimates = await storage.getCapexEstimatesByScenario(scenarioId);
+      const latestCapex = capexEstimates[0];
+      if (!latestCapex || latestCapex.status !== "finalized") {
+        return res.status(400).json({ error: "CapEx must be finalized first." });
+      }
+
+      const opexEstimates = await storage.getOpexEstimatesByScenario(scenarioId);
+      const latestOpex = opexEstimates[0];
+      if (!latestOpex || latestOpex.status !== "finalized") {
+        return res.status(400).json({ error: "OpEx must be finalized first." });
+      }
+
+      const mbResults = latestMB.results as MassBalanceResults;
+      const capexResults = latestCapex.results as CapexResults;
+      const opexResults = latestOpex.results as OpexResults;
+
+      const { buildDefaultAssumptions, calculateFinancialModel } = await import("./services/financialModel");
+      const feedstocks = (upif as any).feedstocks || [];
+      const assumptions = buildDefaultAssumptions(mbResults, opexResults, feedstocks);
+      const results = calculateFinancialModel(assumptions, mbResults, capexResults, opexResults);
+
+      const existingModels = await storage.getFinancialModelsByScenario(scenarioId);
+      const nextVersion = String(existingModels.length + 1);
+
+      const model = await storage.createFinancialModel({
+        scenarioId,
+        massBalanceRunId: latestMB.id,
+        capexEstimateId: latestCapex.id,
+        opexEstimateId: latestOpex.id,
+        version: nextVersion,
+        status: "draft",
+        assumptions,
+        results,
+      });
+
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "Financial Model",
+        modelUsed: "deterministic",
+        projectId: scenario.projectId,
+        projectName: scenario.project?.name || null,
+        scenarioId,
+        scenarioName: scenario.name,
+        durationMs,
+        status: "success",
+      }).catch(e => console.error("Failed to log generation:", e));
+
+      res.json(model);
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      storage.createGenerationLog({
+        documentType: "Financial Model",
+        modelUsed: "deterministic",
+        durationMs,
+        status: "error",
+        errorMessage: (error as any)?.message || "Unknown error",
+      }).catch(e => console.error("Failed to log generation:", e));
+      console.error("Error generating financial model:", error);
+      res.status(500).json({ error: "Failed to generate financial model" });
+    }
+  });
+
+  app.patch("/api/financial-model/:id/assumptions", async (req: Request, res: Response) => {
+    try {
+      const model = await storage.getFinancialModel(req.params.id as string);
+      if (!model) return res.status(404).json({ error: "Financial model not found" });
+      if (model.status === "finalized") return res.status(400).json({ error: "Cannot edit a finalized financial model." });
+
+      const updatedAssumptions = req.body.assumptions;
+      if (!updatedAssumptions || typeof updatedAssumptions !== "object") {
+        return res.status(400).json({ error: "No assumptions provided" });
+      }
+
+      const requiredNumericFields = [
+        "inflationRate", "projectLifeYears", "constructionMonths", "uptimePct",
+        "biogasGrowthRate", "rngPricePerMMBtu", "rngPriceEscalator", "rinPricePerRIN",
+        "rinPriceEscalator", "rinBrokeragePct", "rinPerMMBtu", "natGasPricePerMMBtu",
+        "natGasPriceEscalator", "wheelHubCostPerMMBtu", "electricityCostPerKWh",
+        "electricityEscalator", "gasCostPerMMBtu", "gasCostEscalator", "itcRate",
+        "itcMonetizationPct", "maintenanceCapexPct", "discountRate",
+      ];
+      for (const field of requiredNumericFields) {
+        if (typeof updatedAssumptions[field] !== "number" || isNaN(updatedAssumptions[field])) {
+          return res.status(400).json({ error: `Invalid value for ${field}` });
+        }
+      }
+      if (!Number.isInteger(updatedAssumptions.projectLifeYears) || updatedAssumptions.projectLifeYears < 1 || updatedAssumptions.projectLifeYears > 30) {
+        return res.status(400).json({ error: "Project life must be between 1 and 30 years" });
+      }
+
+      const mbRun = await storage.getMassBalanceRun(model.massBalanceRunId);
+      if (!mbRun) return res.status(400).json({ error: "Associated mass balance not found" });
+
+      let capexResults: CapexResults | null = null;
+      let opexResults: OpexResults | null = null;
+      if (model.capexEstimateId) {
+        const capex = await storage.getCapexEstimate(model.capexEstimateId);
+        if (capex) capexResults = capex.results as CapexResults;
+      }
+      if (model.opexEstimateId) {
+        const opex = await storage.getOpexEstimate(model.opexEstimateId);
+        if (opex) opexResults = opex.results as OpexResults;
+      }
+      if (!capexResults || !opexResults) {
+        return res.status(400).json({ error: "CapEx or OpEx data not found" });
+      }
+
+      const { calculateFinancialModel } = await import("./services/financialModel");
+      const mbResults = mbRun.results as MassBalanceResults;
+      const results = calculateFinancialModel(updatedAssumptions, mbResults, capexResults, opexResults);
+
+      const updated = await storage.updateFinancialModel(req.params.id as string, {
+        assumptions: updatedAssumptions,
+        results,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating financial model assumptions:", error);
+      res.status(500).json({ error: "Failed to update financial model" });
+    }
+  });
+
+  app.patch("/api/financial-model/:id/status", async (req: Request, res: Response) => {
+    try {
+      const model = await storage.getFinancialModel(req.params.id as string);
+      if (!model) return res.status(404).json({ error: "Financial model not found" });
+
+      const { status } = req.body;
+      if (!["draft", "finalized"].includes(status)) {
+        return res.status(400).json({ error: "Invalid status. Must be 'draft' or 'finalized'." });
+      }
+
+      const updated = await storage.updateFinancialModel(req.params.id as string, { status });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating financial model status:", error);
+      res.status(500).json({ error: "Failed to update financial model status" });
+    }
+  });
+
   const calculatorFiles: Record<string, { file: string; label: string; type: string; description: string }> = {
     A: { file: "server/services/massBalance.ts", label: "Type A: Wastewater Treatment", type: "A", description: "High-strength industrial wastewater from food processing (dairy, meat, potato, beverage, produce, etc.). Treats influent to meet effluent discharge standards. RNG may be a byproduct when organic loading justifies it." },
     B: { file: "server/services/massBalanceTypeB.ts", label: "Type B: RNG Greenfield", type: "B", description: "Full anaerobic digestion pipeline from feedstock receiving through RNG production. Handles solid and semi-solid organic feedstocks (food waste, crop residuals). Complete process train: receiving, pretreatment, digestion, gas conditioning, upgrading." },
