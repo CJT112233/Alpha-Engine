@@ -15,6 +15,10 @@ DEFAULT_REMOVAL_EFFICIENCIES = {
     "chemical_phosphorus": {"bod": 0, "cod": 0.05, "tss": 0.10, "fog": 0, "tkn": 0, "tp": 0.85},
     "tertiary_filtration": {"bod": 0.30, "cod": 0.25, "tss": 0.70, "fog": 0.30, "tkn": 0.05, "tp": 0.20},
     "disinfection": {"bod": 0, "cod": 0, "tss": 0, "fog": 0, "tkn": 0, "tp": 0},
+    # Industrial pretreatment process types
+    "daf": {"bod": 0.30, "cod": 0.25, "tss": 0.85, "fog": 0.95, "tkn": 0.05, "tp": 0.15},
+    "anaerobic_pretreatment": {"bod": 0.85, "cod": 0.80, "tss": 0.60, "fog": 0.80, "tkn": 0.15, "tp": 0.10},
+    "chemical_precipitation": {"bod": 0.15, "cod": 0.20, "tss": 0.80, "fog": 0.40, "tkn": 0.05, "tp": 0.85},
 }
 
 DEFAULT_DESIGN_CRITERIA = {
@@ -64,6 +68,26 @@ DEFAULT_DESIGN_CRITERIA = {
     "equalization": {
         "detentionTime": {"value": 8, "unit": "hr", "source": "WEF MOP 8"},
         "peakFactor": {"value": 2.5, "unit": "multiplier", "source": "Engineering practice"},
+    },
+    # Industrial pretreatment process design criteria
+    "daf": {
+        "riseRate": {"value": 4, "unit": "gpm/sf", "source": "Ludwigson, Industrial Pretreatment Design"},
+        "recycleRatio": {"value": 0.30, "unit": "fraction", "source": "Ludwigson, Industrial Pretreatment Design"},
+        "pressure": {"value": 60, "unit": "psi", "source": "Equipment manufacturer"},
+        "retentionTime": {"value": 30, "unit": "min", "source": "Ludwigson, Industrial Pretreatment Design"},
+        "asRatio": {"value": 0.02, "unit": "mL/mL", "source": "Ludwigson, Industrial Pretreatment Design"},
+    },
+    "anaerobic_pretreatment": {
+        "olr": {"value": 6, "unit": "kg COD/m³·d", "source": "Ludwigson, Industrial Pretreatment Design"},
+        "hrt": {"value": 8, "unit": "hr", "source": "Ludwigson, Industrial Pretreatment Design"},
+        "temperature": {"value": 35, "unit": "°C", "source": "Ludwigson, Industrial Pretreatment Design"},
+        "gasProduction": {"value": 0.35, "unit": "m³ CH₄/kg COD removed", "source": "Ludwigson, Industrial Pretreatment Design"},
+    },
+    "chemical_precipitation": {
+        "chemicalDose": {"value": 200, "unit": "mg/L", "source": "Ludwigson, Industrial Pretreatment Design"},
+        "targetPh": {"value": 8.5, "unit": "pH", "source": "Ludwigson, Industrial Pretreatment Design"},
+        "mixingIntensity": {"value": 300, "unit": "s⁻¹", "source": "Ludwigson, Industrial Pretreatment Design"},
+        "settlingRate": {"value": 600, "unit": "gpd/sf", "source": "Ludwigson, Industrial Pretreatment Design"},
     },
 }
 
@@ -165,12 +189,32 @@ def _determine_treatment_train(upif: dict) -> list:
 
     stages = ["preliminary", "equalization", "primary"]
 
+    # Parse influent values to drive pollutant-aware process selection
+    influent_cod = _parse_analyte(upif, "COD", 8000)
+    influent_fog = _parse_analyte(upif, "FOG", 500)
+    influent_bod = _parse_analyte(upif, "BOD", 4000)
+
+    # Industrial pretreatment process selection — based on pollutant loads, NOT municipal defaults
     if "mbr" in all_text or "membrane" in all_text:
         stages.append("mbr")
     elif "trickling" in all_text or "rotating" in all_text:
         stages.append("trickling_filter")
-    else:
+    elif "activated sludge" in all_text or "cas" in all_text:
         stages.append("activated_sludge")
+    elif influent_fog > 200:
+        # FOG-dominant waste stream → DAF is primary treatment
+        stages.append("daf")
+        if influent_cod > 4000:
+            # High COD remaining after DAF → anaerobic pretreatment
+            stages.append("anaerobic_pretreatment")
+    elif influent_cod > 4000 or influent_bod > 3000:
+        # High-strength organic waste → anaerobic pretreatment
+        stages.append("anaerobic_pretreatment")
+    elif "metal" in all_text or "precip" in all_text:
+        stages.append("chemical_precipitation")
+    else:
+        # Industrial default: DAF (NOT activated sludge)
+        stages.append("daf")
 
     eff_bod = _parse_effluent_target(upif, "bod")
     eff_tss = _parse_effluent_target(upif, "tss")
@@ -197,7 +241,10 @@ def _determine_treatment_train(upif: dict) -> list:
     if (eff_tp is not None and eff_tp <= 1) or "phosphorus removal" in all_text:
         stages.append("chemical_phosphorus")
 
-    stages.append("disinfection")
+    # Disinfection ONLY if explicitly mentioned — POTW discharge does not require it
+    if "disinfection" in all_text or "uv" in all_text or "chlorin" in all_text:
+        stages.append("disinfection")
+
     return stages
 
 
@@ -522,6 +569,120 @@ def _size_equipment(stages: list, flow_mgd: float, influent: dict) -> list:
                 "isLocked": False,
             })
 
+        if stage["type"] == "daf":
+            rise_rate = _get_criterion_value(criteria, "riseRate", 4)
+            daf_area = flow_gpm / rise_rate
+            recycle_ratio = _get_criterion_value(criteria, "recycleRatio", 0.30)
+            ret_time = _get_criterion_value(criteria, "retentionTime", 30)
+            daf_vol_gal = flow_gpm * ret_time * (1 + recycle_ratio)
+            num_units = max(1, math.ceil(daf_area / 400))
+            unit_area = daf_area / num_units
+            unit_width = _round_to(math.sqrt(unit_area / 3))
+            unit_length = _round_to(unit_width * 3)
+            equipment.append({
+                "id": make_id(),
+                "process": "Industrial Pretreatment - DAF",
+                "equipmentType": "Dissolved Air Flotation Unit",
+                "description": "Pressurized dissolved air flotation system for FOG and TSS removal",
+                "quantity": num_units,
+                "specs": {
+                    "riseRate": {"value": str(rise_rate), "unit": "gpm/sf"},
+                    "totalSurfaceArea": {"value": str(_round_to(daf_area)), "unit": "sf"},
+                    "recycleRatio": {"value": str(_round_to(recycle_ratio * 100)), "unit": "%"},
+                    "pressure": {"value": str(_get_criterion_value(criteria, "pressure", 60)), "unit": "psi"},
+                    "retentionTime": {"value": str(ret_time), "unit": "min"},
+                    "volume": {"value": str(_round_to(daf_vol_gal)), "unit": "gal"},
+                    "dimensionsL": {"value": str(unit_length), "unit": "ft"},
+                    "dimensionsW": {"value": str(unit_width), "unit": "ft"},
+                    "dimensionsH": {"value": "8", "unit": "ft"},
+                    "power": {"value": str(_round_to(flow_gpm * 0.05)), "unit": "HP"},
+                },
+                "designBasis": f"Rise rate = {rise_rate} gpm/sf, {_round_to(recycle_ratio * 100)}% recycle, {ret_time} min retention",
+                "notes": "Includes saturator, recycle pump, air compressor, and skimmer. Designed for high FOG and TSS removal in industrial pretreatment.",
+                "isOverridden": False,
+                "isLocked": False,
+            })
+
+        if stage["type"] == "anaerobic_pretreatment":
+            hrt = _get_criterion_value(criteria, "hrt", 8)
+            reactor_vol_gal = flow_gpd * (hrt / 24)
+            olr = _get_criterion_value(criteria, "olr", 6)
+            gas_rate = _get_criterion_value(criteria, "gasProduction", 0.35)
+            cod_removed = influent["cod"] * (DEFAULT_REMOVAL_EFFICIENCIES.get("anaerobic_pretreatment", {}).get("cod", 0.80))
+            methane_production = _round_to(cod_removed * flow_mgd * 3.785 * gas_rate, 1)
+            num_reactors = max(1, math.ceil(reactor_vol_gal / 500_000))
+            unit_vol_gal = reactor_vol_gal / num_reactors
+            equipment.append({
+                "id": make_id(),
+                "process": "Industrial Pretreatment - Anaerobic",
+                "equipmentType": "Anaerobic Reactor (UASB/IC/EGSB)",
+                "description": "High-rate anaerobic reactor for high-strength organic waste pretreatment with biogas recovery",
+                "quantity": num_reactors,
+                "specs": {
+                    "hrt": {"value": str(hrt), "unit": "hr"},
+                    "olr": {"value": str(olr), "unit": "kg COD/m\u00b3\u00b7d"},
+                    "volume": {"value": str(_round_to(unit_vol_gal)), "unit": "gal"},
+                    "volumeMG": {"value": str(_round_to(unit_vol_gal / 1_000_000, 3)), "unit": "MG"},
+                    "temperature": {"value": str(_get_criterion_value(criteria, "temperature", 35)), "unit": "\u00b0C"},
+                    "methaneProduction": {"value": str(methane_production), "unit": "m\u00b3 CH\u2084/day"},
+                    "power": {"value": str(_round_to(reactor_vol_gal / 50_000)), "unit": "HP"},
+                },
+                "designBasis": f"HRT = {hrt} hr, OLR = {olr} kg COD/m\u00b3\u00b7d, {_get_criterion_value(criteria, 'temperature', 35)}\u00b0C mesophilic",
+                "notes": "High-rate anaerobic technology (UASB, IC, or EGSB). Includes biogas collection, flare, and heat exchanger for temperature control.",
+                "isOverridden": False,
+                "isLocked": False,
+            })
+
+        if stage["type"] == "chemical_precipitation":
+            chem_dose = _get_criterion_value(criteria, "chemicalDose", 200)
+            chem_dose_rate = chem_dose * flow_mgd * 8.34
+            settling_rate = _get_criterion_value(criteria, "settlingRate", 600)
+            clar_area = flow_gpd / settling_rate
+            floc_vol_gal = flow_gpm * 20
+            equipment.append({
+                "id": make_id(),
+                "process": "Industrial Pretreatment - Chemical Precipitation",
+                "equipmentType": "Rapid Mix / Flocculation Tank",
+                "description": "Chemical feed, rapid mix, and flocculation system for metals/solids precipitation",
+                "quantity": 1,
+                "specs": {
+                    "chemicalDose": {"value": str(chem_dose), "unit": "mg/L"},
+                    "chemicalFeedRate": {"value": str(_round_to(chem_dose_rate)), "unit": "lb/day"},
+                    "targetPh": {"value": str(_get_criterion_value(criteria, "targetPh", 8.5)), "unit": "pH"},
+                    "mixingIntensity": {"value": str(_get_criterion_value(criteria, "mixingIntensity", 300)), "unit": "s\u207b\u00b9"},
+                    "flocculationVolume": {"value": str(_round_to(floc_vol_gal)), "unit": "gal"},
+                    "power": {"value": str(_round_to(floc_vol_gal / 5000 + 2)), "unit": "HP"},
+                },
+                "designBasis": f"{chem_dose} mg/L dose, G = {_get_criterion_value(criteria, 'mixingIntensity', 300)} s\u207b\u00b9, 20-min flocculation",
+                "notes": "Includes chemical storage tanks, metering pumps, pH control, and polymer system",
+                "isOverridden": False,
+                "isLocked": False,
+            })
+            num_clarifiers = max(1, math.ceil(clar_area / 2000))
+            unit_clar_area = clar_area / num_clarifiers
+            clar_dia = _round_to(math.sqrt(unit_clar_area * 4 / math.pi))
+            clar_depth = 12
+            clar_vol_gal = _round_to(math.pi * (clar_dia / 2) ** 2 * clar_depth * 7.481)
+            equipment.append({
+                "id": make_id(),
+                "process": "Industrial Pretreatment - Chemical Precipitation",
+                "equipmentType": "Clarifier / Settling Basin",
+                "description": "Circular clarifier for settling chemically precipitated solids",
+                "quantity": num_clarifiers,
+                "specs": {
+                    "settlingRate": {"value": str(settling_rate), "unit": "gpd/sf"},
+                    "surfaceArea": {"value": str(_round_to(unit_clar_area)), "unit": "sf"},
+                    "diameter": {"value": str(clar_dia), "unit": "ft"},
+                    "sidewaterDepth": {"value": str(clar_depth), "unit": "ft"},
+                    "volume": {"value": str(clar_vol_gal), "unit": "gal"},
+                    "power": {"value": "2", "unit": "HP"},
+                },
+                "designBasis": f"Settling rate = {settling_rate} gpd/sf at average flow",
+                "notes": "Includes sludge scraper mechanism and scum baffle",
+                "isOverridden": False,
+                "isLocked": False,
+            })
+
         if stage["type"] == "disinfection":
             ct = _get_criterion_value(criteria, "contactTime", 30)
             uv_dose = _get_criterion_value(criteria, "uvDose", 40)
@@ -561,19 +722,19 @@ def calculate_mass_balance_type_a(upif: dict) -> dict:
 
     influent = {
         "flow": flow_mgd,
-        "bod": _parse_analyte(upif, "BOD", 250),
-        "cod": _parse_analyte(upif, "COD", 500),
-        "tss": _parse_analyte(upif, "TSS", 250),
-        "tkn": _parse_analyte(upif, "TKN", 40),
-        "tp": _parse_analyte(upif, "TP", 7),
-        "fog": _parse_analyte(upif, "FOG", 100),
-        "nh3": _parse_analyte(upif, "NH3", 25),
+        "bod": _parse_analyte(upif, "BOD", 4000),
+        "cod": _parse_analyte(upif, "COD", 8000),
+        "tss": _parse_analyte(upif, "TSS", 1000),
+        "tkn": _parse_analyte(upif, "TKN", 80),
+        "tp": _parse_analyte(upif, "TP", 15),
+        "fog": _parse_analyte(upif, "FOG", 500),
+        "nh3": _parse_analyte(upif, "NH3", 50),
         "no3": 0,
         "unit": "mg/L",
     }
 
     defaults_names = ["BOD", "COD", "TSS", "TKN", "TP", "FOG"]
-    default_vals = [250, 500, 250, 40, 7, 100]
+    default_vals = [4000, 8000, 1000, 80, 15, 500]
     parsed = [influent["bod"], influent["cod"], influent["tss"],
               influent["tkn"], influent["tp"], influent["fog"]]
     for i in range(len(defaults_names)):
@@ -581,7 +742,7 @@ def calculate_mass_balance_type_a(upif: dict) -> dict:
             assumptions.append({
                 "parameter": f"Influent {defaults_names[i]}",
                 "value": f"{default_vals[i]} mg/L",
-                "source": "Typical municipal wastewater (WEF MOP 8)",
+                "source": "Typical high-strength industrial wastewater (Ludwigson, Industrial Pretreatment Design)",
             })
 
     assumptions.append({

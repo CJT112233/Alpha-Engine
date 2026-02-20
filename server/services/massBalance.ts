@@ -25,6 +25,10 @@ const DEFAULT_REMOVAL_EFFICIENCIES: Record<string, Record<string, number>> = {
   chemical_phosphorus: { bod: 0, cod: 0.05, tss: 0.10, fog: 0, tkn: 0, tp: 0.85 },
   tertiary_filtration: { bod: 0.30, cod: 0.25, tss: 0.70, fog: 0.30, tkn: 0.05, tp: 0.20 },
   disinfection: { bod: 0, cod: 0, tss: 0, fog: 0, tkn: 0, tp: 0 },
+  // Industrial pretreatment process types
+  daf: { bod: 0.30, cod: 0.25, tss: 0.85, fog: 0.95, tkn: 0.05, tp: 0.15 },
+  anaerobic_pretreatment: { bod: 0.85, cod: 0.80, tss: 0.60, fog: 0.80, tkn: 0.15, tp: 0.10 },
+  chemical_precipitation: { bod: 0.15, cod: 0.20, tss: 0.80, fog: 0.40, tkn: 0.05, tp: 0.85 },
 };
 
 const DEFAULT_DESIGN_CRITERIA: Record<string, DesignCriteria> = {
@@ -74,6 +78,26 @@ const DEFAULT_DESIGN_CRITERIA: Record<string, DesignCriteria> = {
   equalization: {
     detentionTime: { value: 8, unit: "hr", source: "WEF MOP 8" },
     peakFactor: { value: 2.5, unit: "multiplier", source: "Engineering practice" },
+  },
+  // Industrial pretreatment process design criteria
+  daf: {
+    riseRate: { value: 4, unit: "gpm/sf", source: "Ludwigson, Industrial Pretreatment Design" },
+    recycleRatio: { value: 0.30, unit: "fraction", source: "Ludwigson, Industrial Pretreatment Design" },
+    pressure: { value: 60, unit: "psi", source: "Equipment manufacturer" },
+    retentionTime: { value: 30, unit: "min", source: "Ludwigson, Industrial Pretreatment Design" },
+    asRatio: { value: 0.02, unit: "mL/mL", source: "Ludwigson, Industrial Pretreatment Design" },
+  },
+  anaerobic_pretreatment: {
+    olr: { value: 6, unit: "kg COD/m³·d", source: "Ludwigson, Industrial Pretreatment Design" },
+    hrt: { value: 8, unit: "hr", source: "Ludwigson, Industrial Pretreatment Design" },
+    temperature: { value: 35, unit: "°C", source: "Ludwigson, Industrial Pretreatment Design" },
+    gasProduction: { value: 0.35, unit: "m³ CH₄/kg COD removed", source: "Ludwigson, Industrial Pretreatment Design" },
+  },
+  chemical_precipitation: {
+    chemicalDose: { value: 200, unit: "mg/L", source: "Ludwigson, Industrial Pretreatment Design" },
+    targetPh: { value: 8.5, unit: "pH", source: "Ludwigson, Industrial Pretreatment Design" },
+    mixingIntensity: { value: 300, unit: "s⁻¹", source: "Ludwigson, Industrial Pretreatment Design" },
+    settlingRate: { value: 600, unit: "gpd/sf", source: "Ludwigson, Industrial Pretreatment Design" },
   },
 };
 
@@ -151,12 +175,33 @@ function determineTreatmentTrain(upif: UpifRecord): string[] {
 
   const stages: string[] = ["preliminary", "equalization", "primary"];
 
+  // Parse influent values to drive pollutant-aware process selection
+  const influentCod = parseAnalyte(upif, "COD") ?? 8000;
+  const influentFog = parseAnalyte(upif, "FOG") ?? 500;
+  const influentBod = parseAnalyte(upif, "BOD") ?? 4000;
+
+  // Industrial pretreatment process selection — based on pollutant loads, NOT municipal defaults
   if (allText.includes("mbr") || allText.includes("membrane")) {
     stages.push("mbr");
   } else if (allText.includes("trickling") || allText.includes("rotating")) {
     stages.push("trickling_filter");
-  } else {
+  } else if (allText.includes("activated sludge") || allText.includes("cas")) {
     stages.push("activated_sludge");
+  } else if (influentFog > 200) {
+    // FOG-dominant waste stream → DAF is primary treatment
+    stages.push("daf");
+    if (influentCod > 4000) {
+      // High COD remaining after DAF → anaerobic pretreatment
+      stages.push("anaerobic_pretreatment");
+    }
+  } else if (influentCod > 4000 || influentBod > 3000) {
+    // High-strength organic waste → anaerobic pretreatment
+    stages.push("anaerobic_pretreatment");
+  } else if (allText.includes("metal") || allText.includes("precip")) {
+    stages.push("chemical_precipitation");
+  } else {
+    // Industrial default: DAF (NOT activated sludge)
+    stages.push("daf");
   }
 
   const effBod = parseEffluentTarget(upif, "bod");
@@ -184,7 +229,10 @@ function determineTreatmentTrain(upif: UpifRecord): string[] {
     stages.push("chemical_phosphorus");
   }
 
-  stages.push("disinfection");
+  // Disinfection ONLY if explicitly mentioned — POTW discharge does not require it
+  if (allText.includes("disinfection") || allText.includes("uv") || allText.includes("chlorin")) {
+    stages.push("disinfection");
+  }
 
   return stages;
 }
@@ -608,6 +656,147 @@ function sizeEquipment(
       });
     }
 
+    if (stage.type === "daf") {
+      const riseRate = criteria.riseRate?.value || 4;
+      const dafArea = flowGPM / riseRate;
+      const recycleRatio = criteria.recycleRatio?.value || 0.30;
+      const retTime = criteria.retentionTime?.value || 30;
+      const dafVolGal = flowGPM * retTime * (1 + recycleRatio);
+      equipment.push({
+        id: makeId(),
+        process: "Industrial Pretreatment - DAF",
+        equipmentType: "Dissolved Air Flotation Unit",
+        description: "Pressurized dissolved air flotation system for FOG and TSS removal",
+        quantity: Math.max(1, Math.ceil(dafArea / 400)),
+        specs: (() => {
+          const numUnits = Math.max(1, Math.ceil(dafArea / 400));
+          const unitArea = dafArea / numUnits;
+          const unitWidth = roundTo(Math.sqrt(unitArea / 3));
+          const unitLength = roundTo(unitWidth * 3);
+          return {
+            riseRate: { value: String(riseRate), unit: "gpm/sf" },
+            totalSurfaceArea: { value: String(roundTo(dafArea)), unit: "sf" },
+            recycleRatio: { value: String(roundTo(recycleRatio * 100)), unit: "%" },
+            pressure: { value: String(criteria.pressure?.value || 60), unit: "psi" },
+            retentionTime: { value: String(retTime), unit: "min" },
+            volume: { value: String(roundTo(dafVolGal)), unit: "gal" },
+            dimensionsL: { value: String(unitLength), unit: "ft" },
+            dimensionsW: { value: String(unitWidth), unit: "ft" },
+            dimensionsH: { value: "8", unit: "ft" },
+            power: { value: String(roundTo(flowGPM * 0.05)), unit: "HP" },
+          };
+        })(),
+        designBasis: `Rise rate = ${riseRate} gpm/sf, ${roundTo(recycleRatio * 100)}% recycle, ${retTime} min retention`,
+        notes: "Includes saturator, recycle pump, air compressor, and skimmer. Designed for high FOG and TSS removal in industrial pretreatment.",
+        isOverridden: false,
+        isLocked: false,
+      });
+    }
+
+    if (stage.type === "anaerobic_pretreatment") {
+      const hrt = criteria.hrt?.value || 8;
+      const reactorVolGal = flowGPD * (hrt / 24);
+      const olr = criteria.olr?.value || 6;
+      const codLoadKg = influent.cod * flowMGD * 3.785 * 1000 / 1_000_000;
+      const gasRate = criteria.gasProduction?.value || 0.35;
+      const codRemoved = influent.cod * (DEFAULT_REMOVAL_EFFICIENCIES.anaerobic_pretreatment?.cod || 0.80);
+      const methaneProduction = roundTo(codRemoved * flowMGD * 3.785 * gasRate, 1);
+      equipment.push({
+        id: makeId(),
+        process: "Industrial Pretreatment - Anaerobic",
+        equipmentType: "Anaerobic Reactor (UASB/IC/EGSB)",
+        description: "High-rate anaerobic reactor for high-strength organic waste pretreatment with biogas recovery",
+        quantity: Math.max(1, Math.ceil(reactorVolGal / 500_000)),
+        specs: (() => {
+          const numReactors = Math.max(1, Math.ceil(reactorVolGal / 500_000));
+          const unitVolGal = reactorVolGal / numReactors;
+          const reactorDims = rectDimensions(unitVolGal, 25);
+          return {
+            hrt: { value: String(hrt), unit: "hr" },
+            olr: { value: String(olr), unit: "kg COD/m³·d" },
+            volume: { value: String(roundTo(unitVolGal)), unit: "gal" },
+            volumeMG: { value: String(roundTo(unitVolGal / 1_000_000, 3)), unit: "MG" },
+            temperature: { value: String(criteria.temperature?.value || 35), unit: "°C" },
+            methaneProduction: { value: String(methaneProduction), unit: "m³ CH₄/day" },
+            dimensionsL: { value: String(reactorDims.length), unit: "ft" },
+            dimensionsW: { value: String(reactorDims.width), unit: "ft" },
+            dimensionsH: { value: String(reactorDims.height), unit: "ft" },
+            power: { value: String(roundTo(reactorVolGal / 50_000)), unit: "HP" },
+          };
+        })(),
+        designBasis: `HRT = ${hrt} hr, OLR = ${olr} kg COD/m³·d, ${criteria.temperature?.value || 35}°C mesophilic`,
+        notes: "High-rate anaerobic technology (UASB, IC, or EGSB). Includes biogas collection, flare, and heat exchanger for temperature control.",
+        isOverridden: false,
+        isLocked: false,
+      });
+    }
+
+    if (stage.type === "chemical_precipitation") {
+      const chemDose = criteria.chemicalDose?.value || 200;
+      const doseRate = chemDose * flowMGD * 8.34;
+      const settlingRate = criteria.settlingRate?.value || 600;
+      const clarArea = flowGPD / settlingRate;
+
+      equipment.push({
+        id: makeId(),
+        process: "Industrial Pretreatment - Chemical Precipitation",
+        equipmentType: "Rapid Mix / Flocculation Tank",
+        description: "Chemical feed, rapid mix, and flocculation system for metals/solids precipitation",
+        quantity: 1,
+        specs: (() => {
+          const mixVolGal = flowGPM * 2;
+          const flocVolGal = flowGPM * 20;
+          const flocDims = rectDimensions(flocVolGal, 12);
+          return {
+            chemicalDose: { value: String(chemDose), unit: "mg/L" },
+            chemicalFeedRate: { value: String(roundTo(doseRate)), unit: "lb/day" },
+            targetPh: { value: String(criteria.targetPh?.value || 8.5), unit: "pH" },
+            mixingIntensity: { value: String(criteria.mixingIntensity?.value || 300), unit: "s⁻¹" },
+            rapidMixVolume: { value: String(roundTo(mixVolGal)), unit: "gal" },
+            flocculationVolume: { value: String(roundTo(flocVolGal)), unit: "gal" },
+            dimensionsL: { value: String(flocDims.length), unit: "ft" },
+            dimensionsW: { value: String(flocDims.width), unit: "ft" },
+            dimensionsH: { value: String(flocDims.height), unit: "ft" },
+            power: { value: String(roundTo(flocVolGal / 5000 + 2)), unit: "HP" },
+          };
+        })(),
+        designBasis: `${chemDose} mg/L dose, G = ${criteria.mixingIntensity?.value || 300} s⁻¹, 20-min flocculation`,
+        notes: "Includes chemical storage tanks, metering pumps, pH control, and polymer system",
+        isOverridden: false,
+        isLocked: false,
+      });
+
+      equipment.push({
+        id: makeId(),
+        process: "Industrial Pretreatment - Chemical Precipitation",
+        equipmentType: "Clarifier / Settling Basin",
+        description: "Circular clarifier for settling chemically precipitated solids",
+        quantity: Math.max(1, Math.ceil(clarArea / 2000)),
+        specs: (() => {
+          const numClarifiers = Math.max(1, Math.ceil(clarArea / 2000));
+          const unitArea = clarArea / numClarifiers;
+          const clarDia = roundTo(Math.sqrt(unitArea * 4 / Math.PI));
+          const clarDepth = 12;
+          const clarVolGal = roundTo(Math.PI * Math.pow(clarDia / 2, 2) * clarDepth * 7.481);
+          return {
+            settlingRate: { value: String(settlingRate), unit: "gpd/sf" },
+            surfaceArea: { value: String(roundTo(unitArea)), unit: "sf" },
+            diameter: { value: String(clarDia), unit: "ft" },
+            sidewaterDepth: { value: String(clarDepth), unit: "ft" },
+            volume: { value: String(clarVolGal), unit: "gal" },
+            dimensionsL: { value: String(clarDia), unit: "ft (dia)" },
+            dimensionsW: { value: String(clarDia), unit: "ft (dia)" },
+            dimensionsH: { value: String(clarDepth), unit: "ft" },
+            power: { value: "2", unit: "HP" },
+          };
+        })(),
+        designBasis: `Settling rate = ${settlingRate} gpd/sf at average flow`,
+        notes: "Includes sludge scraper mechanism and scum baffle",
+        isOverridden: false,
+        isLocked: false,
+      });
+    }
+
     if (stage.type === "disinfection") {
       const ct = criteria.contactTime?.value || 30;
       const contactVolGal = flowGPM * ct;
@@ -675,26 +864,26 @@ export function calculateMassBalance(upif: UpifRecord): MassBalanceResults {
 
   const influent: StreamData = {
     flow: flowMGD,
-    bod: parseAnalyte(upif, "BOD", 250),
-    cod: parseAnalyte(upif, "COD", 500),
-    tss: parseAnalyte(upif, "TSS", 250),
-    tkn: parseAnalyte(upif, "TKN", 40),
-    tp: parseAnalyte(upif, "TP", 7),
-    fog: parseAnalyte(upif, "FOG", 100),
-    nh3: parseAnalyte(upif, "NH3", 25),
+    bod: parseAnalyte(upif, "BOD", 4000),
+    cod: parseAnalyte(upif, "COD", 8000),
+    tss: parseAnalyte(upif, "TSS", 1000),
+    tkn: parseAnalyte(upif, "TKN", 80),
+    tp: parseAnalyte(upif, "TP", 15),
+    fog: parseAnalyte(upif, "FOG", 500),
+    nh3: parseAnalyte(upif, "NH3", 50),
     no3: 0,
     unit: "mg/L",
   };
 
   const defaults = ["BOD", "COD", "TSS", "TKN", "TP", "FOG"];
-  const defaultVals = [250, 500, 250, 40, 7, 100];
+  const defaultVals = [4000, 8000, 1000, 80, 15, 500];
   const parsed = [influent.bod, influent.cod, influent.tss, influent.tkn, influent.tp, influent.fog];
   for (let i = 0; i < defaults.length; i++) {
     if (parsed[i] === defaultVals[i]) {
       assumptions.push({
         parameter: `Influent ${defaults[i]}`,
         value: `${defaultVals[i]} mg/L`,
-        source: "Typical municipal wastewater (WEF MOP 8)",
+        source: "Typical high-strength industrial wastewater (Ludwigson, Industrial Pretreatment Design)",
       });
     }
   }
