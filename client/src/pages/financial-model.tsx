@@ -56,7 +56,7 @@ function formatNumber(val: number): string {
 
 function formatPct(val: number | null): string {
   if (val === null || val === undefined) return "N/A";
-  return `${val.toFixed(1)}%`;
+  return `${(val * 100).toFixed(1)}%`;
 }
 
 function formatMoic(val: number): string {
