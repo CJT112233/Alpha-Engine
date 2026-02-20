@@ -52,7 +52,7 @@ import {
   ExternalLink,
   Loader2,
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Fragment } from "react";
 import { ElapsedTimer } from "@/components/elapsed-timer";
 import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData, ADProcessStage, MassBalanceOverrides, VendorList, VendorListItem } from "@shared/schema";
 import {
@@ -589,7 +589,7 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
     Object.keys(stage.inputStream || {}).forEach(k => allADParamKeys.add(k));
     Object.keys(stage.outputStream || {}).forEach(k => allADParamKeys.add(k));
   });
-  const adParamKeys = Array.from(allADParamKeys);
+  const adParamKeys = Array.from(allADParamKeys).sort();
 
   return (
     <div className="space-y-4">
@@ -616,25 +616,25 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
                   {wwParams.map(p => (
                     <TableRow key={p}>
                       <TableCell className="font-medium sticky left-0 bg-background z-10">{wwParamLabels[p]}</TableCell>
-                      <TableCell className="text-center">
-                        {stages.length > 0 ? (
-                          (() => {
-                            const val = stages[0].influent[p as keyof StreamData] as number;
-                            const fieldKey = `stages.0.influent.${p}`;
-                            return (
-                              <EditableTableCell
-                                fieldKey={fieldKey}
-                                displayValue={val}
-                                decimals={p === "flow" ? 4 : 1}
-                                isLocked={!!locks[fieldKey]}
-                                isOverridden={!!overrides[fieldKey]}
-                                onSaveOverride={onSaveOverride}
-                                onToggleLock={onToggleLock}
-                              />
-                            );
-                          })()
-                        ) : "\u2014"}
-                      </TableCell>
+                      {stages.length > 0 ? (
+                        (() => {
+                          const val = stages[0].influent[p as keyof StreamData] as number;
+                          const fieldKey = `stages.0.influent.${p}`;
+                          return (
+                            <EditableTableCell
+                              fieldKey={fieldKey}
+                              displayValue={val}
+                              decimals={p === "flow" ? 4 : 1}
+                              isLocked={!!locks[fieldKey]}
+                              isOverridden={!!overrides[fieldKey]}
+                              onSaveOverride={onSaveOverride}
+                              onToggleLock={onToggleLock}
+                            />
+                          );
+                        })()
+                      ) : (
+                        <TableCell className="text-center text-muted-foreground">{"\u2014"}</TableCell>
+                      )}
                       {stages.map((stage, i) => {
                         const val = stage.effluent[p as keyof StreamData] as number;
                         const fieldKey = `stages.${i}.effluent.${p}`;
@@ -682,10 +682,10 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
                   <TableRow>
                     <TableHead className="sticky left-0 bg-background z-10" />
                     {adStages.map((_, i) => (
-                      <>{/* Fragment for paired sub-headers */}
-                        <TableHead key={`in-${i}`} className="text-center text-xs text-muted-foreground">In</TableHead>
-                        <TableHead key={`out-${i}`} className="text-center text-xs text-muted-foreground">Out</TableHead>
-                      </>
+                      <Fragment key={`subhdr-${i}`}>
+                        <TableHead className="text-center text-xs text-muted-foreground">In</TableHead>
+                        <TableHead className="text-center text-xs text-muted-foreground">Out</TableHead>
+                      </Fragment>
                     ))}
                   </TableRow>
                 </TableHeader>
@@ -706,15 +706,16 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
                         const outVal = stage.outputStream?.[paramKey];
                         const inFieldKey = `adStages.${i}.inputStream.${paramKey}`;
                         const outFieldKey = `adStages.${i}.outputStream.${paramKey}`;
-                        const inStr = inVal?.value !== undefined ? (typeof inVal.value === 'number' ? inVal.value.toLocaleString() : String(inVal.value)) : "\u2014";
-                        const outStr = outVal?.value !== undefined ? (typeof outVal.value === 'number' ? outVal.value.toLocaleString() : String(outVal.value)) : "\u2014";
+                        const inIsNumeric = inVal?.value !== undefined && typeof inVal.value === 'number';
+                        const outIsNumeric = outVal?.value !== undefined && typeof outVal.value === 'number';
+                        const inDisplay = inVal?.value !== undefined ? (inIsNumeric ? (inVal.value as number).toLocaleString() : String(inVal.value)) : "\u2014";
+                        const outDisplay = outVal?.value !== undefined ? (outIsNumeric ? (outVal.value as number).toLocaleString() : String(outVal.value)) : "\u2014";
                         return (
-                          <>{/* Fragment for paired cells */}
-                            {inVal?.value !== undefined ? (
+                          <Fragment key={`${paramKey}-${i}`}>
+                            {inIsNumeric ? (
                               <EditableTableCell
-                                key={`in-${i}`}
                                 fieldKey={inFieldKey}
-                                displayValue={typeof inVal.value === 'number' ? inVal.value : parseFloat(String(inVal.value)) || 0}
+                                displayValue={inVal.value as number}
                                 decimals={1}
                                 isLocked={!!locks[inFieldKey]}
                                 isOverridden={!!overrides[inFieldKey]}
@@ -722,13 +723,12 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
                                 onToggleLock={onToggleLock}
                               />
                             ) : (
-                              <TableCell key={`in-${i}`} className="text-center text-muted-foreground">{inStr}</TableCell>
+                              <TableCell className="text-center text-muted-foreground">{inDisplay}</TableCell>
                             )}
-                            {outVal?.value !== undefined ? (
+                            {outIsNumeric ? (
                               <EditableTableCell
-                                key={`out-${i}`}
                                 fieldKey={outFieldKey}
-                                displayValue={typeof outVal.value === 'number' ? outVal.value : parseFloat(String(outVal.value)) || 0}
+                                displayValue={outVal.value as number}
                                 decimals={1}
                                 isLocked={!!locks[outFieldKey]}
                                 isOverridden={!!overrides[outFieldKey]}
@@ -736,9 +736,9 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
                                 onToggleLock={onToggleLock}
                               />
                             ) : (
-                              <TableCell key={`out-${i}`} className="text-center text-muted-foreground">{outStr}</TableCell>
+                              <TableCell className="text-center text-muted-foreground">{outDisplay}</TableCell>
                             )}
-                          </>
+                          </Fragment>
                         );
                       })}
                     </TableRow>
