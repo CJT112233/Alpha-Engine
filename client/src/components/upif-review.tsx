@@ -1368,50 +1368,82 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
                 : "Review and confirm individual line items, then re-generate to update only unconfirmed fields"}
             </CardDescription>
           </div>
-          {!isConfirmed && !isEditing && (
-            <div className="flex gap-2 flex-wrap">
-              {confirmedCount > 0 && (
+          {!isEditing && (
+            <div className="flex gap-2 flex-wrap items-center">
+              {!isConfirmed && confirmedCount > 0 && (
                 <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-700 dark:text-green-400">
                   <Lock className="h-3 w-3 mr-1" />
                   {confirmedCount} confirmed
                 </Badge>
               )}
-              <Button
-                variant="outline"
-                onClick={() => extractParametersMutation.mutate()}
-                disabled={extractParametersMutation.isPending}
-                data-testid="button-regenerate-upif"
-              >
-                <Sparkles className="h-4 w-4 mr-2" />
-                {extractParametersMutation.isPending ? "Regenerating..." : "Re-generate"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  form.reset({
-                    outputRequirements: upif?.outputRequirements || "",
-                    location: upif?.location || "",
-                    constraints: upif?.constraints?.join("\n") || "",
-                  });
-                  setFeedstockEdits({});
-                  setFeedstockSpecEdits({});
-                  setFeedstockSourceEdits({});
-                  setFeedstockNoteEdits({});
-                  setDeletedFeedstockIndices(new Set());
-                  setDeletedFeedstockSpecs({});
-                  setOutputSpecEdits({});
-                  setOutputNoteEdits({});
-                  setDeletedOutputSpecs({});
-                  setNewFeedstockSpecs({});
-                  setNewOutputSpecs({});
-                  setNewFeedstockEntries([]);
-                  setIsEditing(true);
-                }}
-                data-testid="button-edit-upif"
-              >
-                <Edit2 className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
+              {!isConfirmed && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => extractParametersMutation.mutate()}
+                    disabled={extractParametersMutation.isPending}
+                    data-testid="button-regenerate-upif"
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    {extractParametersMutation.isPending ? "Regenerating..." : "Re-generate"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      form.reset({
+                        outputRequirements: upif?.outputRequirements || "",
+                        location: upif?.location || "",
+                        constraints: upif?.constraints?.join("\n") || "",
+                      });
+                      setFeedstockEdits({});
+                      setFeedstockSpecEdits({});
+                      setFeedstockSourceEdits({});
+                      setFeedstockNoteEdits({});
+                      setDeletedFeedstockIndices(new Set());
+                      setDeletedFeedstockSpecs({});
+                      setOutputSpecEdits({});
+                      setOutputNoteEdits({});
+                      setDeletedOutputSpecs({});
+                      setNewFeedstockSpecs({});
+                      setNewOutputSpecs({});
+                      setNewFeedstockEntries([]);
+                      setIsEditing(true);
+                    }}
+                    data-testid="button-edit-upif"
+                  >
+                    <Edit2 className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                </>
+              )}
+              {upif && (
+                <Button
+                  variant="outline"
+                  onClick={handleExportPdf}
+                  disabled={isExportingPdf}
+                  data-testid="button-export-pdf"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {isExportingPdf ? "Exporting..." : "Export PDF"}
+                </Button>
+              )}
+              {isExportingPdf && (
+                <AiThinking isActive={true} label="Generating PDF..." compact />
+              )}
+              {upif && !isConfirmed && (
+                <Button
+                  onClick={() => {
+                    if (confirm("Are you sure you want to confirm this UPIF? This will lock the scenario.")) {
+                      confirmUpifMutation.mutate();
+                    }
+                  }}
+                  disabled={confirmUpifMutation.isPending}
+                  data-testid="button-confirm-upif"
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  {confirmUpifMutation.isPending ? "Confirming..." : "Confirm UPIF"}
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -2145,44 +2177,12 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
           </div>
         )}
       </CardContent>
-      {!isEditing && upif && (
-        <CardFooter className="border-t pt-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 w-full">
-            <div className="text-sm text-muted-foreground">
-              {!isConfirmed
-                ? confirmedCount > 0
-                  ? `${confirmedCount} item(s) confirmed. Re-generating will preserve confirmed values and update the rest.`
-                  : "Lock individual items to preserve them during re-generation. Confirming the entire UPIF will finalize the scenario."
-                : "This UPIF has been confirmed and locked."}
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button
-                variant="outline"
-                onClick={handleExportPdf}
-                disabled={isExportingPdf}
-                data-testid="button-export-pdf"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                {isExportingPdf ? "Exporting..." : "Export PDF"}
-              </Button>
-              {isExportingPdf && (
-                <AiThinking isActive={true} label="Generating PDF..." compact />
-              )}
-              {!isConfirmed && (
-                <Button
-                  onClick={() => {
-                    if (confirm("Are you sure you want to confirm this UPIF? This will lock the scenario.")) {
-                      confirmUpifMutation.mutate();
-                    }
-                  }}
-                  disabled={confirmUpifMutation.isPending}
-                  data-testid="button-confirm-upif"
-                >
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  {confirmUpifMutation.isPending ? "Confirming..." : "Confirm UPIF"}
-                </Button>
-              )}
-            </div>
+      {!isEditing && upif && !isConfirmed && (
+        <CardFooter className="border-t pt-4">
+          <div className="text-sm text-muted-foreground">
+            {confirmedCount > 0
+              ? `${confirmedCount} item(s) confirmed. Re-generating will preserve confirmed values and update the rest.`
+              : "Lock individual items to preserve them during re-generation. Confirming the entire UPIF will finalize the scenario."}
           </div>
         </CardFooter>
       )}
