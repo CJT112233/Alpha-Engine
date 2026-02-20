@@ -60,7 +60,11 @@ export interface LLMCompletionResult {
 }
 
 // OpenAI client initialization - used for GPT-5 requests
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// Extended timeout (5 min) to handle large mass balance / capex generations
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  timeout: 300000,
+});
 
 /**
  * Anthropic Client Initialization Strategy
@@ -343,12 +347,16 @@ async function completeWithClaude(
     console.log(`LLM: Calling Anthropic (fallback) model=${modelId} provider=${provider} maxTokens=${maxTokens} jsonMode=${jsonMode}`);
   }
 
-  const response = await client.messages.create({
+  // Use streaming to avoid Anthropic SDK's "Streaming is required for operations
+  // that may take longer than 10 minutes" error on large generations
+  const stream = client.messages.stream({
     model: modelId,
     max_tokens: maxTokens,
     ...(effectiveSystemText ? { system: effectiveSystemText } : {}),
     messages: claudeMessages,
   });
+
+  const response = await stream.finalMessage();
 
   console.log(`LLM: Anthropic response stop_reason=${response.stop_reason} content_blocks=${response.content.length} types=${response.content.map(b => b.type).join(",")}`);
 

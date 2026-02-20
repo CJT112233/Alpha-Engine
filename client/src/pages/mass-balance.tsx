@@ -1268,8 +1268,22 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
 
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/scenarios/${scenarioId}/mass-balance/generate`);
-      return res.json();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000);
+      try {
+        const res = await fetch(`/api/scenarios/${scenarioId}/mass-balance/generate`, {
+          method: "POST",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || res.statusText);
+        }
+        return res.json();
+      } finally {
+        clearTimeout(timeoutId);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "mass-balance"] });
@@ -1282,8 +1296,22 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
 
   const recomputeMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/mass-balance/${latestRun!.id}/recompute`);
-      return res.json();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000);
+      try {
+        const res = await fetch(`/api/mass-balance/${latestRun!.id}/recompute`, {
+          method: "POST",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || res.statusText);
+        }
+        return res.json();
+      } finally {
+        clearTimeout(timeoutId);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "mass-balance"] });
