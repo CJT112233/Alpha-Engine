@@ -13,7 +13,7 @@ const DEFAULT_ASSUMPTIONS: FinancialAssumptions = {
   projectLifeYears: 10,
   constructionMonths: 18,
   uptimePct: 0.98,
-  biogasGrowthRate: 0.02,
+  biogasGrowthRate: 0.0,
   rngPricePerMMBtu: 30,
   rngPriceEscalator: 0.02,
   rinPricePerRIN: 2.50,
