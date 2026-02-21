@@ -228,6 +228,118 @@ def _validate_opex_results(parsed: dict, total_project_capex: float = 0) -> dict
     }
 
 
+def _calculate_deterministic_line_items(
+    mb_results: dict,
+    capex_results: Optional[dict],
+    project_type: str,
+) -> dict:
+    line_items = []
+    skipped_categories = []
+    pt = project_type.lower()
+
+    total_equipment_cost = 0
+    if capex_results and isinstance(capex_results, dict):
+        capex_summary = capex_results.get("summary") or {}
+        total_equipment_cost = capex_summary.get("totalEquipmentCost", 0)
+
+    if total_equipment_cost > 0:
+        maintenance_rate = 0.03 if pt == "a" else 0.04
+        maintenance_cost = round(total_equipment_cost * maintenance_rate)
+        line_items.append({
+            "id": f"opex-det-maintenance",
+            "category": "Maintenance",
+            "description": f"Annual maintenance & repairs ({int(maintenance_rate * 100)}% of equipment CapEx)",
+            "annualCost": maintenance_cost,
+            "unitCost": None,
+            "unitBasis": None,
+            "scalingBasis": f"${total_equipment_cost:,.0f} equipment cost",
+            "percentOfRevenue": None,
+            "costBasis": f"Deterministic: {int(maintenance_rate * 100)}% of total equipment CapEx",
+            "source": "WEF MOP 8 / industry benchmark",
+            "notes": "",
+            "isOverridden": False,
+            "isLocked": False,
+        })
+        skipped_categories.append("Maintenance")
+
+    power_keys = ["power", "motor", "hp", "installed power", "rated power", "brake horsepower"]
+    total_kw = 0.0
+    equipment = mb_results.get("equipment") or []
+    if isinstance(equipment, list):
+        for eq in equipment:
+            specs = eq.get("specs") or {}
+            if not isinstance(specs, dict):
+                continue
+            best_kw = 0.0
+            for key, spec in specs.items():
+                key_lower = key.lower()
+                if not any(pk in key_lower for pk in power_keys):
+                    continue
+                if not isinstance(spec, dict):
+                    continue
+                try:
+                    num_val = float(str(spec.get("value", "0")).replace(",", ""))
+                except (ValueError, TypeError):
+                    continue
+                if num_val <= 0:
+                    continue
+                unit_lower = (spec.get("unit") or "").lower()
+                if "hp" in unit_lower or "horsepower" in unit_lower:
+                    kw = num_val * 0.7457
+                elif "mw" in unit_lower:
+                    kw = num_val * 1000
+                elif "kw" in unit_lower:
+                    kw = num_val
+                elif "w" in unit_lower:
+                    kw = num_val / 1000
+                else:
+                    kw = num_val * 0.7457
+                if kw > best_kw:
+                    best_kw = kw
+            total_kw += best_kw * (eq.get("quantity") or 1)
+
+    if total_kw > 0:
+        load_factor = 0.75
+        hours_per_year = 8760
+        electricity_rate = 0.08
+        annual_energy_cost = round(total_kw * load_factor * hours_per_year * electricity_rate)
+        line_items.append({
+            "id": f"opex-det-energy",
+            "category": "Energy",
+            "description": f"Electrical power ({round(total_kw)} kW installed, 75% load factor, $0.08/kWh)",
+            "annualCost": annual_energy_cost,
+            "unitCost": electricity_rate,
+            "unitBasis": "$/kWh",
+            "scalingBasis": f"{round(total_kw)} kW installed capacity",
+            "percentOfRevenue": None,
+            "costBasis": "Deterministic: equipment HP specs from mass balance × $0.08/kWh",
+            "source": "EIA national average electricity rate",
+            "notes": "",
+            "isOverridden": False,
+            "isLocked": False,
+        })
+        skipped_categories.append("Energy")
+
+    return {"lineItems": line_items, "skippedCategories": skipped_categories}
+
+
+def _repair_truncated_json(raw: str):
+    s = raw.strip()
+    for _ in range(20):
+        open_braces = s.count("{") - s.count("}")
+        open_brackets = s.count("[") - s.count("]")
+        if open_braces == 0 and open_brackets == 0:
+            break
+        s = re.sub(r",\s*$", "", s)
+        if open_brackets > 0:
+            s += "]"
+        elif open_braces > 0:
+            s += "}"
+        else:
+            break
+    return json.loads(s)
+
+
 async def generate_opex_with_ai(
     upif: dict,
     mb_results: dict,
@@ -252,6 +364,16 @@ async def generate_opex_with_ai(
     upif_context = build_upif_context_string(upif)
     capex_data = build_capex_data_string(capex_results)
 
+    det_result = _calculate_deterministic_line_items(mb_results, capex_results, normalized_type)
+    deterministic_items = det_result["lineItems"]
+    skipped_categories = det_result["skippedCategories"]
+
+    if deterministic_items:
+        logger.info(
+            "OpEx AI: Pre-calculated %d deterministic line items (%s)",
+            len(deterministic_items), ", ".join(skipped_categories),
+        )
+
     system_prompt = (
         prompt_template
         .replace("{{EQUIPMENT_DATA}}", equipment_data)
@@ -264,13 +386,30 @@ async def generate_opex_with_ai(
         normalized_type.upper(), model, prompt_key,
     )
 
+    skip_note = ""
+    if skipped_categories:
+        skip_note = (
+            f" NOTE: The following cost categories have been pre-calculated from engineering data "
+            f"and must be EXCLUDED from your response — do NOT generate line items for: "
+            f"{', '.join(skipped_categories)}."
+        )
+
+    is_opus = model == "claude-opus"
+    max_tokens = 16384 if is_opus else 32768
+    user_msg = (
+        "Generate a complete annual operating expenditure estimate based on the mass balance "
+        "equipment list, project data, and capital cost estimate provided. Return valid JSON only. "
+        "Keep the response concise to stay within output limits."
+        + skip_note
+    )
+
     response = await llm_complete(
         model=model,
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": "Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only."},
+            {"role": "user", "content": user_msg},
         ],
-        max_tokens=16384,
+        max_tokens=max_tokens,
         json_mode=True,
     )
 
@@ -281,8 +420,29 @@ async def generate_opex_with_ai(
     try:
         parsed = json.loads(raw_content)
     except json.JSONDecodeError as e:
-        logger.error("OpEx AI: Failed to parse JSON: %s", raw_content[:500])
-        raise RuntimeError(f"AI returned invalid JSON. Parse error: {e}")
+        logger.warning("OpEx AI: Initial JSON parse failed, attempting truncation repair...")
+        try:
+            parsed = _repair_truncated_json(raw_content)
+            logger.info("OpEx AI: Successfully repaired truncated JSON")
+        except (json.JSONDecodeError, Exception) as repair_err:
+            logger.error("OpEx AI: Failed to parse or repair JSON: %s", raw_content[:500])
+            raise RuntimeError(f"AI returned invalid JSON. Parse error: {e}")
+
+    if deterministic_items:
+        ai_line_items = parsed.get("lineItems") or []
+        filtered_ai = []
+        if isinstance(ai_line_items, list):
+            for item in ai_line_items:
+                cat = _categorize_line_item(item)
+                if cat in skipped_categories:
+                    continue
+                desc = ((item.get("description") or "") + " " + (item.get("category") or "")).lower()
+                if "Maintenance" in skipped_categories and ("mainten" in desc or "repair" in desc):
+                    continue
+                if "Energy" in skipped_categories and ("energy" in desc or "electric" in desc or "power cost" in desc):
+                    continue
+                filtered_ai.append(item)
+        parsed["lineItems"] = deterministic_items + filtered_ai
 
     total_project_capex = 0
     if capex_results and isinstance(capex_results, dict):

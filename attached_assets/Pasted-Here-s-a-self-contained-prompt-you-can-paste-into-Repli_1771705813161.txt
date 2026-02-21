@@ -1,0 +1,52 @@
+Here's a self-contained prompt you can paste into Replit:
+
+---
+
+**Fix OpEx estimate generation failures — hybrid deterministic + AI approach**
+
+**Problem:**
+OpEx estimates fail consistently because the AI response exceeds the 16,384-token output limit, returning truncated/invalid JSON. `JSON.parse()` then throws immediately with no recovery, causing every attempt on the same scenario to fail.
+
+**Root cause file:** `server/services/opexAI.ts`
+- Line 246: `maxTokens: 16384` (too low for complex projects)
+- Lines 255–261: no JSON repair fallback — bare throw on parse failure
+
+---
+
+**Fix: Hybrid approach — pre-calculate maintenance and energy deterministically, then ask the AI to skip those categories**
+
+**Changes to `server/services/opexAI.ts`:**
+
+1. **Add `calculateDeterministicLineItems()` function** before `validateOpexResults()`. It should:
+   - Calculate a **Maintenance** line item as `totalEquipmentCost × maintenanceRate` where `maintenanceRate = 0.03` for Type A and `0.04` for Types B/C/D. Only add this if `capexResults?.summary?.totalEquipmentCost > 0`. Label it with `costBasis: "Deterministic: X% of total equipment CapEx"`, `source: "WEF MOP 8 / industry benchmark"`.
+   - Calculate an **Energy** line item by scanning `massBalanceResults.equipment[].specs` for any key containing "power", "motor", "hp", "installed power", or "rated power". Convert HP to kW (`× 0.7457`). If total kW > 0, calculate `annualCost = totalKw × 0.75 (load factor) × 8760 hrs × $0.08/kWh`. Label it with `costBasis: "Deterministic: equipment HP specs from mass balance × $0.08/kWh"`, `source: "EIA national average electricity rate"`.
+   - Return `{ lineItems: OpexLineItem[], skippedCategories: string[] }` where `skippedCategories` lists the category names for which items were calculated (e.g., `["Maintenance", "Energy"]`).
+
+2. **Add `repairTruncatedJSON()` function**:
+   ```typescript
+   function repairTruncatedJSON(content: string): any {
+     let s = content.trimEnd().replace(/,\s*$/, "");
+     const opens = (s.match(/\{/g) ?? []).length - (s.match(/\}/g) ?? []).length;
+     const arrOpens = (s.match(/\[/g) ?? []).length - (s.match(/\]/g) ?? []).length;
+     for (let i = 0; i < arrOpens; i++) s += "]";
+     for (let i = 0; i < opens; i++) s += "}";
+     return JSON.parse(s);
+   }
+   ```
+
+3. **In `generateOpexWithAI()`**:
+   - After building `capexDataString` and before calling `llmComplete`, call `calculateDeterministicLineItems(massBalanceResults, capexResults, projectType)` to get `deterministicItems` and `skippedCategories`.
+   - Build a skip note: if `skippedCategories.length > 0`, append to the user message: `" NOTE: The following cost categories have been pre-calculated from engineering data and must be EXCLUDED from your response — do NOT generate line items for: Maintenance, Energy."` (replace with actual categories from `skippedCategories`).
+   - Change `maxTokens: 16384` → `maxTokens: 32768`.
+   - Replace the bare `JSON.parse` try/catch with: try `JSON.parse` first, on failure log a warning and try `repairTruncatedJSON`, on second failure throw with error message.
+   - After getting `parsed` from the AI, merge deterministic items first: pass `{ ...parsed, lineItems: [...deterministicItems, ...(parsed.lineItems ?? [])] }` to `validateOpexResults()`. The existing `validateOpexResults()` already recalculates all summary totals from line items, so the merge is automatic.
+
+4. **Also fix `server/services/capexAI.ts`** (same latent bug): change `maxTokens: 16384` → `32768` and add the same `repairTruncatedJSON` fallback pattern to its JSON parse block.
+
+5. **Also fix `databricks_app/services/opex_ai.py`** (Python equivalent): `max_tokens=16384` → `32_768`, add Python equivalents of `_calculate_deterministic_line_items()` and `_repair_truncated_json()`, same merge logic.
+
+**Expected outcome after fix:**
+- Maintenance and Energy line items are always calculated from real CapEx/equipment data (more accurate, no AI guessing)
+- AI only generates Labor, Chemicals, Disposal, Insurance, Admin, Revenue Offsets (~40% fewer tokens)
+- maxTokens doubled as safety net
+- JSON repair as last-resort fallback

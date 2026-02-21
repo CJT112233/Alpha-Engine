@@ -114,6 +114,98 @@ async function getPromptTemplate(key: PromptKey, storage?: any): Promise<string>
 
 const OPEX_CATEGORIES = ["Labor", "Energy", "Chemical", "Maintenance", "Disposal", "Other", "Revenue Offset"];
 
+interface DeterministicResult {
+  lineItems: OpexLineItem[];
+  skippedCategories: string[];
+}
+
+function calculateDeterministicLineItems(
+  massBalanceResults: MassBalanceResults,
+  capexResults: CapexResults | null,
+  projectType: string,
+): DeterministicResult {
+  const lineItems: OpexLineItem[] = [];
+  const skippedCategories: string[] = [];
+  const pt = projectType.toLowerCase();
+
+  const totalEquipmentCost = capexResults?.summary?.totalEquipmentCost || 0;
+  if (totalEquipmentCost > 0) {
+    const maintenanceRate = (pt === "a") ? 0.03 : 0.04;
+    const maintenanceCost = Math.round(totalEquipmentCost * maintenanceRate);
+    lineItems.push({
+      id: `opex-det-maintenance-${Math.random().toString(36).substring(2, 8)}`,
+      category: "Maintenance",
+      description: `Annual maintenance & repairs (${(maintenanceRate * 100).toFixed(0)}% of equipment CapEx)`,
+      annualCost: maintenanceCost,
+      unitCost: undefined,
+      unitBasis: undefined,
+      scalingBasis: `$${totalEquipmentCost.toLocaleString()} equipment cost`,
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: ${(maintenanceRate * 100).toFixed(0)}% of total equipment CapEx`,
+      source: "WEF MOP 8 / industry benchmark",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+    skippedCategories.push("Maintenance");
+  }
+
+  const powerKeys = ["power", "motor", "hp", "installed power", "rated power", "brake horsepower"];
+  let totalKw = 0;
+  if (massBalanceResults.equipment && massBalanceResults.equipment.length > 0) {
+    for (const eq of massBalanceResults.equipment) {
+      if (!eq.specs) continue;
+      let bestKw = 0;
+      for (const [key, spec] of Object.entries(eq.specs)) {
+        const keyLower = key.toLowerCase();
+        if (!powerKeys.some(pk => keyLower.includes(pk))) continue;
+        const numVal = parseFloat(String(spec.value).replace(/,/g, ""));
+        if (isNaN(numVal) || numVal <= 0) continue;
+        const unitLower = (spec.unit || "").toLowerCase();
+        let kw = 0;
+        if (unitLower.includes("hp") || unitLower.includes("horsepower")) {
+          kw = numVal * 0.7457;
+        } else if (unitLower.includes("mw")) {
+          kw = numVal * 1000;
+        } else if (unitLower.includes("kw")) {
+          kw = numVal;
+        } else if (unitLower.includes("w")) {
+          kw = numVal / 1000;
+        } else {
+          kw = numVal * 0.7457;
+        }
+        if (kw > bestKw) bestKw = kw;
+      }
+      totalKw += bestKw * (eq.quantity || 1);
+    }
+  }
+
+  if (totalKw > 0) {
+    const loadFactor = 0.75;
+    const hoursPerYear = 8760;
+    const electricityRate = 0.08;
+    const annualEnergyCost = Math.round(totalKw * loadFactor * hoursPerYear * electricityRate);
+    lineItems.push({
+      id: `opex-det-energy-${Math.random().toString(36).substring(2, 8)}`,
+      category: "Energy",
+      description: `Electrical power (${Math.round(totalKw)} kW installed, 75% load factor, $0.08/kWh)`,
+      annualCost: annualEnergyCost,
+      unitCost: electricityRate,
+      unitBasis: "$/kWh",
+      scalingBasis: `${Math.round(totalKw)} kW installed capacity`,
+      percentOfRevenue: undefined,
+      costBasis: "Deterministic: equipment HP specs from mass balance × $0.08/kWh",
+      source: "EIA national average electricity rate",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+    skippedCategories.push("Energy");
+  }
+
+  return { lineItems, skippedCategories };
+}
+
 function categorizeLineItem(item: any): string {
   const cat = (item.category || "").toLowerCase();
   if (cat.includes("labor") || cat.includes("staff") || cat.includes("personnel")) return "Labor";
@@ -257,6 +349,14 @@ export async function generateOpexWithAI(
   const upifContextString = buildUpifContextString(upif);
   const capexDataString = buildCapexDataString(capexResults);
 
+  const { lineItems: deterministicItems, skippedCategories } = calculateDeterministicLineItems(
+    massBalanceResults, capexResults, normalizedType
+  );
+
+  if (deterministicItems.length > 0) {
+    console.log(`OpEx AI: Pre-calculated ${deterministicItems.length} deterministic line items (${skippedCategories.join(", ")})`);
+  }
+
   const systemPrompt = promptTemplate
     .replace("{{EQUIPMENT_DATA}}", equipmentDataString)
     .replace("{{UPIF_DATA}}", upifContextString)
@@ -264,11 +364,15 @@ export async function generateOpexWithAI(
 
   console.log(`OpEx AI: Generating for project type ${normalizedType.toUpperCase()} using ${model} (prompt: ${promptKey})`);
 
+  const skipNote = skippedCategories.length > 0
+    ? ` NOTE: The following cost categories have been pre-calculated from engineering data and must be EXCLUDED from your response — do NOT generate line items for: ${skippedCategories.join(", ")}.`
+    : "";
+
   const isOpus = model === "claude-opus";
   const opexMaxTokens = isOpus ? 16384 : 32768;
   const opexUserMsg = isOpus
-    ? `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. CRITICAL: Keep descriptions and notes extremely concise to reduce output size and prevent timeout.`
-    : `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep the response concise to stay within output limits.`;
+    ? `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. CRITICAL: Keep descriptions and notes extremely concise to reduce output size and prevent timeout.${skipNote}`
+    : `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep the response concise to stay within output limits.${skipNote}`;
 
   const response = await llmComplete({
     model,
@@ -297,6 +401,19 @@ export async function generateOpexWithAI(
       console.error("OpEx AI: Failed to parse or repair JSON response:", rawContent.substring(0, 500));
       throw new Error(`AI returned invalid JSON. Parse error: ${(parseError as Error).message}`);
     }
+  }
+
+  if (deterministicItems.length > 0) {
+    const aiLineItems = Array.isArray(parsed.lineItems) ? parsed.lineItems : [];
+    const filteredAiItems = aiLineItems.filter((item: any) => {
+      const cat = categorizeLineItem(item);
+      if (skippedCategories.includes(cat)) return false;
+      const desc = ((item.description || "") + " " + (item.category || "")).toLowerCase();
+      if (skippedCategories.includes("Maintenance") && (desc.includes("mainten") || desc.includes("repair"))) return false;
+      if (skippedCategories.includes("Energy") && (desc.includes("energy") || desc.includes("electric") || desc.includes("power cost"))) return false;
+      return true;
+    });
+    parsed.lineItems = [...deterministicItems, ...filteredAiItems];
   }
 
   const totalProjectCapex = capexResults?.summary?.totalProjectCost || 0;
