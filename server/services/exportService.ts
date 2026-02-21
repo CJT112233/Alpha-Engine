@@ -742,12 +742,16 @@ export function exportProjectSummaryPDF(
     const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
     let pageNum = 1;
 
+    let addingFooter = false;
     const addPageFooter = () => {
+      if (addingFooter) return;
+      addingFooter = true;
       doc.font("Helvetica").fontSize(7).fillColor("#999999")
-        .text("Confidential", leftMargin, 750, { width: contentWidth, align: "center" });
+        .text("Confidential", leftMargin, 750, { width: contentWidth, align: "center", lineBreak: false });
       doc.font("Helvetica").fontSize(7).fillColor("#999999")
-        .text(`Page ${pageNum}`, leftMargin, 760, { width: contentWidth, align: "center" });
+        .text(`Page ${pageNum}`, leftMargin, 760, { width: contentWidth, align: "center", lineBreak: false });
       pageNum++;
+      addingFooter = false;
     };
 
     doc.on("pageAdded", () => {
