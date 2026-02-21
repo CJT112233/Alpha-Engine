@@ -156,7 +156,14 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
         });
         if (!res.ok) {
           const text = await res.text();
-          throw new Error(text || res.statusText);
+          let errorMsg = res.statusText;
+          try {
+            const parsed = JSON.parse(text);
+            errorMsg = parsed.error || parsed.message || text;
+          } catch {
+            errorMsg = text || res.statusText;
+          }
+          throw new Error(errorMsg);
         }
         return res.json();
       } finally {

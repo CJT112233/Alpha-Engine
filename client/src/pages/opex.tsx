@@ -272,7 +272,9 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
         });
         if (!res.ok) {
           const text = await res.text();
-          throw new Error(text || res.statusText);
+          let errorMsg = res.statusText;
+          try { const p = JSON.parse(text); errorMsg = p.error || p.message || text; } catch { errorMsg = text || res.statusText; }
+          throw new Error(errorMsg);
         }
         return res.json();
       } finally {
