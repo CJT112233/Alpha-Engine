@@ -6,6 +6,7 @@ import {
   DEFAULT_COMMERCIAL_ITEMS,
   DEFAULT_INTERCONNECT,
   DEFAULT_FIELD_TECHNICIANS,
+  DEFAULT_BURNHAM_INTERNAL_COSTS,
   type CapexSizeTier,
 } from "@shared/capex-pricing-library";
 
@@ -401,25 +402,184 @@ export function generateCapexDeterministic(
   const totalEPC = subtotalEquipment + totalConstructionDirects + subtotalConstMgmt + subtotalInterconnect;
 
   const comm = DEFAULT_COMMERCIAL_ITEMS;
+  const ic = DEFAULT_BURNHAM_INTERNAL_COSTS;
   const escalationPct = options.escalationPct ?? comm.escalationPct;
   const contingencyPct = options.contingencyPct ?? comm.contingencyPctOfEpc;
 
-  const insuranceComm = Math.round(totalEPC * comm.insurancePctOfEpc / 100);
+  const pm = ic.projectManagement;
+  const pmTotal = pm.capitalTeamSitePersonnel + pm.rduDcMgmtExpenses +
+    pm.tempConstructionFacilities + pm.thirdPartyEngineeringSupport +
+    pm.constructionPpeFirstAid + pm.legalSupport;
+
+  lineItems.push({
+    id: makeId("projmgmt"),
+    equipmentId: "",
+    process: "Burnham Internal Costs",
+    equipmentType: "Project Management",
+    description: "Capital team site personnel, RDU/DC management, temp facilities, 3rd party engineering, PPE, legal",
+    quantity: 1,
+    baseCostPerUnit: pmTotal,
+    installationFactor: 1.0,
+    installedCost: pmTotal,
+    contingencyPct: 0,
+    contingencyCost: 0,
+    totalCost: pmTotal,
+    costBasis,
+    source: "Burnham Internal Costs Estimate",
+    notes: `Site Personnel: $${pm.capitalTeamSitePersonnel.toLocaleString()}, RDU/DC Mgmt: $${pm.rduDcMgmtExpenses.toLocaleString()}, Temp Facilities: $${pm.tempConstructionFacilities.toLocaleString()}, 3rd Party Eng: $${pm.thirdPartyEngineeringSupport.toLocaleString()}, PPE: $${pm.constructionPpeFirstAid.toLocaleString()}, Legal: $${pm.legalSupport.toLocaleString()}`,
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  const ops = ic.operationsDuringConstruction;
+  const opsTotal = ops.operationsStaffPreCod + ops.operationalAdjustments +
+    ops.operationsHandtools + ops.gasSamplingForQuality;
+
+  lineItems.push({
+    id: makeId("opsconst"),
+    equipmentId: "",
+    process: "Burnham Internal Costs",
+    equipmentType: "Operations During Construction",
+    description: "Operations staff pre-COD, operational adjustments, handtools, gas sampling",
+    quantity: 1,
+    baseCostPerUnit: opsTotal,
+    installationFactor: 1.0,
+    installedCost: opsTotal,
+    contingencyPct: 0,
+    contingencyCost: 0,
+    totalCost: opsTotal,
+    costBasis,
+    source: "Burnham Internal Costs Estimate",
+    notes: `Ops Staff pre-COD: $${ops.operationsStaffPreCod.toLocaleString()}, Adjustments: $${ops.operationalAdjustments.toLocaleString()}, Handtools: $${ops.operationsHandtools.toLocaleString()}, Gas Sampling: $${ops.gasSamplingForQuality.toLocaleString()}`,
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  const buildersRisk = Math.round(totalEPC * ic.insurance.buildersRiskPolicyPctOfEpc / 100);
+
+  lineItems.push({
+    id: makeId("insurance"),
+    equipmentId: "",
+    process: "Burnham Internal Costs",
+    equipmentType: "Builder's Risk Insurance",
+    description: `Builder's Risk Policy (${ic.insurance.buildersRiskPolicyPctOfEpc}% of EPC)`,
+    quantity: 1,
+    baseCostPerUnit: buildersRisk,
+    installationFactor: 1.0,
+    installedCost: buildersRisk,
+    contingencyPct: 0,
+    contingencyCost: 0,
+    totalCost: buildersRisk,
+    costBasis,
+    source: "Burnham Internal Costs Estimate",
+    notes: `${ic.insurance.buildersRiskPolicyPctOfEpc}% of EPC ($${totalEPC.toLocaleString()})`,
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  const ffTotal = ic.fixturesAndFurnishings.permanentOfficeFurnishings;
+
+  lineItems.push({
+    id: makeId("fixtures"),
+    equipmentId: "",
+    process: "Burnham Internal Costs",
+    equipmentType: "Fixtures & Furnishings",
+    description: "Permanent office furnishings",
+    quantity: 1,
+    baseCostPerUnit: ffTotal,
+    installationFactor: 1.0,
+    installedCost: ffTotal,
+    contingencyPct: 0,
+    contingencyCost: 0,
+    totalCost: ffTotal,
+    costBasis,
+    source: "Burnham Internal Costs Estimate",
+    notes: "",
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  lineItems.push({
+    id: makeId("spares"),
+    equipmentId: "",
+    process: "Burnham Internal Costs",
+    equipmentType: "Spare Parts",
+    description: "Spare parts inventory",
+    quantity: 1,
+    baseCostPerUnit: ic.spareParts,
+    installationFactor: 1.0,
+    installedCost: ic.spareParts,
+    contingencyPct: 0,
+    contingencyCost: 0,
+    totalCost: ic.spareParts,
+    costBasis,
+    source: "Burnham Internal Costs Estimate",
+    notes: "",
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  const util = ic.utilities;
+  const utilTotal = util.tempPower + util.permanentPower + util.natGas +
+    util.water + util.sewer + util.it + util.utilitiesDuringConstruction;
+
+  lineItems.push({
+    id: makeId("utilities"),
+    equipmentId: "",
+    process: "Burnham Internal Costs",
+    equipmentType: "Utilities",
+    description: "Temporary power, permanent power, IT, utilities during construction",
+    quantity: 1,
+    baseCostPerUnit: utilTotal,
+    installationFactor: 1.0,
+    installedCost: utilTotal,
+    contingencyPct: 0,
+    contingencyCost: 0,
+    totalCost: utilTotal,
+    costBasis,
+    source: "Burnham Internal Costs Estimate",
+    notes: `Temp Power: $${util.tempPower.toLocaleString()}, Permanent: $${util.permanentPower.toLocaleString()}, IT: $${util.it.toLocaleString()}, During Construction: $${util.utilitiesDuringConstruction.toLocaleString()}`,
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  lineItems.push({
+    id: makeId("ribbon"),
+    equipmentId: "",
+    process: "Burnham Internal Costs",
+    equipmentType: "Ribbon Cutting",
+    description: "Project ribbon cutting ceremony",
+    quantity: 1,
+    baseCostPerUnit: ic.ribbonCutting,
+    installationFactor: 1.0,
+    installedCost: ic.ribbonCutting,
+    contingencyPct: 0,
+    contingencyCost: 0,
+    totalCost: ic.ribbonCutting,
+    costBasis,
+    source: "Burnham Internal Costs Estimate",
+    notes: "",
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  const subtotalInternalCosts = pmTotal + opsTotal + buildersRisk + ffTotal +
+    ic.spareParts + utilTotal + ic.ribbonCutting;
+
   const devCosts = Math.round(totalEPC * comm.devCostsPctOfEpc / 100);
   const devFee = Math.round(totalEPC * comm.devFeePctOfEpc / 100);
   const contingency = Math.round(totalEPC * contingencyPct / 100);
   const escalationBase = subtotalEquipment + totalConstructionDirects;
   const escalation = Math.round(escalationBase * escalationPct / 100);
 
-  const totalCommercial = comm.utilityConnectionFee + insuranceComm + comm.projectDelivery +
-    devCosts + devFee + comm.opsDuringConstruction + comm.fixturesAndFurnishings + contingency;
+  const totalCommercial = comm.utilityConnectionFee + devCosts + devFee + contingency;
 
   lineItems.push({
     id: makeId("commercial"),
     equipmentId: "",
     process: "Commercial / Owner's Costs",
     equipmentType: "Commercial Items",
-    description: "Utility connection, insurance, project delivery, dev costs, ops during construction, contingency",
+    description: "Utility connection, development costs, contingency",
     quantity: 1,
     baseCostPerUnit: totalCommercial,
     installationFactor: 1.0,
@@ -429,7 +589,7 @@ export function generateCapexDeterministic(
     totalCost: totalCommercial,
     costBasis,
     source: "Burnham standard rates",
-    notes: `Utility: $${comm.utilityConnectionFee.toLocaleString()}, Insurance (${comm.insurancePctOfEpc}% EPC): $${insuranceComm.toLocaleString()}, Proj Delivery: $${comm.projectDelivery.toLocaleString()}, Dev (${comm.devCostsPctOfEpc}% EPC): $${devCosts.toLocaleString()}, Ops: $${comm.opsDuringConstruction.toLocaleString()}, F&F: $${comm.fixturesAndFurnishings.toLocaleString()}, Contingency (${contingencyPct}% EPC): $${contingency.toLocaleString()}`,
+    notes: `Utility: $${comm.utilityConnectionFee.toLocaleString()}, Dev (${comm.devCostsPctOfEpc}% EPC): $${devCosts.toLocaleString()}, Contingency (${contingencyPct}% EPC): $${contingency.toLocaleString()}`,
     isOverridden: false,
     isLocked: false,
   });
@@ -454,9 +614,10 @@ export function generateCapexDeterministic(
     isLocked: false,
   });
 
-  const totalCapex = totalEPC + totalCommercial + escalation;
-  const itcEligible = totalCapex - comm.utilityConnectionFee - comm.opsDuringConstruction -
-    comm.fixturesAndFurnishings - subtotalInterconnect;
+  const totalCapex = totalEPC + subtotalInternalCosts + totalCommercial + escalation;
+  const itcExclusions = comm.utilityConnectionFee + opsTotal + ffTotal +
+    ic.spareParts + ic.ribbonCutting + subtotalInterconnect;
+  const itcEligible = totalCapex - itcExclusions;
 
   const summary = {
     totalEquipmentCost: subtotalEquipment,
@@ -482,7 +643,8 @@ export function generateCapexDeterministic(
     { parameter: "Lateral Cost", value: `$${lateralCostPerMile.toLocaleString()}/mile`, source: "Pipeline utility estimates" },
     { parameter: "Contingency", value: `${contingencyPct}% of EPC`, source: "Burnham standard" },
     { parameter: "CPI Escalation", value: `${escalationPct}%`, source: "BLS CPI data" },
-    { parameter: "Insurance", value: `${comm.insurancePctOfEpc}% of EPC`, source: "McGriff/Marsh quotes" },
+    { parameter: "Builder's Risk Insurance", value: `${ic.insurance.buildersRiskPolicyPctOfEpc}% of EPC`, source: "Burnham Internal Costs Estimate" },
+    { parameter: "Internal Costs Subtotal", value: `$${subtotalInternalCosts.toLocaleString()}`, source: "Burnham Internal Costs Estimate" },
     { parameter: "Dev Costs", value: `${comm.devCostsPctOfEpc}% of EPC`, source: "Burnham standard" },
     { parameter: "Cost Year", value: "Feb 2026", source: "Burnham CapEx Model V5.1" },
     { parameter: "ITC Eligible CapEx", value: `$${itcEligible.toLocaleString()}`, source: "Calculated" },

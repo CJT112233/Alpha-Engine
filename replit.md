@@ -32,7 +32,7 @@ Unit conventions (US-based):
 - **Databricks Sync**: All configuration edits are automatically synced to Databricks.
 - **Generation Stats**: Tracks timing and metadata for all AI-generated documents (UPIF, Mass Balance, CapEx).
 - **AI-Powered Mass Balance**: Generates mass balances using LLMs for four project types, with deterministic calculators as fallback.
-- **Deterministic CapEx Estimation**: For RNG types (B/C/D), uses Burnham CapEx Model V5.1 with firm Prodeval pricing and BOP costs at 400/800/1200 SCFM tiers (with interpolation). Falls back to AI for Type A or flows >1,200 SCFM. See `shared/capex-pricing-library.ts` and `server/services/capexDeterministic.ts`.
+- **Deterministic CapEx Estimation**: For RNG types (B/C/D), uses Burnham CapEx Model V5.1 with firm Prodeval pricing and BOP costs at 400/800/1200 SCFM tiers (with interpolation). Includes Burnham Internal Costs (~$3.01M: Project Management, Ops During Construction, Builder's Risk Insurance 1.5% EPC, Fixtures & Furnishings, Spare Parts, Utilities, Ribbon Cutting). Falls back to AI for Type A or flows >1,200 SCFM. See `shared/capex-pricing-library.ts` and `server/services/capexDeterministic.ts`.
 - **AI-Powered OpEx Estimation**: Generates annual operating cost estimates from mass balance and CapEx data for all project types.
 - **Deterministic Financial Model**: 10-year pro-forma financial projections with editable assumptions (inflation, ITC, RIN pricing, debt financing), calculating IRR, NPV@10%, MOIC, and payback period. Available after CapEx+OpEx are confirmed.
 - **PDF & Excel Export**: Provides professional PDF and Excel export options for Mass Balance, CapEx, and OpEx reports.

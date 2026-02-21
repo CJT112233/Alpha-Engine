@@ -1636,6 +1636,16 @@ Return JSON in this exact format:
   "methodology": "AACE Class 4/5 factored estimate"
 }
 
+BURNHAM INTERNAL PROJECT COSTS — include as separate line items under process "Burnham Internal Costs":
+- Project Management (~$1,363,126): Capital team site personnel ($913,996), RDU/DC management ($187,950), temp construction facilities ($130,730), 3rd party engineering ($45,000), construction PPE ($25,450), legal ($60,000)
+- Operations During Construction (~$425,748): Ops staff pre-COD ($215,998), operational adjustments ($100,000), handtools ($17,500), gas sampling ($92,250)
+- Builder's Risk Insurance: 1.5% of total EPC cost
+- Fixtures & Furnishings: $247,150
+- Spare Parts: $653,552
+- Utilities (~$245,102): Temp power ($5,000), permanent power ($160,000), IT ($2,500), utilities during construction ($77,602)
+- Ribbon Cutting: $75,000
+Internal costs subtotal is approximately $3,009,677 (excluding Builder's Risk insurance multiplier).
+
 RULES:
 - All costs in USD with no decimal places for values > $1,000.
 - Equipment IDs must match the mass balance equipment IDs where applicable.
@@ -1731,6 +1741,16 @@ Return JSON in this exact format:
   "methodology": "AACE Class 4/5 factored estimate"
 }
 
+BURNHAM INTERNAL PROJECT COSTS — include as separate line items under process "Burnham Internal Costs":
+- Project Management (~$1,363,126): Capital team site personnel ($913,996), RDU/DC management ($187,950), temp construction facilities ($130,730), 3rd party engineering ($45,000), construction PPE ($25,450), legal ($60,000)
+- Operations During Construction (~$425,748): Ops staff pre-COD ($215,998), operational adjustments ($100,000), handtools ($17,500), gas sampling ($92,250)
+- Builder's Risk Insurance: 1.5% of total EPC cost
+- Fixtures & Furnishings: $247,150
+- Spare Parts: $653,552
+- Utilities (~$245,102): Temp power ($5,000), permanent power ($160,000), IT ($2,500), utilities during construction ($77,602)
+- Ribbon Cutting: $75,000
+Internal costs subtotal is approximately $3,009,677 (excluding Builder's Risk insurance multiplier).
+
 RULES:
 - All costs in USD, no decimals for values > $1,000.
 - Equipment IDs must match mass balance equipment IDs where applicable.
@@ -1825,6 +1845,16 @@ Return JSON in this exact format:
   "currency": "USD",
   "methodology": "AACE Class 4 factored estimate"
 }
+
+BURNHAM INTERNAL PROJECT COSTS — include as separate line items under process "Burnham Internal Costs":
+- Project Management (~$1,363,126): Capital team site personnel ($913,996), RDU/DC management ($187,950), temp construction facilities ($130,730), 3rd party engineering ($45,000), construction PPE ($25,450), legal ($60,000)
+- Operations During Construction (~$425,748): Ops staff pre-COD ($215,998), operational adjustments ($100,000), handtools ($17,500), gas sampling ($92,250)
+- Builder's Risk Insurance: 1.5% of total EPC cost
+- Fixtures & Furnishings: $247,150
+- Spare Parts: $653,552
+- Utilities (~$245,102): Temp power ($5,000), permanent power ($160,000), IT ($2,500), utilities during construction ($77,602)
+- Ribbon Cutting: $75,000
+Internal costs subtotal is approximately $3,009,677 (excluding Builder's Risk insurance multiplier).
 
 RULES:
 - Type C does NOT include digesters, feedstock handling, or sludge processing.
@@ -1930,6 +1960,16 @@ Return JSON in this exact format:
   "currency": "USD",
   "methodology": "AACE Class 4/5 factored estimate"
 }
+
+BURNHAM INTERNAL PROJECT COSTS — include as separate line items under process "Burnham Internal Costs":
+- Project Management (~$1,363,126): Capital team site personnel ($913,996), RDU/DC management ($187,950), temp construction facilities ($130,730), 3rd party engineering ($45,000), construction PPE ($25,450), legal ($60,000)
+- Operations During Construction (~$425,748): Ops staff pre-COD ($215,998), operational adjustments ($100,000), handtools ($17,500), gas sampling ($92,250)
+- Builder's Risk Insurance: 1.5% of total EPC cost
+- Fixtures & Furnishings: $247,150
+- Spare Parts: $653,552
+- Utilities (~$245,102): Temp power ($5,000), permanent power ($160,000), IT ($2,500), utilities during construction ($77,602)
+- Ribbon Cutting: $75,000
+Internal costs subtotal is approximately $3,009,677 (excluding Builder's Risk insurance multiplier).
 
 RULES:
 - Include equipment for BOTH wastewater and AD/RNG trains.

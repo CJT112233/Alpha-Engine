@@ -136,26 +136,107 @@ export const DEFAULT_CONSTRUCTION_INDIRECT_RATES: ConstructionIndirectRates = {
   epcProfitPct: 10.63,
 };
 
+export interface BurnhamInternalCosts {
+  projectManagement: {
+    capitalTeamSitePersonnel: number;
+    rduDcMgmtExpenses: number;
+    tempConstructionFacilities: number;
+    thirdPartyEngineeringSupport: number;
+    constructionPpeFirstAid: number;
+    legalSupport: number;
+  };
+  operationsDuringConstruction: {
+    operationsStaffPreCod: number;
+    operationalAdjustments: number;
+    operationsHandtools: number;
+    gasSamplingForQuality: number;
+  };
+  insurance: {
+    buildersRiskPolicyPctOfEpc: number;
+  };
+  fixturesAndFurnishings: {
+    permanentOfficeFurnishings: number;
+  };
+  spareParts: number;
+  utilities: {
+    tempPower: number;
+    permanentPower: number;
+    natGas: number;
+    water: number;
+    sewer: number;
+    it: number;
+    utilitiesDuringConstruction: number;
+  };
+  ribbonCutting: number;
+}
+
+export const DEFAULT_BURNHAM_INTERNAL_COSTS: BurnhamInternalCosts = {
+  projectManagement: {
+    capitalTeamSitePersonnel: 913_996,
+    rduDcMgmtExpenses: 187_950,
+    tempConstructionFacilities: 130_730,
+    thirdPartyEngineeringSupport: 45_000,
+    constructionPpeFirstAid: 25_450,
+    legalSupport: 60_000,
+  },
+  operationsDuringConstruction: {
+    operationsStaffPreCod: 215_998,
+    operationalAdjustments: 100_000,
+    operationsHandtools: 17_500,
+    gasSamplingForQuality: 92_250,
+  },
+  insurance: {
+    buildersRiskPolicyPctOfEpc: 1.5,
+  },
+  fixturesAndFurnishings: {
+    permanentOfficeFurnishings: 247_150,
+  },
+  spareParts: 653_552,
+  utilities: {
+    tempPower: 5_000,
+    permanentPower: 160_000,
+    natGas: 0,
+    water: 0,
+    sewer: 0,
+    it: 2_500,
+    utilitiesDuringConstruction: 77_602,
+  },
+  ribbonCutting: 75_000,
+};
+
+export function calculateInternalCostsSubtotal(costs: BurnhamInternalCosts, epcTotal: number): number {
+  const pm = costs.projectManagement;
+  const pmTotal = pm.capitalTeamSitePersonnel + pm.rduDcMgmtExpenses +
+    pm.tempConstructionFacilities + pm.thirdPartyEngineeringSupport +
+    pm.constructionPpeFirstAid + pm.legalSupport;
+
+  const ops = costs.operationsDuringConstruction;
+  const opsTotal = ops.operationsStaffPreCod + ops.operationalAdjustments +
+    ops.operationsHandtools + ops.gasSamplingForQuality;
+
+  const insuranceTotal = Math.round(epcTotal * costs.insurance.buildersRiskPolicyPctOfEpc / 100);
+
+  const ff = costs.fixturesAndFurnishings.permanentOfficeFurnishings;
+
+  const util = costs.utilities;
+  const utilTotal = util.tempPower + util.permanentPower + util.natGas +
+    util.water + util.sewer + util.it + util.utilitiesDuringConstruction;
+
+  return pmTotal + opsTotal + insuranceTotal + ff + costs.spareParts + utilTotal + costs.ribbonCutting;
+}
+
 export interface CommercialItems {
   utilityConnectionFee: number;
-  insurancePctOfEpc: number;
-  projectDelivery: number;
   devCostsPctOfEpc: number;
   devFeePctOfEpc: number;
-  opsDuringConstruction: number;
-  fixturesAndFurnishings: number;
   contingencyPctOfEpc: number;
   escalationPct: number;
 }
 
 export const DEFAULT_COMMERCIAL_ITEMS: CommercialItems = {
   utilityConnectionFee: 250_000,
-  insurancePctOfEpc: 1.5,
-  projectDelivery: 1_360_000,
   devCostsPctOfEpc: 3.0,
   devFeePctOfEpc: 0.0,
-  opsDuringConstruction: 426_000,
-  fixturesAndFurnishings: 247_000,
   contingencyPctOfEpc: 7.5,
   escalationPct: 5.83,
 };
