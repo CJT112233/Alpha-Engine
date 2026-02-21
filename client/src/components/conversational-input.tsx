@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, MessageSquare, MapPin, Beaker, Settings2, FileOutput, Trash2 } from "lucide-react";
+import { Send, MessageSquare, MapPin, Beaker, Settings2, FileOutput, Trash2, Pencil, Check, X } from "lucide-react";
 import type { TextEntry } from "@shared/schema";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -35,6 +35,8 @@ const categoryLabels: Record<string, string> = {
 
 export function ConversationalInput({ scenarioId, entries, isLoading, isLocked }: ConversationalInputProps) {
   const [content, setContent] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
   const { toast } = useToast();
 
   const addEntryMutation = useMutation({
@@ -53,6 +55,28 @@ export function ConversationalInput({ scenarioId, entries, isLoading, isLocked }
       toast({
         title: "Error",
         description: "Failed to add input. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateEntryMutation = useMutation({
+    mutationFn: async ({ id, content }: { id: string; content: string }) => {
+      return apiRequest("PATCH", `/api/text-entries/${id}`, { content });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "text-entries"] });
+      setEditingId(null);
+      setEditContent("");
+      toast({
+        title: "Entry updated",
+        description: "Your text entry has been updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update entry. Please try again.",
         variant: "destructive",
       });
     },
@@ -89,6 +113,32 @@ export function ConversationalInput({ scenarioId, entries, isLoading, isLocked }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
+    }
+  };
+
+  const startEditing = (entry: TextEntry) => {
+    setEditingId(entry.id);
+    setEditContent(entry.content);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditContent("");
+  };
+
+  const saveEdit = (id: string) => {
+    if (editContent.trim()) {
+      updateEntryMutation.mutate({ id, content: editContent.trim() });
+    }
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent, id: string) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      saveEdit(id);
+    }
+    if (e.key === "Escape") {
+      cancelEditing();
     }
   };
 
@@ -207,23 +257,72 @@ export function ConversationalInput({ scenarioId, entries, isLoading, isLocked }
                         )}
                       </div>
                       {!isLocked && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                          onClick={() => {
-                            if (confirm("Delete this entry?")) {
-                              deleteEntryMutation.mutate(entry.id);
-                            }
-                          }}
-                          disabled={deleteEntryMutation.isPending}
-                          data-testid={`button-delete-entry-${entry.id}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          {editingId === entry.id ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-primary"
+                                onClick={() => saveEdit(entry.id)}
+                                disabled={updateEntryMutation.isPending || !editContent.trim()}
+                                data-testid={`button-save-entry-${entry.id}`}
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                onClick={cancelEditing}
+                                disabled={updateEntryMutation.isPending}
+                                data-testid={`button-cancel-edit-${entry.id}`}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-primary"
+                                onClick={() => startEditing(entry)}
+                                data-testid={`button-edit-entry-${entry.id}`}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                onClick={() => {
+                                  if (confirm("Delete this entry?")) {
+                                    deleteEntryMutation.mutate(entry.id);
+                                  }
+                                }}
+                                disabled={deleteEntryMutation.isPending}
+                                data-testid={`button-delete-entry-${entry.id}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       )}
                     </div>
-                    <p className="text-sm whitespace-pre-wrap">{entry.content}</p>
+                    {editingId === entry.id ? (
+                      <Textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        onKeyDown={(e) => handleEditKeyDown(e, entry.id)}
+                        className="min-h-[60px] text-sm resize-none"
+                        autoFocus
+                        data-testid={`textarea-edit-entry-${entry.id}`}
+                      />
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap">{entry.content}</p>
+                    )}
                   </div>
                 ))}
               </div>

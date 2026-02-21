@@ -1115,6 +1115,23 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/text-entries/:id", async (req: Request, res: Response) => {
+    try {
+      const { content } = req.body;
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ error: "Content is required" });
+      }
+      const updated = await storage.updateTextEntry(req.params.id as string, content.trim());
+      if (!updated) {
+        return res.status(404).json({ error: "Text entry not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating text entry:", error);
+      res.status(500).json({ error: "Failed to update text entry" });
+    }
+  });
+
   app.delete("/api/text-entries/:id", async (req: Request, res: Response) => {
     try {
       await storage.deleteTextEntry((req.params.id as string));

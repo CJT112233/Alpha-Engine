@@ -90,6 +90,7 @@ export interface IStorage {
   // Text Entries
   getTextEntriesByScenario(scenarioId: string): Promise<TextEntry[]>;
   createTextEntry(entry: InsertTextEntry): Promise<TextEntry>;
+  updateTextEntry(id: string, content: string): Promise<TextEntry | undefined>;
   deleteTextEntry(id: string): Promise<void>;
 
   // Documents
@@ -301,6 +302,15 @@ export class DatabaseStorage implements IStorage {
 
   async createTextEntry(entry: InsertTextEntry): Promise<TextEntry> {
     const result = await db.insert(textEntries).values(entry).returning();
+    return result[0];
+  }
+
+  async updateTextEntry(id: string, content: string): Promise<TextEntry | undefined> {
+    const result = await db
+      .update(textEntries)
+      .set({ content })
+      .where(eq(textEntries.id, id))
+      .returning();
     return result[0];
   }
 
