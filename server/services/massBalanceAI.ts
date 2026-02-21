@@ -373,17 +373,30 @@ export async function generateMassBalanceWithAI(
   console.log(`Mass Balance AI: Generating for project type ${normalizedType.toUpperCase()} using ${model} (prompt: ${promptKey})`);
   console.log(`Mass Balance AI: UPIF data length: ${upifDataString.length} chars`);
 
+  const isOpus = model === "claude-opus";
+  const userInstruction = isOpus
+    ? `Generate a complete mass balance and equipment list based on the UPIF data provided. Return valid JSON only. CRITICAL: Keep ALL text fields (descriptions, notes, assumptions) extremely concise — use short phrases, not sentences. Abbreviate where possible (e.g. "Meso. CSTR" not "Mesophilic Continuously Stirred Tank Reactor"). Minimize the number of notes and assumptions entries. This reduces output size and prevents timeout.`
+    : `Generate a complete mass balance and equipment list based on the UPIF data provided. Return valid JSON only. Keep descriptions concise to stay within output limits.`;
+
+  const maxTokens = isOpus ? 16384 : 32768;
+
+  console.log(`Mass Balance AI: Using maxTokens=${maxTokens} for model=${model}${isOpus ? " (reduced for Opus speed)" : ""}`);
+
   const response = await llmComplete({
     model,
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Generate a complete mass balance and equipment list based on the UPIF data provided. Return valid JSON only. Keep descriptions concise to stay within output limits.` },
+      { role: "user", content: userInstruction },
     ],
-    maxTokens: 32768,
+    maxTokens,
     jsonMode: true,
   });
 
-  console.log(`Mass Balance AI: Response received from ${response.provider}, ${response.content.length} chars`);
+  console.log(`Mass Balance AI: Response received from ${response.provider}, ${response.content.length} chars, stop_reason=${response.stopReason || "unknown"}`);
+
+  if (response.stopReason === "max_tokens" || response.stopReason === "length") {
+    console.warn(`Mass Balance AI: Response was TRUNCATED (stop_reason=${response.stopReason}). Will attempt JSON repair.`);
+  }
 
   let rawContent = response.content;
   rawContent = rawContent.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
@@ -392,13 +405,14 @@ export async function generateMassBalanceWithAI(
   try {
     parsed = JSON.parse(rawContent);
   } catch (parseError) {
-    console.log("Mass Balance AI: Initial JSON parse failed, attempting truncation repair...");
+    console.log(`Mass Balance AI: Initial JSON parse failed (${(parseError as Error).message}), attempting truncation repair...`);
     try {
       parsed = repairTruncatedJSON(rawContent);
       console.log("Mass Balance AI: Successfully repaired truncated JSON");
     } catch (repairError) {
-      console.error("Mass Balance AI: Failed to parse or repair JSON response:", rawContent.substring(0, 500));
-      throw new Error(`AI returned invalid JSON. Parse error: ${(parseError as Error).message}`);
+      console.error("Mass Balance AI: Failed to parse or repair JSON response. First 500 chars:", rawContent.substring(0, 500));
+      console.error("Mass Balance AI: Last 200 chars:", rawContent.substring(rawContent.length - 200));
+      throw new Error(`AI returned invalid JSON (model=${response.provider}, stop_reason=${response.stopReason || "unknown"}, length=${rawContent.length}). Parse error: ${(parseError as Error).message}`);
     }
   }
 

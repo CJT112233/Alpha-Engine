@@ -57,13 +57,14 @@ export interface LLMCompletionResult {
   provider: LLMProvider;
   promptTokens?: number;
   completionTokens?: number;
+  stopReason?: string;
 }
 
 // OpenAI client initialization - used for GPT-5 requests
-// Extended timeout (5 min) to handle large mass balance / capex generations
+// Extended timeout (10 min) to handle large mass balance / capex generations with slower models
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  timeout: 300000,
+  timeout: 600000,
 });
 
 /**
@@ -89,11 +90,13 @@ const integrationAnthropicKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
 // Config for direct Anthropic API access - tries integration key as fallback
 const directAnthropicOptions: ConstructorParameters<typeof Anthropic>[0] = {
   apiKey: directAnthropicKey || integrationAnthropicKey,
+  timeout: 600000,
 };
 
 // Config for Anthropic via Replit integration proxy - overrides baseURL to route through proxy
 const integrationAnthropicOptions: ConstructorParameters<typeof Anthropic>[0] = {
   apiKey: integrationAnthropicKey || directAnthropicKey,
+  timeout: 600000,
   ...(process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL
     ? { baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL }
     : {}),
@@ -267,11 +270,19 @@ async function completeWithOpenAI(
     ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
   });
 
+  const finishReason = response.choices[0]?.finish_reason || "unknown";
+  console.log(`LLM: OpenAI response finish_reason=${finishReason} prompt_tokens=${response.usage?.prompt_tokens} completion_tokens=${response.usage?.completion_tokens}`);
+
+  if (finishReason === "length") {
+    console.warn(`LLM: OpenAI response was TRUNCATED (hit max_completion_tokens=${maxTokens}). Output may be incomplete.`);
+  }
+
   return {
     content: response.choices[0]?.message?.content || "",
     provider: "gpt5",
     promptTokens: response.usage?.prompt_tokens,
     completionTokens: response.usage?.completion_tokens,
+    stopReason: finishReason,
   };
 }
 
@@ -358,7 +369,12 @@ async function completeWithClaude(
 
   const response = await stream.finalMessage();
 
-  console.log(`LLM: Anthropic response stop_reason=${response.stop_reason} content_blocks=${response.content.length} types=${response.content.map(b => b.type).join(",")}`);
+  const stopReason = response.stop_reason || "unknown";
+  console.log(`LLM: Anthropic response stop_reason=${stopReason} content_blocks=${response.content.length} input_tokens=${response.usage?.input_tokens} output_tokens=${response.usage?.output_tokens}`);
+
+  if (stopReason === "max_tokens") {
+    console.warn(`LLM: Anthropic response was TRUNCATED (hit max_tokens=${maxTokens}). Output may be incomplete JSON. Model: ${modelId}`);
+  }
 
   // Extract text from response content blocks, ignore non-text blocks
   const textBlocks = response.content.filter((b: any) => b.type === "text");
@@ -373,5 +389,6 @@ async function completeWithClaude(
     provider,
     promptTokens: response.usage?.input_tokens,
     completionTokens: response.usage?.output_tokens,
+    stopReason,
   };
 }

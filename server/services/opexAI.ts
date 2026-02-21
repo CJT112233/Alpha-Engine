@@ -264,17 +264,23 @@ export async function generateOpexWithAI(
 
   console.log(`OpEx AI: Generating for project type ${normalizedType.toUpperCase()} using ${model} (prompt: ${promptKey})`);
 
+  const isOpus = model === "claude-opus";
+  const opexMaxTokens = isOpus ? 16384 : 32768;
+  const opexUserMsg = isOpus
+    ? `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. CRITICAL: Keep descriptions and notes extremely concise to reduce output size and prevent timeout.`
+    : `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep the response concise to stay within output limits.`;
+
   const response = await llmComplete({
     model,
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep the response concise to stay within output limits.` },
+      { role: "user", content: opexUserMsg },
     ],
-    maxTokens: 32768,
+    maxTokens: opexMaxTokens,
     jsonMode: true,
   });
 
-  console.log(`OpEx AI: Response received from ${response.provider}, ${response.content.length} chars`);
+  console.log(`OpEx AI: Response received from ${response.provider}, ${response.content.length} chars, stop_reason=${response.stopReason || "unknown"}`);
 
   let rawContent = response.content;
   rawContent = rawContent.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
