@@ -20,8 +20,7 @@ import { Receipt } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { ConversationalInput } from "@/components/conversational-input";
-import { DocumentUpload } from "@/components/document-upload";
+import { UnifiedInput } from "@/components/unified-input";
 import { UpifReview } from "@/components/upif-review";
 import { UpifChat } from "@/components/upif-chat";
 import { MassBalanceContent } from "@/pages/mass-balance";
@@ -254,17 +253,13 @@ export default function ScenarioDetail() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="input" className="space-y-6">
-            <ConversationalInput
+          <TabsContent value="input" className="relative" style={{ minHeight: "500px" }}>
+            <UnifiedInput
               scenarioId={id!}
               entries={textEntries || []}
-              isLoading={entriesLoading}
-              isLocked={isConfirmed}
-            />
-            <DocumentUpload
-              scenarioId={id!}
               documents={documents || []}
-              isLoading={documentsLoading}
+              isEntriesLoading={entriesLoading}
+              isDocumentsLoading={documentsLoading}
               isLocked={isConfirmed}
             />
           </TabsContent>

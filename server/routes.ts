@@ -183,10 +183,63 @@ function postProcessPdfText(rawText: string): string {
   return processed.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+async function extractTextFromImage(filePath: string, mimeType: string, originalName: string): Promise<string | null> {
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn(`Image OCR skipped for "${originalName}": no OpenAI API key configured`);
+    return null;
+  }
+
+  try {
+    const OpenAI = (await import("openai")).default;
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 60000 });
+
+    const imageBuffer = fs.readFileSync(filePath);
+    const base64Image = imageBuffer.toString("base64");
+    const mediaMime = mimeType.startsWith("image/") ? mimeType : "image/png";
+    const dataUrl = `data:${mediaMime};base64,${base64Image}`;
+
+    console.log(`Image OCR: analyzing "${originalName}" (${(imageBuffer.length / 1024).toFixed(0)} KB) with GPT vision...`);
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 4096,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Extract ALL text visible in this image. Include every piece of text you can see — headings, labels, numbers, table data, annotations, handwriting, and any other readable content. Preserve the structure as much as possible (tables as columns, lists as lists). If there are numbers with units, include both. Output ONLY the extracted text, no commentary.",
+            },
+            {
+              type: "image_url",
+              image_url: { url: dataUrl, detail: "high" },
+            },
+          ],
+        },
+      ],
+    });
+
+    const text = response.choices[0]?.message?.content?.trim();
+    if (text && text.length > 0) {
+      console.log(`Image OCR: extracted ${text.length} chars from "${originalName}"`);
+      return text;
+    }
+
+    console.log(`Image OCR: no text found in "${originalName}"`);
+    return null;
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error(`Image OCR failed for "${originalName}":`, errMsg);
+    return null;
+  }
+}
+
 /**
  * Extracts readable text from an uploaded document for AI analysis.
  * Supports PDF (with table post-processing), DOCX (via mammoth), XLSX/XLS/CSV
- * (via SheetJS), and plain text files. Returns null for unsupported formats.
+ * (via SheetJS), images (via OpenAI vision OCR), and plain text files.
+ * Returns null for unsupported formats.
  */
 async function extractTextFromFile(filePath: string, mimeType: string, originalName: string): Promise<string | null> {
   try {
@@ -232,6 +285,10 @@ async function extractTextFromFile(filePath: string, mimeType: string, originalN
 
     if (ext === ".doc") {
       return null;
+    }
+
+    if (mimeType.startsWith("image/") || [".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp", ".gif"].includes(ext)) {
+      return await extractTextFromImage(filePath, mimeType, originalName);
     }
 
     return null;
