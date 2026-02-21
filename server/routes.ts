@@ -3389,9 +3389,32 @@ export async function registerRoutes(
       const projectType = mbResults.projectType || upifData.projectType || (scenario as any).projectType || "A";
       const preferredModel = (scenario.preferredModel || "gpt5") as import("./llm").LLMProvider;
 
-      const { generateCapexWithAI } = await import("./services/capexAI");
-      const aiResult = await generateCapexWithAI(upifData, mbResults, projectType, preferredModel, storage);
-      modelUsed = aiResult.providerLabel;
+      const normalizedPT = projectType.toLowerCase().replace(/type\s*/i, "").trim();
+      const isRngType = ["b", "c", "d"].includes(normalizedPT) ||
+        normalizedPT.includes("greenfield") || normalizedPT.includes("bolt") || normalizedPT.includes("hybrid");
+
+      let capexResult: { results: import("@shared/schema").CapexResults; providerLabel: string };
+
+      if (isRngType) {
+        try {
+          const { generateCapexDeterministic } = await import("./services/capexDeterministic");
+          const detResult = generateCapexDeterministic(mbResults, projectType);
+          capexResult = { results: detResult.results, providerLabel: detResult.providerLabel };
+          modelUsed = detResult.providerLabel;
+          console.log(`CapEx: Deterministic calculator succeeded for type ${projectType} in ${Date.now() - startTime}ms`);
+        } catch (detError) {
+          console.log(`CapEx: Deterministic calculator failed (${(detError as Error).message}), falling back to AI...`);
+          const { generateCapexWithAI } = await import("./services/capexAI");
+          const aiResult = await generateCapexWithAI(upifData, mbResults, projectType, preferredModel, storage);
+          capexResult = { results: aiResult.results, providerLabel: aiResult.providerLabel };
+          modelUsed = aiResult.providerLabel;
+        }
+      } else {
+        const { generateCapexWithAI } = await import("./services/capexAI");
+        const aiResult = await generateCapexWithAI(upifData, mbResults, projectType, preferredModel, storage);
+        capexResult = { results: aiResult.results, providerLabel: aiResult.providerLabel };
+        modelUsed = aiResult.providerLabel;
+      }
 
       const existingEstimates = await storage.getCapexEstimatesByScenario(scenarioId);
       const version = String(existingEstimates.length + 1);
@@ -3408,7 +3431,7 @@ export async function registerRoutes(
           equipmentCount: mbResults.equipment.length,
           model: modelUsed,
         },
-        results: aiResult.results,
+        results: capexResult.results,
         overrides: {},
         locks: {},
       });
@@ -3470,13 +3493,35 @@ export async function registerRoutes(
       const projectType = mbResults?.projectType || upifData.projectType || (scenario as any).projectType || "A";
       const preferredModel = (scenario.preferredModel || "gpt5") as import("./llm").LLMProvider;
 
-      const { generateCapexWithAI } = await import("./services/capexAI");
-      const aiResult = await generateCapexWithAI(upifData, mbResults, projectType, preferredModel, storage);
-      modelUsed = aiResult.providerLabel;
+      const normalizedPT = projectType.toLowerCase().replace(/type\s*/i, "").trim();
+      const isRngType = ["b", "c", "d"].includes(normalizedPT) ||
+        normalizedPT.includes("greenfield") || normalizedPT.includes("bolt") || normalizedPT.includes("hybrid");
+
+      let capexResult: { results: import("@shared/schema").CapexResults; providerLabel: string };
+
+      if (isRngType) {
+        try {
+          const { generateCapexDeterministic } = await import("./services/capexDeterministic");
+          const detResult = generateCapexDeterministic(mbResults, projectType);
+          capexResult = { results: detResult.results, providerLabel: detResult.providerLabel };
+          modelUsed = detResult.providerLabel;
+        } catch (detError) {
+          console.log(`CapEx recompute: Deterministic failed (${(detError as Error).message}), falling back to AI...`);
+          const { generateCapexWithAI } = await import("./services/capexAI");
+          const aiResult = await generateCapexWithAI(upifData, mbResults, projectType, preferredModel, storage);
+          capexResult = { results: aiResult.results, providerLabel: aiResult.providerLabel };
+          modelUsed = aiResult.providerLabel;
+        }
+      } else {
+        const { generateCapexWithAI } = await import("./services/capexAI");
+        const aiResult = await generateCapexWithAI(upifData, mbResults, projectType, preferredModel, storage);
+        capexResult = { results: aiResult.results, providerLabel: aiResult.providerLabel };
+        modelUsed = aiResult.providerLabel;
+      }
 
       const oldLocks = (existing.locks || {}) as Record<string, boolean>;
       const oldOverrides = (existing.overrides || {}) as Record<string, any>;
-      const newResults = aiResult.results;
+      const newResults = capexResult.results;
 
       for (const [path, isLocked] of Object.entries(oldLocks)) {
         if (!isLocked) continue;
