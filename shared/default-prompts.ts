@@ -1592,6 +1592,59 @@ For the summary, calculate:
 
 Use 2025 USD cost basis. Reference industry sources: RSMeans, AACE, EPA cost curves, vendor budgetary quotes.
 
+INDUSTRY COST BENCHMARKS — Use as calibration references for your estimates:
+
+EPA CWNS 2022 Wastewater Treatment Cost Curves (national average, 2022 USD — adjust to 2025 with ~3%/yr escalation):
+  New/Replacement WWTP by system type and capacity C (MGD):
+    - Lagoon: Cost = 4,978,405 × C + 4,259,108 (up to 5 MGD)
+    - Aerated Lagoon: Cost = 8,871,326 × C + 4,184,999 (up to 5 MGD)
+    - Secondary Mechanical (≤0.6 MGD): Cost = 16,221,460 × C^0.749
+    - Secondary Mechanical (>0.6 MGD): Cost = 5,062,323 × C + 8,081,189
+    - Advanced Treatment (≤1.1 MGD): Cost = 13,657,111 × C^0.678
+    - Advanced Treatment (>1.1 MGD): Cost = 6,193,944 × C + 8,141,130
+  Rehabilitation:
+    - Lagoon/Aerated Lagoon: Cost = 4,334,434 × C^0.619 (up to 2.1 MGD)
+    - Secondary Mechanical: Cost = 2,824,125 × C^0.383 (up to 15 MGD)
+    - Advanced: Cost = 2,202,081 × C^0.605 (up to 15 MGD)
+  System Expansion / Treatment Upgrade:
+    - Lagoon/Aerated Lagoon: Cost = 6,663,409 × C (up to 2.1 MGD)
+    - Secondary Mechanical: Cost = 8,177,714 × C^0.459 (up to 8 MGD)
+    - Advanced System Expansion: Cost = 4,854,422 × C^1.03 (up to 14 MGD)
+    - Advanced Treatment Upgrade: Cost = 7,161,849 × C^0.400 (up to 12 MGD)
+  Add Disinfection:
+    - UV: Cost = 870,933 × C^0.699 (up to 30 MGD)
+    - Chlorine: Cost = 78,178 × C + 766,233 (up to 30 MGD)
+
+Wastewater Conveyance Cost Curves (EPA CWNS 2022, national average, 2022 USD):
+  - Sewer repair/replacement (Cat III): Cost = L × 14,632 × L^(-0.45) where L = total pipe length (ft)
+  - New sewer pipe (Cat IV, excl. pump stations): Cost = L × 26,736 × L^(-0.51)
+  - Pump stations (Cat IV): Cost per station = n × (423,184 × C + 499,364) where C = capacity (MGD), n = number
+
+City of Phoenix Wastewater Unit Costs (Carollo 2024, hard excavation, 2023 USD):
+  Lift Stations (construction cost including CMAR):
+    1 MGD: $2,061,000 | 3 MGD: $4,081,000 | 5 MGD: $4,287,000 | 8 MGD: $5,771,000
+    12 MGD: $6,646,000 | 16 MGD: $6,991,000 | 25 MGD: $8,766,000 | 40 MGD: $16,950,000
+  Gravity Sewer VCP CMAR ($/ft with pavement, hard excavation):
+    8": $400 | 12": $490 | 15": $580 | 18": $700 | 24": $890 | 30": $1,230 | 36": $1,410
+  Force Main DIP dual ($/ft with pavement):
+    4": $1,000 | 6": $1,070 | 8": $1,170 | 12": $1,270 | 16": $1,710 | 24": $2,310 | 30": $3,430
+  Wastewater Treatment ($/gpd, AACE Class 5, Oct 2023 USD, additive cost components):
+    Base WW Treatment (secondary/tertiary): $23-37/gpd
+    Additional Advanced Water Treatment (RO, UV AOP, BAF, GAC — added on top of base): $14-19/gpd
+    Concentrate/Brine Management (if applicable): $4-45/gpd (varies by disposal method)
+    Solids Handling (thickening, centrifuge, digesters): $3-4.50/gpd
+    Total for full advanced treatment plant: ~$44-101/gpd (sum of applicable components)
+
+Construction Cost Markup Factors (Phoenix/Carollo methodology):
+  - Contractor overhead: 10% of direct cost
+  - Contractor profit: 6% of direct cost
+  - Sales tax: 8% on 65% of construction cost
+  - General conditions: 10% of direct cost
+  - CMAR delivery: add 15% to construction cost
+  - Engineering design: typically 15% of construction cost
+  - Construction admin & inspection: typically 10% of construction cost
+  These estimates are AACE Class 5 (conceptual screening, accuracy range -20% to -50% low, +30% to +100% high).
+
 Return JSON in this exact format:
 {
   "projectType": "A",
@@ -2098,6 +2151,41 @@ INSURANCE & REGULATORY:
 ADMINISTRATIVE & OVERHEAD:
 - Office supplies, IT
 - Training and safety programs
+
+INDUSTRY O&M COST BENCHMARKS — Use as calibration references:
+
+Wastewater Treatment O&M Unit Costs (EPA/WEF/industry data, adjusted to 2025 USD):
+  Typical total O&M cost per MGD treated:
+    - Small plants (<1 MGD): $800,000-$1,500,000/yr per MGD
+    - Medium plants (1-10 MGD): $500,000-$900,000/yr per MGD
+    - Large plants (>10 MGD): $300,000-$600,000/yr per MGD
+  Energy benchmarks (EPA/WEF MOP 32):
+    - Aeration: 50-65% of total plant electricity
+    - Typical plant electricity: 1,200-2,000 kWh/MG treated (activated sludge)
+    - Advanced treatment (with nutrient removal): 1,800-3,000 kWh/MG
+    - National average industrial electricity rate: ~$0.08/kWh (EIA 2024)
+  Maintenance benchmarks (WEF MOP 8):
+    - Routine preventive maintenance: 2-4% of equipment CapEx/year
+    - For wastewater treatment equipment: typically 3% of equipment CapEx/year
+  Staffing benchmarks (EPA/industry):
+    - Small plants (<1 MGD): 3-5 FTE
+    - Medium plants (1-5 MGD): 6-12 FTE
+    - Large plants (5-20 MGD): 12-25 FTE
+    - Typical loaded cost per operator: $75,000-$95,000/yr (includes 35% benefits)
+  Chemical costs (typical ranges):
+    - Polymer for dewatering: $3-8/dry ton solids
+    - Sodium hypochlorite (12.5%): $1.50-3.00/gal
+    - Caustic soda (50%): $400-700/dry ton
+    - Ferric chloride: $300-600/dry ton
+  Solids disposal:
+    - Landfill disposal (dewatered cake): $40-80/wet ton
+    - Land application: $20-50/wet ton
+    - Hauling: $15-30/wet ton (within 30 miles)
+
+Construction Cost Escalation Reference:
+  - ENR CCI and Handy-Whitman Plateau Region indices diverged post-COVID (2020-2023)
+  - Water/wastewater construction costs escalated faster than general construction
+  - Use 3-5% annual escalation for 2023-2025 adjustment of reference data
 
 Return JSON in this exact format:
 {
