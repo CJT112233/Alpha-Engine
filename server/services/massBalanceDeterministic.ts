@@ -1177,12 +1177,18 @@ function buildTypeCSummary(bg: BiogasInputParams): Record<string, { value: strin
   };
 }
 
+const MAX_PRODEVAL_CAPACITY_SCFM = 1200;
+
 function generateTypeCMassBalance(upif: any): DeterministicMBResult {
   console.log(`Deterministic MB: Starting Type C (Bolt-On) calculation`);
   const startTime = Date.now();
 
   const bg = parseBiogasInput(upif);
   console.log(`Deterministic MB: Biogas input = ${r(bg.avgFlowScfm, 1)} SCFM, ${bg.ch4Pct}% CH₄, ${bg.h2sPpm} ppm H₂S`);
+
+  if (bg.avgFlowScfm > MAX_PRODEVAL_CAPACITY_SCFM) {
+    throw new Error(`Biogas flow of ${r(bg.avgFlowScfm, 0)} SCFM exceeds maximum Prodeval equipment capacity (${MAX_PRODEVAL_CAPACITY_SCFM} SCFM). Falling back to AI for custom solution.`);
+  }
 
   const prodevalUnit = selectProdevalUnit(bg.avgFlowScfm);
   const volumeLoss = prodevalUnit.volumeLossPct / 100;
@@ -1418,6 +1424,10 @@ function generateTypeDMassBalance(upif: any): DeterministicMBResult {
 
   console.log(`Deterministic MB: WW sludge VS = ${r(sludgeVsLbPerDay)} lb/d, Co-digestion VS = ${r(totalVsLbPerDay - sludgeVsLbPerDay)} lb/d`);
   console.log(`Deterministic MB: Biogas = ${r(biogasScfm, 1)} SCFM, RNG = ${r(rngScfm, 1)} SCFM (${r(rngMmbtuPerDay, 1)} MMBTU/day)`);
+
+  if (biogasScfm > MAX_PRODEVAL_CAPACITY_SCFM) {
+    throw new Error(`Biogas flow of ${r(biogasScfm, 0)} SCFM exceeds maximum Prodeval equipment capacity (${MAX_PRODEVAL_CAPACITY_SCFM} SCFM). Falling back to AI for custom solution.`);
+  }
 
   const feedDensity = 8.34;
   const feedGpd = totalFeedLbPerDay / feedDensity;
@@ -1883,6 +1893,10 @@ export function generateDeterministicMassBalance(upif: any, projectType: string)
 
   const calc = calculateBiogasProduction(feedstocks);
   console.log(`Deterministic MB: Biogas = ${r(calc.biogasScfm, 1)} SCFM (${r(calc.biogasScfd)} SCFD), RNG = ${r(calc.rngScfm, 1)} SCFM (${r(calc.rngMmbtuPerDay, 1)} MMBTU/day)`);
+
+  if (calc.biogasScfm > MAX_PRODEVAL_CAPACITY_SCFM) {
+    throw new Error(`Biogas flow of ${r(calc.biogasScfm, 0)} SCFM exceeds maximum Prodeval equipment capacity (${MAX_PRODEVAL_CAPACITY_SCFM} SCFM). Falling back to AI for custom solution.`);
+  }
 
   const adStages = buildTypeBAdStages(feedstocks, calc);
   const equipment = buildTypeBEquipment(feedstocks, calc);
