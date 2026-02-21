@@ -7,6 +7,7 @@ import {
   getProdevalEquipmentList,
   type ProdevalEquipmentItem,
 } from "@shared/prodeval-equipment-library";
+import { generateDeterministicMassBalance } from "./massBalanceDeterministic";
 
 const massBalancePromptMap: Record<string, PromptKey> = {
   a: "mass_balance_type_a",
@@ -347,6 +348,8 @@ export interface MassBalanceAIResult {
   providerLabel: string;
 }
 
+const DETERMINISTIC_PROJECT_TYPES = new Set(["b", "c", "d"]);
+
 export async function generateMassBalanceWithAI(
   upif: any,
   projectType: string,
@@ -354,6 +357,37 @@ export async function generateMassBalanceWithAI(
   storage?: any,
 ): Promise<MassBalanceAIResult> {
   const normalizedType = normalizeProjectType(projectType);
+
+  if (DETERMINISTIC_PROJECT_TYPES.has(normalizedType)) {
+    try {
+      console.log(`Mass Balance: Using DETERMINISTIC calculator for Type ${normalizedType.toUpperCase()} (RNG project)`);
+      const detResult = generateDeterministicMassBalance(upif, normalizedType);
+
+      const stageCount = (detResult.results.adStages?.length || 0);
+      const equipCount = detResult.results.equipment.length;
+      console.log(`Mass Balance: Deterministic complete — ${stageCount} stages, ${equipCount} equipment items`);
+
+      return {
+        results: detResult.results,
+        provider: "deterministic" as any,
+        providerLabel: "Deterministic Calculator",
+      };
+    } catch (detError) {
+      console.warn(`Mass Balance: Deterministic calculator failed: ${(detError as Error).message}`);
+      console.log(`Mass Balance: Falling back to AI generation for Type ${normalizedType.toUpperCase()}`);
+    }
+  }
+
+  return generateMassBalanceWithLLM(upif, projectType, preferredModel, storage, normalizedType);
+}
+
+async function generateMassBalanceWithLLM(
+  upif: any,
+  projectType: string,
+  preferredModel: LLMProvider,
+  storage: any,
+  normalizedType: string,
+): Promise<MassBalanceAIResult> {
   const promptKey = massBalancePromptMap[normalizedType] || "mass_balance_type_a";
 
   let model = preferredModel;

@@ -2847,8 +2847,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/scenarios/:scenarioId/mass-balance/generate", async (req: Request, res: Response) => {
-    req.setTimeout(600000);
-    res.setTimeout(600000);
+    req.setTimeout(180000);
+    res.setTimeout(180000);
     const startTime = Date.now();
     let modelUsed = "deterministic";
     try {
@@ -2868,29 +2868,36 @@ export async function registerRoutes(
       console.log(`Mass Balance Generate: scenarioId=${scenarioId}, projectType="${projectType}", preferredModel=${preferredModel}`);
 
       let results;
-      try {
-        const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
-        const aiResult = await generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
-        results = aiResult.results;
-        modelUsed = aiResult.providerLabel;
-        console.log(`Mass Balance: AI generation succeeded using ${modelUsed}`);
-      } catch (aiError) {
-        console.warn(`Mass Balance: AI generation failed, falling back to deterministic calculator:`, (aiError as Error).message);
-        modelUsed = "deterministic (AI fallback)";
+      const ptNorm = projectType.toLowerCase().trim();
+      const isRngType = ptNorm === "b" || ptNorm === "c" || ptNorm === "d"
+        || ptNorm.includes("type b") || ptNorm.includes("type c") || ptNorm.includes("type d")
+        || ptNorm.includes("greenfield") || ptNorm.includes("bolt-on") || ptNorm.includes("bolt on") || ptNorm.includes("hybrid");
 
-        const ptLower = projectType.toLowerCase().trim();
-        if (ptLower === "b" || ptLower.includes("type b") || ptLower.includes("rng greenfield") || ptLower.includes("greenfield")) {
-          const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
-          results = calculateMassBalanceTypeB(upif);
-        } else if (ptLower === "c" || ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
-          const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
-          results = calculateMassBalanceTypeC(upif);
-        } else if (ptLower === "d" || ptLower.includes("type d") || ptLower.includes("hybrid")) {
-          const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
-          results = calculateMassBalanceTypeD(upif);
-        } else {
-          const { calculateMassBalance } = await import("./services/massBalance");
-          results = calculateMassBalance(upif);
+      if (isRngType) {
+        try {
+          const { generateDeterministicMassBalance } = await import("./services/massBalanceDeterministic");
+          const detResult = generateDeterministicMassBalance(upif, projectType);
+          results = detResult.results;
+          modelUsed = "Deterministic Calculator";
+          console.log(`Mass Balance: Deterministic calculation succeeded in ${Date.now() - startTime}ms`);
+        } catch (detError) {
+          console.warn(`Mass Balance: Deterministic calculation failed, falling back to AI:`, (detError as Error).message);
+          const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
+          const aiResult = await generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
+          results = aiResult.results;
+          modelUsed = aiResult.providerLabel + " (deterministic fallback)";
+          console.log(`Mass Balance: AI fallback succeeded using ${modelUsed}`);
+        }
+      } else {
+        try {
+          const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
+          const aiResult = await generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
+          results = aiResult.results;
+          modelUsed = aiResult.providerLabel;
+          console.log(`Mass Balance: AI generation succeeded using ${modelUsed}`);
+        } catch (aiError) {
+          console.error(`Mass Balance: AI generation failed for Type A:`, (aiError as Error).message);
+          throw aiError;
         }
       }
 
