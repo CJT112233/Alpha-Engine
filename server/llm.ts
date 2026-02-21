@@ -64,7 +64,7 @@ export interface LLMCompletionResult {
 // Extended timeout (10 min) to handle large mass balance / capex generations with slower models
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  timeout: 600000,
+  timeout: 300000,
 });
 
 /**
@@ -90,13 +90,13 @@ const integrationAnthropicKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
 // Config for direct Anthropic API access - tries integration key as fallback
 const directAnthropicOptions: ConstructorParameters<typeof Anthropic>[0] = {
   apiKey: directAnthropicKey || integrationAnthropicKey,
-  timeout: 600000,
+  timeout: 300000,
 };
 
 // Config for Anthropic via Replit integration proxy - overrides baseURL to route through proxy
 const integrationAnthropicOptions: ConstructorParameters<typeof Anthropic>[0] = {
   apiKey: integrationAnthropicKey || directAnthropicKey,
-  timeout: 600000,
+  timeout: 300000,
   ...(process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL
     ? { baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL }
     : {}),
