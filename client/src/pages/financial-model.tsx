@@ -120,6 +120,9 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
     queryKey: ["/api/scenarios", scenarioId, "financial-model"],
   });
 
+  const { data: massBalanceRuns } = useQuery<any[]>({
+    queryKey: ["/api/scenarios", scenarioId, "mass-balance"],
+  });
   const { data: capexEstimates } = useQuery<any[]>({
     queryKey: ["/api/scenarios", scenarioId, "capex"],
   });
@@ -127,9 +130,10 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
     queryKey: ["/api/scenarios", scenarioId, "opex"],
   });
 
+  const mbFinalized = massBalanceRuns?.[0]?.status === "finalized";
   const capexFinalized = capexEstimates?.[0]?.status === "finalized";
   const opexFinalized = opexEstimates?.[0]?.status === "finalized";
-  const prerequisitesMet = capexFinalized && opexFinalized;
+  const prerequisitesMet = mbFinalized && capexFinalized && opexFinalized;
 
   const latestModel = models?.[0];
   const results = latestModel?.results as FinancialModelResults | undefined;
@@ -251,8 +255,9 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
               </p>
               {!prerequisitesMet && (
                 <div className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-                  {!capexFinalized && <p>CapEx estimate must be confirmed first.</p>}
-                  {!opexFinalized && <p>OpEx estimate must be confirmed first.</p>}
+                  {!mbFinalized && <p>Mass balance must be finalized first.</p>}
+                  {!capexFinalized && <p>CapEx estimate must be finalized first.</p>}
+                  {!opexFinalized && <p>OpEx estimate must be finalized first.</p>}
                 </div>
               )}
             </div>
