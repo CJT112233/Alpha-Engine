@@ -30,9 +30,9 @@ const AD_DESIGN_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
     targetTS: { value: 10, unit: "%", source: "Engineering practice — pumpable slurry" },
   },
   digester: {
-    hrt: { value: 25, unit: "days", source: "WEF MOP 8" },
+    hrt: { value: 30, unit: "days", source: "Engineering practice — CSTR" },
     organicLoadingRate: { value: 3.0, unit: "kg VS/m³·d", source: "WEF MOP 8" },
-    vsDestruction: { value: 65, unit: "%", source: "WEF MOP 8" },
+    vsDestruction: { value: 58, unit: "%", source: "Engineering practice — CSTR" },
     temperature: { value: 37, unit: "°C", source: "Mesophilic standard" },
     mixingPower: { value: 6, unit: "W/m³", source: "WEF MOP 8" },
     gasYield: { value: 0.8, unit: "scf/lb VS destroyed", source: "Engineering practice" },
@@ -43,7 +43,7 @@ const AD_DESIGN_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
   },
   centrifuge: {
     solidsCaptureEff: { value: 92, unit: "%", source: "Decanter centrifuge typical" },
-    cakeSolids: { value: 28, unit: "% TS", source: "Decanter centrifuge typical" },
+    cakeSolids: { value: 22, unit: "% TS", source: "Decanter centrifuge typical" },
     polymerDose: { value: 10, unit: "kg/ton dry solids", source: "Engineering practice" },
   },
   daf: {
@@ -243,6 +243,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   let weightedCOD = 0;
   let weightedTKN = 0;
   let weightedTP = 0;
+  let weightedSCODPct = 0;
   let totalWeightForAvg = 0;
 
   for (const fs of feedstocks) {
@@ -258,6 +259,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     const codMgL = getSpecValue(fs, ["cod", "chemical oxygen demand"], 0);
     const tknMgL = getSpecValue(fs, ["tkn", "total kjeldahl nitrogen"], 0);
     const tpMgL = getSpecValue(fs, ["tp", "total phosphorus", "totalPhosphorus"], 0);
+    const scodPct = getSpecValue(fs, ["solubleCOD", "soluble cod", "scod", "scod fraction"], 30);
 
     const feedKgPerDay = tpd * 1000;
     const tsKg = feedKgPerDay * (ts / 100);
@@ -272,6 +274,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     weightedCOD += codMgL * tpd;
     weightedTKN += tknMgL * tpd;
     weightedTP += tpMgL * tpd;
+    weightedSCODPct += scodPct * tpd;
     totalWeightForAvg += tpd;
 
     if (ts <= 0) assumptions.push({ parameter: `${fs.feedstockType} TS`, value: "15%", source: "Default assumption" });
@@ -304,7 +307,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   const avgTP = weightedTP / totalWeightForAvg;
   const isPackaged = hasPackagedWaste(feedstocks);
 
-  const scodFraction = 0.30;
+  const avgSCODPct = weightedSCODPct / totalWeightForAvg;
+  const scodFraction = avgSCODPct / 100;
   const totalFeedLbPerDay = totalFeedTpd * 2000;
   const feedDensityLbPerGal = 8.34 + (avgTS / 100) * 0.5;
   const totalFeedGPD = totalFeedLbPerDay / feedDensityLbPerGal;
@@ -323,6 +327,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   assumptions.push({ parameter: "Blended TS", value: `${roundTo(avgTS)}%`, source: "Weighted average" });
   assumptions.push({ parameter: "Blended VS/TS", value: `${roundTo(avgVS)}%`, source: "Weighted average" });
   assumptions.push({ parameter: "Blended BMP", value: `${roundTo(avgBMP * 35.3147 / 2.2046, 3)} scf CH₄/lb VS`, source: "Weighted average" });
+  assumptions.push({ parameter: "Blended sCOD Fraction", value: `${roundTo(avgSCODPct)}% of total COD`, source: "Weighted average from feedstock library" });
   if (avgCOD <= 0) {
     assumptions.push({ parameter: "Blended COD", value: `${roundTo(effectiveCODMgL, 0)} mg/L (estimated from 1.4 × VS)`, source: "Engineering estimate" });
   }
@@ -422,8 +427,9 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   // ══════════════════════════════════════════════════════════
   const rejectRate = isPackaged ? AD_DESIGN_DEFAULTS.maceration.depackagingRejectRate.value / 100 : 0;
   const postMacerationTpd = totalFeedTpd * (1 - rejectRate);
-  const postMacSolids = buildSolidsStream(postMacerationTpd, avgTS, avgVS, effectiveCODMgL);
-  const postMacCodFrac = buildCodFractionation(effectiveCODMgL, scodFraction, codVsRatio > 0 ? codVsRatio : 1.4);
+  const postMacCODMgL = rejectRate > 0 ? effectiveCODMgL / (1 - rejectRate) : effectiveCODMgL;
+  const postMacSolids = buildSolidsStream(postMacerationTpd, avgTS, avgVS, postMacCODMgL);
+  const postMacCodFrac = buildCodFractionation(postMacCODMgL, scodFraction, codVsRatio > 0 ? codVsRatio : 1.4);
 
   const macerationStage: ADProcessStage = {
     name: "Feedstock Preparation (Maceration & Size Reduction)",
@@ -507,9 +513,10 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     assumptions.push({ parameter: "Dilution Water", value: `${roundTo(dilutionWaterTpd)} tons/day added to achieve ${targetEqTS}% TS`, source: "Engineering practice" });
   }
 
-  const eqInputSolids = buildSolidsStream(postMacerationTpd, avgTS, avgVS, effectiveCODMgL);
-  const eqOutputSolids = buildSolidsStream(eqOutputTpd, eqOutputTS, avgVS, effectiveCODMgL * (eqOutputTS / avgTS));
-  const eqOutputCodFrac = buildCodFractionation(effectiveCODMgL * (eqOutputTS / avgTS), scodFraction, codVsRatio > 0 ? codVsRatio : 1.4);
+  const eqInputSolids = buildSolidsStream(postMacerationTpd, avgTS, avgVS, postMacCODMgL);
+  const eqOutputCODMgL = needsDilution ? postMacCODMgL * (postMacerationTpd / eqOutputTpd) : postMacCODMgL;
+  const eqOutputSolids = buildSolidsStream(eqOutputTpd, eqOutputTS, avgVS, eqOutputCODMgL);
+  const eqOutputCodFrac = buildCodFractionation(eqOutputCODMgL, scodFraction, codVsRatio > 0 ? codVsRatio : 1.4);
 
   const eqStage: ADProcessStage = {
     name: "Equalization (EQ) Tank",
@@ -741,8 +748,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   const biogasRawStream = buildGasStream(biogasScfm, 0.5, ch4Pct, co2Pct, h2sPpmv, 1.0, 0.5);
   const digestateTS = eqOutputTS * (1 - vsDestruction * (avgVS / 100));
   const digestateVSOfTS = avgVS * (1 - vsDestruction) / (1 - vsDestruction * (avgVS / 100));
-  const digestateSolids = buildSolidsStream(digestateTPD, digestateTS, digestateVSOfTS, effectiveCODMgL * 0.35);
-  const digestateCodFrac = buildCodFractionation(effectiveCODMgL * 0.35, 0.5, codVsRatio > 0 ? codVsRatio : 1.4);
+  const digestateSolids = buildSolidsStream(digestateTPD, digestateTS, digestateVSOfTS, eqOutputCODMgL * 0.35);
+  const digestateCodFrac = buildCodFractionation(eqOutputCODMgL * 0.35, 0.5, codVsRatio > 0 ? codVsRatio : 1.4);
 
   const digesterStage: ADProcessStage = {
     name: "Anaerobic Digestion (CSTR)",
@@ -1238,6 +1245,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     volatileSolidsLbPerDay: { value: roundTo(totalVSLbPerDay, 0).toLocaleString(), unit: "lb/d" },
     codMgL: { value: roundTo(effectiveCODMgL, 0).toLocaleString(), unit: "mg/L" },
     codLbPerDay: { value: roundTo(totalCODLbPerDay, 0).toLocaleString(), unit: "lb/d" },
+    scodFraction: { value: `${roundTo(scodFraction * 100)}`, unit: "%" },
     scodMgL: { value: roundTo(effectiveCODMgL * scodFraction, 0).toLocaleString(), unit: "mg/L" },
     pcodMgL: { value: roundTo(effectiveCODMgL * (1 - scodFraction), 0).toLocaleString(), unit: "mg/L" },
     codVsRatio: { value: `${roundTo(codVsRatio > 0 ? codVsRatio : 1.4, 2)}`, unit: "lb COD/lb VS" },
