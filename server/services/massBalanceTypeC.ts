@@ -1,5 +1,6 @@
 import type {
   ADProcessStage,
+  CalculationStep,
   EquipmentItem,
   MassBalanceResults,
   UpifRecord,
@@ -68,9 +69,14 @@ function parseBiogasFlow(fs: FeedstockEntry): { scfm: number; source: string } {
   return { scfm: 0, source: "Not found" };
 }
 
+function fmt(v: number, decimals: number = 1): string {
+  return roundTo(v, decimals).toLocaleString();
+}
+
 export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults {
   const warnings: MassBalanceResults["warnings"] = [];
   const assumptions: MassBalanceResults["assumptions"] = [];
+  const calculationSteps: CalculationStep[] = [];
   const adStages: ADProcessStage[] = [];
   const equipment: EquipmentItem[] = [];
   let eqId = 1;
@@ -90,6 +96,7 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
       assumptions,
       warnings,
       summary: {},
+      calculationSteps: [],
     };
   }
 
@@ -109,6 +116,7 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
       assumptions,
       warnings,
       summary: {},
+      calculationSteps: [],
     };
   }
 
@@ -273,6 +281,97 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
+  calculationSteps.push({
+    category: "Biogas Input",
+    label: "Biogas Supply Flow",
+    formula: "User-provided or converted from input units",
+    inputs: [{ name: "Raw Input", value: fs.feedstockVolume || "0", unit: fs.feedstockUnit || "unknown" }],
+    result: { value: fmt(biogasScfm), unit: "SCFM" },
+    notes: `Source: ${flowSource}. Daily = ${fmt(biogasScfPerDay, 0)} scf/day`,
+  });
+  calculationSteps.push({
+    category: "Biogas Input",
+    label: "Biogas Energy Content",
+    formula: "CH₄% × 1,012 Btu/scf (pure CH₄ HHV)",
+    inputs: [
+      { name: "CH₄ Content", value: fmt(ch4Pct), unit: "%" },
+    ],
+    result: { value: fmt(biogasBtuPerScf), unit: "Btu/SCF" },
+  });
+  calculationSteps.push({
+    category: "Biogas Input",
+    label: "Biogas Energy (MMBTU/day)",
+    formula: "Flow (scf/day) × Btu/scf ÷ 1,000,000",
+    inputs: [
+      { name: "Flow", value: fmt(biogasScfPerDay, 0), unit: "scf/day" },
+      { name: "Energy Content", value: fmt(biogasBtuPerScf), unit: "Btu/SCF" },
+    ],
+    result: { value: fmt(biogasMmbtuPerDay), unit: "MMBTU/day" },
+  });
+  calculationSteps.push({
+    category: "Gas Conditioning",
+    label: "Conditioned Biogas Flow",
+    formula: "Raw Biogas × 0.99 (1% volume loss in conditioning)",
+    inputs: [
+      { name: "Raw Biogas", value: fmt(biogasScfm), unit: "SCFM" },
+    ],
+    result: { value: fmt(conditionedScfm), unit: "SCFM" },
+  });
+  calculationSteps.push({
+    category: "Gas Conditioning",
+    label: "H₂S Removal",
+    formula: "Inlet H₂S × (1 − Removal Efficiency)",
+    inputs: [
+      { name: "Inlet H₂S", value: fmt(h2sPpmv), unit: "ppmv" },
+      { name: "Removal Efficiency", value: fmt(h2sRemovalEff * 100), unit: "%" },
+    ],
+    result: { value: fmt(outH2sPpmv, 1), unit: "ppmv" },
+  });
+  const ch4ScfPerDayC = biogasScfPerDay * (ch4Pct / 100);
+  calculationSteps.push({
+    category: "Gas Upgrading (RNG)",
+    label: "CH₄ Available in Biogas",
+    formula: "Biogas Flow (scf/day) × CH₄%",
+    inputs: [
+      { name: "Biogas", value: fmt(biogasScfPerDay, 0), unit: "scf/day" },
+      { name: "CH₄", value: fmt(ch4Pct), unit: "%" },
+    ],
+    result: { value: fmt(ch4ScfPerDayC, 0), unit: "scf CH₄/day" },
+  });
+  calculationSteps.push({
+    category: "Gas Upgrading (RNG)",
+    label: "RNG Product Flow",
+    formula: "CH₄ Available × Methane Recovery ÷ Product Purity",
+    inputs: [
+      { name: "CH₄ Available", value: fmt(ch4ScfPerDayC, 0), unit: "scf/day" },
+      { name: "Methane Recovery", value: fmt(methaneRecovery * 100), unit: "%" },
+      { name: "Product CH₄", value: fmt(productCH4), unit: "%" },
+    ],
+    result: { value: fmt(rngScfm), unit: "SCFM" },
+    notes: `= ${fmt(rngScfPerDay, 0)} scf/day, ${fmt(rngMMBtuPerDay)} MMBTU/day`,
+  });
+  calculationSteps.push({
+    category: "Gas Upgrading (RNG)",
+    label: "Tail Gas Flow",
+    formula: "Conditioned Biogas − RNG Product",
+    inputs: [
+      { name: "Conditioned Biogas", value: fmt(conditionedScfm), unit: "SCFM" },
+      { name: "RNG Product", value: fmt(rngScfm), unit: "SCFM" },
+    ],
+    result: { value: fmt(tailgasScfm), unit: "SCFM" },
+    notes: "Routed to enclosed flare or thermal oxidizer",
+  });
+  calculationSteps.push({
+    category: "Gas Upgrading (RNG)",
+    label: "Electrical Demand",
+    formula: "Biogas Volume (m³/day) × Specific Power ÷ 24",
+    inputs: [
+      { name: "Biogas", value: fmt(biogasM3PerDay, 0), unit: "m³/day" },
+      { name: "Specific Power", value: fmt(prodevDesign.gasUpgrading.electricalDemand.value), unit: "kWh/1,000 scf" },
+    ],
+    result: { value: fmt(electricalDemandKW), unit: "kW" },
+  });
+
   const summary: Record<string, { value: string; unit: string }> = {
     biogasAvgFlowScfm: { value: roundTo(biogasScfm).toLocaleString(), unit: "SCFM" },
     biogasMaxFlowScfm: { value: roundTo(biogasMaxScfm).toLocaleString(), unit: "SCFM" },
@@ -312,5 +411,6 @@ export function calculateMassBalanceTypeC(upif: UpifRecord): MassBalanceResults 
     assumptions,
     warnings,
     summary,
+    calculationSteps,
   };
 }

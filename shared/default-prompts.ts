@@ -995,11 +995,31 @@ RESPOND WITH VALID JSON matching this exact structure:
   "assumptions": [
     { "parameter": "Name", "value": "Value", "source": "Source reference" }
   ],
+  "calculationSteps": [
+    {
+      "category": "Category Name (e.g., Removal Requirements, Flow Equalization, Stage Sizing)",
+      "label": "Step description",
+      "formula": "Text formula showing the calculation (e.g., Removal % = (Influent - Limit) / Influent × 100)",
+      "inputs": [
+        { "name": "Variable name", "value": "numeric or string value", "unit": "unit" }
+      ],
+      "result": { "value": "calculated result", "unit": "unit" },
+      "notes": "Optional design note or source reference"
+    }
+  ],
   "warnings": [
     { "field": "fieldName", "message": "Warning message", "severity": "warning|info|error" }
   ],
   "summary": {}
 }
+
+CALCULATION STEPS REQUIREMENTS:
+- The "calculationSteps" array must contain step-by-step derivations for ALL key engineering calculations.
+- Group steps by category: "Removal Requirements", "Flow Equalization", then one category per treatment stage (e.g., "DAF Sizing", "Biological Treatment Sizing").
+- For each pollutant needing removal, show: influent concentration, discharge limit, required removal %, and selected treatment method.
+- For each equipment item, show: design flow, retention time or loading rate, calculated volume/area, and resulting dimensions.
+- Include the text formula so users can verify every number.
+- Every numeric result in the mass balance must be traceable through these steps.
 
 RULES:
 - Use realistic engineering values based on the specific influent characteristics provided.

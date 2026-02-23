@@ -54,7 +54,7 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect, Fragment } from "react";
 import { ElapsedTimer } from "@/components/elapsed-timer";
-import type { MassBalanceRun, MassBalanceResults, TreatmentStage, EquipmentItem, StreamData, ADProcessStage, MassBalanceOverrides, VendorList, VendorListItem } from "@shared/schema";
+import type { MassBalanceRun, MassBalanceResults, CalculationStep, TreatmentStage, EquipmentItem, StreamData, ADProcessStage, MassBalanceOverrides, VendorList, VendorListItem } from "@shared/schema";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1229,6 +1229,50 @@ function AssumptionsList({ assumptions }: { assumptions: MassBalanceResults["ass
   );
 }
 
+function CalculationStepsList({ steps }: { steps: CalculationStep[] }) {
+  if (!steps || steps.length === 0) return null;
+
+  const categories = [...new Set(steps.map(s => s.category))];
+
+  return (
+    <div className="space-y-6" data-testid="calculation-steps">
+      {categories.map((cat) => (
+        <div key={cat}>
+          <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2" data-testid={`calc-category-${cat}`}>
+            <Beaker className="h-4 w-4" />
+            {cat}
+          </h4>
+          <div className="space-y-3">
+            {steps.filter(s => s.category === cat).map((step, i) => (
+              <div key={i} className="border rounded-lg p-3 bg-muted/30" data-testid={`calc-step-${i}`}>
+                <div className="flex items-start justify-between gap-4 mb-1">
+                  <span className="text-sm font-medium">{step.label}</span>
+                  <Badge variant="secondary" className="shrink-0 font-mono text-xs">
+                    {step.result.value} {step.result.unit}
+                  </Badge>
+                </div>
+                <div className="text-xs text-muted-foreground mb-1.5 font-mono bg-background/60 rounded px-2 py-1">
+                  {step.formula}
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {step.inputs.map((inp, j) => (
+                    <span key={j} className="text-xs text-muted-foreground">
+                      <span className="font-medium">{inp.name}:</span> {inp.value} {inp.unit}
+                    </span>
+                  ))}
+                </div>
+                {step.notes && (
+                  <div className="text-xs text-muted-foreground mt-1 italic">{step.notes}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function getProjectTypeLabel(pt: string | undefined): string {
   if (!pt) return "Wastewater Treatment";
   switch (pt) {
@@ -1719,6 +1763,17 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
                       <AssumptionsList assumptions={results.assumptions} />
                     </CardContent>
                   </Card>
+                  {results.calculationSteps && results.calculationSteps.length > 0 && (
+                    <Card className="mt-4">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Calculation Steps</CardTitle>
+                        <p className="text-xs text-muted-foreground">Step-by-step derivation of key results — follow along to verify any value</p>
+                      </CardHeader>
+                      <CardContent>
+                        <CalculationStepsList steps={results.calculationSteps} />
+                      </CardContent>
+                    </Card>
+                  )}
                 </TabsContent>
               </Tabs>
             </>

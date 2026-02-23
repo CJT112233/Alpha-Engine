@@ -1,5 +1,6 @@
 import type {
   ADProcessStage,
+  CalculationStep,
   EquipmentItem,
   MassBalanceResults,
   UpifRecord,
@@ -104,9 +105,14 @@ function isWastewaterFeedstock(fs: FeedstockEntry): boolean {
   return false;
 }
 
+function fmt(v: number, decimals: number = 1): string {
+  return roundTo(v, decimals).toLocaleString();
+}
+
 export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults {
   const warnings: MassBalanceResults["warnings"] = [];
   const assumptions: MassBalanceResults["assumptions"] = [];
+  const calculationSteps: CalculationStep[] = [];
   const adStages: ADProcessStage[] = [];
   const allEquipment: EquipmentItem[] = [];
   let eqId = 100;
@@ -428,6 +434,128 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
 
   const combinedEquipment = [...wwEquipment, ...allEquipment];
 
+  calculationSteps.push({
+    category: "Sludge Characterization",
+    label: "WW Sludge VS Load",
+    formula: "(Primary Sludge TS × VS/TS_primary) + (WAS TS × VS/TS_WAS)",
+    inputs: [
+      { name: "Primary Sludge TS", value: fmt(primarySludgeTSKgPerDay), unit: "kg TS/day" },
+      { name: "Primary VS/TS", value: fmt(primaryVSFraction * 100), unit: "%" },
+      { name: "WAS Sludge TS", value: fmt(wasSludgeTSKgPerDay), unit: "kg TS/day" },
+      { name: "WAS VS/TS", value: fmt(wasVSFraction * 100), unit: "%" },
+    ],
+    result: { value: fmt(wwVSKgPerDay), unit: "kg VS/day" },
+  });
+  if (truckedFeedstocks.length > 0) {
+    calculationSteps.push({
+      category: "Sludge Characterization",
+      label: "Trucked Feedstock VS Load",
+      formula: "Sum of (Feed × TS% × VS/TS%) for each trucked feedstock",
+      inputs: truckedFeedstocks.map(fs => ({
+        name: fs.feedstockType || "Trucked Feedstock",
+        value: fmt(parseFeedstockVolume(fs)),
+        unit: "tons/day",
+      })),
+      result: { value: fmt(truckedVSKgPerDay), unit: "kg VS/day" },
+    });
+  }
+  calculationSteps.push({
+    category: "Sludge Characterization",
+    label: "Total VS Load to Digester",
+    formula: "WW Sludge VS + Trucked Feedstock VS",
+    inputs: [
+      { name: "WW Sludge VS", value: fmt(wwVSKgPerDay), unit: "kg VS/day" },
+      { name: "Trucked Feedstock VS", value: fmt(truckedVSKgPerDay), unit: "kg VS/day" },
+    ],
+    result: { value: fmt(totalVSLoad), unit: "kg VS/day" },
+  });
+  calculationSteps.push({
+    category: "Anaerobic Digestion",
+    label: "VS Destroyed",
+    formula: "Total VS Load × VS Destruction Rate",
+    inputs: [
+      { name: "Total VS Load", value: fmt(totalVSLoad), unit: "kg VS/day" },
+      { name: "VS Destruction", value: fmt(vsDestruction * 100), unit: "%" },
+    ],
+    result: { value: fmt(vsDestroyedKgPerDay), unit: "kg/day" },
+  });
+  calculationSteps.push({
+    category: "Anaerobic Digestion",
+    label: "Raw Biogas Production",
+    formula: "VS Destroyed × Biogas Yield",
+    inputs: [
+      { name: "VS Destroyed", value: fmt(vsDestroyedKgPerDay), unit: "kg/day" },
+      { name: "Biogas Yield", value: fmt(gasYield, 2), unit: "m³/kg VS" },
+    ],
+    result: { value: fmt(biogasScfm), unit: "SCFM" },
+    notes: `= ${fmt(biogasScfPerDay, 0)} scf/day`,
+  });
+  calculationSteps.push({
+    category: "Anaerobic Digestion",
+    label: "Digester Volume (governing)",
+    formula: "Max(Sludge Volume × HRT, VS Load ÷ OLR)",
+    inputs: [
+      { name: "By HRT", value: fmt(m3ToGal(digesterVolumeByHRT), 0), unit: "gallons" },
+      { name: "By OLR", value: fmt(m3ToGal(digesterVolumeByOLR), 0), unit: "gallons" },
+    ],
+    result: { value: fmt(m3ToGal(digesterVolM3), 0), unit: "gallons" },
+    notes: `${numDigesters} digester(s), HRT = ${roundTo(digesterVolM3 / sludgeVolM3PerDay)} days, OLR = ${roundTo(totalVSLoad / digesterVolM3, 2)} kg VS/m³·d`,
+  });
+  calculationSteps.push({
+    category: "Gas Conditioning",
+    label: "Conditioned Biogas Flow",
+    formula: "Raw Biogas × (1 − Volume Loss%)",
+    inputs: [
+      { name: "Raw Biogas", value: fmt(biogasScfm), unit: "SCFM" },
+      { name: "Volume Loss", value: fmt(prodevDesign.gasConditioning.volumeLoss.value), unit: "%" },
+    ],
+    result: { value: fmt(conditionedScfm), unit: "SCFM" },
+  });
+  const ch4ScfPerDayD = biogasScfPerDay * (ch4Pct / 100);
+  calculationSteps.push({
+    category: "Gas Upgrading (RNG)",
+    label: "CH₄ Available in Biogas",
+    formula: "Biogas Flow (scf/day) × CH₄%",
+    inputs: [
+      { name: "Biogas", value: fmt(biogasScfPerDay, 0), unit: "scf/day" },
+      { name: "CH₄ Content", value: fmt(ch4Pct), unit: "%" },
+    ],
+    result: { value: fmt(ch4ScfPerDayD, 0), unit: "scf CH₄/day" },
+  });
+  calculationSteps.push({
+    category: "Gas Upgrading (RNG)",
+    label: "RNG Product Flow",
+    formula: "CH₄ Available × Methane Recovery ÷ Product Purity",
+    inputs: [
+      { name: "CH₄ Available", value: fmt(ch4ScfPerDayD, 0), unit: "scf/day" },
+      { name: "Methane Recovery", value: fmt(methaneRecovery * 100), unit: "%" },
+      { name: "Product CH₄", value: fmt(productCH4), unit: "%" },
+    ],
+    result: { value: fmt(rngScfm), unit: "SCFM" },
+    notes: `= ${fmt(rngScfPerDay, 0)} scf/day, ${fmt(rngMMBtuPerDay)} MMBTU/day`,
+  });
+  calculationSteps.push({
+    category: "Gas Upgrading (RNG)",
+    label: "Tail Gas Flow",
+    formula: "Conditioned Biogas − RNG Product",
+    inputs: [
+      { name: "Conditioned", value: fmt(conditionedScfm), unit: "SCFM" },
+      { name: "RNG Product", value: fmt(rngScfm), unit: "SCFM" },
+    ],
+    result: { value: fmt(tailgasScfm), unit: "SCFM" },
+  });
+  calculationSteps.push({
+    category: "Post-Digestion",
+    label: "Dewatered Cake Production",
+    formula: "Digested TS × Capture Rate ÷ Cake Solids%",
+    inputs: [
+      { name: "Digested TS", value: fmt(digestedTSKgPerDay), unit: "kg/day" },
+      { name: "Capture Rate", value: fmt(dewateringCaptureRate * 100), unit: "%" },
+      { name: "Cake Solids", value: fmt(cakeSolids * 100), unit: "% TS" },
+    ],
+    result: { value: fmt(cakeTPD), unit: "tons/day" },
+  });
+
   const summary: Record<string, { value: string; unit: string }> = {
     wastewaterFlow: { value: roundTo(flowMGD, 2).toString(), unit: "MGD" },
     wwTreatmentStages: { value: String(wwStages.length), unit: "stages" },
@@ -455,5 +583,6 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
     assumptions,
     warnings,
     summary,
+    calculationSteps,
   };
 }

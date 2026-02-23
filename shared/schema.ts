@@ -334,6 +334,15 @@ export type ADProcessStage = {
   notes: string[];
 };
 
+export type CalculationStep = {
+  category: string;
+  label: string;
+  formula: string;
+  inputs: Array<{ name: string; value: string; unit: string }>;
+  result: { value: string; unit: string };
+  notes?: string;
+};
+
 export type MassBalanceResults = {
   projectType?: string;
   stages: TreatmentStage[];
@@ -345,6 +354,7 @@ export type MassBalanceResults = {
   assumptions: Array<{ parameter: string; value: string; source: string }>;
   warnings: Array<{ field: string; message: string; severity: "error" | "warning" | "info" }>;
   summary?: Record<string, { value: string; unit: string }>;
+  calculationSteps?: CalculationStep[];
 };
 
 export type MassBalanceOverrides = Record<string, {

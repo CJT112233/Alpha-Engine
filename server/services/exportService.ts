@@ -1,7 +1,7 @@
 import PDFDocument from "pdfkit";
 import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
-import type { MassBalanceResults, TreatmentStage, ADProcessStage, EquipmentItem, CapexResults, CapexLineItem, CapexSummary, OpexResults, OpexLineItem, OpexSummary, VendorList, FinancialModelResults, FinancialMetrics, ProFormaYear, FinancialAssumptions, UpifRecord, FeedstockEntry, EnrichedFeedstockSpecRecord } from "@shared/schema";
+import type { MassBalanceResults, CalculationStep, TreatmentStage, ADProcessStage, EquipmentItem, CapexResults, CapexLineItem, CapexSummary, OpexResults, OpexLineItem, OpexSummary, VendorList, FinancialModelResults, FinancialMetrics, ProFormaYear, FinancialAssumptions, UpifRecord, FeedstockEntry, EnrichedFeedstockSpecRecord } from "@shared/schema";
 
 function sanitize(text: string): string {
   if (!text) return "";
@@ -213,6 +213,33 @@ export function exportMassBalancePDF(
         ]);
         const streamWidths = [128, 128, 128, 128];
         y = drawTable(doc, streamHeaders, streamRows, leftMargin, y, streamWidths);
+        y += 10;
+      }
+    }
+
+    if (results.calculationSteps && results.calculationSteps.length > 0) {
+      if (y > 500) { doc.addPage(); y = 50; }
+      y = addSectionHeader(doc, "Calculation Steps", y, leftMargin, contentWidth);
+      doc.font("Helvetica").fontSize(7).fillColor("#888888")
+        .text("Step-by-step derivation of key results. Follow along to verify any value.", leftMargin, y);
+      y += 12;
+      const stepCategories = [...new Set(results.calculationSteps.map(s => s.category))];
+      for (const cat of stepCategories) {
+        if (y > 680) { doc.addPage(); y = 50; }
+        doc.font("Helvetica-Bold").fontSize(9).fillColor("#1E3A5F").text(cat, leftMargin, y);
+        y += 14;
+        const catSteps = results.calculationSteps.filter(s => s.category === cat);
+        const calcHeaders = ["Step", "Formula", "Result"];
+        const calcRows = catSteps.map(step => {
+          const inputsStr = step.inputs.map(inp => `${inp.name}=${inp.value} ${inp.unit}`).join(", ");
+          return [
+            sanitize(step.label),
+            `${sanitize(step.formula)}\n[${inputsStr}]`,
+            `${step.result.value} ${step.result.unit}${step.notes ? `\n${step.notes}` : ""}`,
+          ];
+        });
+        const calcWidths = [140, 230, 142];
+        y = drawTable(doc, calcHeaders, calcRows, leftMargin, y, calcWidths);
         y += 10;
       }
     }
@@ -715,10 +742,44 @@ export async function exportMassBalanceExcel(
     });
   }
 
-  wsCalc.getColumn(1).width = 12;
-  wsCalc.getColumn(2).width = 35;
-  wsCalc.getColumn(3).width = 30;
-  wsCalc.getColumn(4).width = 30;
+  if (results.calculationSteps && results.calculationSteps.length > 0) {
+    cr += 2;
+    mbAddSectionTitle(wsCalc, cr, "Calculation Steps", 6);
+    cr++;
+    const stepCategories = [...new Set(results.calculationSteps.map(s => s.category))];
+    for (const cat of stepCategories) {
+      mbAddSubsectionTitle(wsCalc, cr, cat, 6);
+      cr++;
+      mbApplyTableHeaders(wsCalc, cr, ["Step", "Formula", "Inputs", "Result", "Unit", "Notes"], [25, 40, 45, 18, 15, 35]);
+      cr++;
+      const catSteps = results.calculationSteps.filter(s => s.category === cat);
+      catSteps.forEach((step, idx) => {
+        const r = wsCalc.getRow(cr);
+        const inputsStr = step.inputs.map(inp => `${inp.name} = ${inp.value} ${inp.unit}`).join("; ");
+        const vals = [step.label, step.formula, inputsStr, step.result.value, step.result.unit, step.notes || ""];
+        vals.forEach((v, i) => {
+          const cell = r.getCell(i + 1);
+          cell.value = v ?? "";
+          cell.border = MB_BORDER_THIN;
+          cell.alignment = { vertical: "middle", wrapText: true, horizontal: i === 3 ? "right" : "left" };
+          cell.font = { size: 9 };
+          if (i === 1) cell.font = { size: 9, italic: true };
+          if (i === 3) cell.font = { size: 9, bold: true };
+          if (idx % 2 === 1) cell.fill = MB_ALT_ROW_FILL;
+        });
+        r.height = 22;
+        cr++;
+      });
+      cr++;
+    }
+  }
+
+  wsCalc.getColumn(1).width = 25;
+  wsCalc.getColumn(2).width = 40;
+  wsCalc.getColumn(3).width = 45;
+  wsCalc.getColumn(4).width = 18;
+  wsCalc.getColumn(5).width = 15;
+  wsCalc.getColumn(6).width = 35;
 
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);
