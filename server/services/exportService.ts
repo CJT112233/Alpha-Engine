@@ -34,7 +34,7 @@ function drawTable(
   options?: { fontSize?: number; headerBg?: string }
 ): number {
   const fontSize = options?.fontSize || 8;
-  const headerBg = options?.headerBg || "#2563EB";
+  const headerBg = options?.headerBg || "#323F4F";
   const minRowHeight = 16;
   const cellPadding = 3;
   const pageHeight = 792;
@@ -68,21 +68,21 @@ function drawTable(
       const cellText = sanitize(cells[i] || "");
       doc.font(bold ? "Helvetica-Bold" : "Helvetica")
         .fontSize(fontSize)
-        .fillColor(bgColor === headerBg ? "#FFFFFF" : "#333333")
+        .fillColor(bgColor === headerBg ? "#FFFFFF" : "#44546A")
         .text(cellText, x + cellPadding, y + cellPadding, {
           width: colWidths[i] - cellPadding * 2,
           lineBreak: true,
         });
       x += colWidths[i];
     }
-    doc.rect(startX, y, tableWidth, rowH).lineWidth(0.5).strokeColor("#CCCCCC").stroke();
+    doc.rect(startX, y, tableWidth, rowH).lineWidth(0.5).strokeColor("#CFD1D4").stroke();
     y += rowH;
   };
 
   drawRow(headers, true, headerBg);
   rows.forEach((row, idx) => {
     const safeRow = row.map(cell => cell ?? "-");
-    drawRow(safeRow, false, idx % 2 === 1 ? "#F8F9FA" : undefined);
+    drawRow(safeRow, false, idx % 2 === 1 ? "#E9E9EB" : undefined);
   });
   return y;
 }
@@ -92,10 +92,10 @@ function addSectionHeader(doc: InstanceType<typeof PDFDocument>, title: string, 
     doc.addPage();
     y = 50;
   }
-  doc.font("Helvetica-Bold").fontSize(12).fillColor("#1E3A5F")
+  doc.font("Helvetica-Bold").fontSize(12).fillColor("#00B050")
     .text(title, leftMargin, y, { width: contentWidth });
   y += 20;
-  doc.moveTo(leftMargin, y).lineTo(leftMargin + contentWidth, y).lineWidth(0.5).strokeColor("#CCCCCC").stroke();
+  doc.moveTo(leftMargin, y).lineTo(leftMargin + contentWidth, y).lineWidth(0.5).strokeColor("#CFD1D4").stroke();
   y += 8;
   return y;
 }
@@ -116,9 +116,9 @@ export function exportMassBalancePDF(
     const contentWidth = 512;
     const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
 
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#1E3A5F")
+    doc.font("Helvetica-Bold").fontSize(18).fillColor("#323F4F")
       .text("Mass Balance Report", leftMargin, 50, { align: "center", width: contentWidth });
-    doc.font("Helvetica").fontSize(10).fillColor("#666666")
+    doc.font("Helvetica").fontSize(10).fillColor("#8496B0")
       .text(`Project: ${sanitize(projectName)}`, leftMargin, 75, { align: "center", width: contentWidth })
       .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 88, { align: "center", width: contentWidth })
       .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 101, { align: "center", width: contentWidth })
@@ -152,7 +152,7 @@ export function exportMassBalancePDF(
       y = addSectionHeader(doc, "Process Stages", y, leftMargin, contentWidth);
       for (const stage of results.adStages) {
         if (y > 680) { doc.addPage(); y = 50; }
-        doc.font("Helvetica-Bold").fontSize(9).fillColor("#333333")
+        doc.font("Helvetica-Bold").fontSize(9).fillColor("#44546A")
           .text(`${sanitize(stage.name)} (${sanitize(stage.type)})`, leftMargin, y);
         y += 14;
         const allKeys = new Set([
@@ -193,13 +193,13 @@ export function exportMassBalancePDF(
     if (results.stages && results.stages.length > 0) {
       y = addSectionHeader(doc, "Treatment Train - Stream Data", y, leftMargin, contentWidth);
       if (results.convergenceAchieved !== undefined) {
-        doc.font("Helvetica").fontSize(8).fillColor("#666666")
+        doc.font("Helvetica").fontSize(8).fillColor("#8496B0")
           .text(`Convergence: ${results.convergenceAchieved ? "Yes" : "No"} (${results.convergenceIterations} iterations)`, leftMargin, y);
         y += 14;
       }
       for (const stage of results.stages) {
         if (y > 680) { doc.addPage(); y = 50; }
-        doc.font("Helvetica-Bold").fontSize(9).fillColor("#333333")
+        doc.font("Helvetica-Bold").fontSize(9).fillColor("#44546A")
           .text(`${sanitize(stage.name)} (${sanitize(stage.type)})`, leftMargin, y);
         y += 14;
         const streamHeaders = ["Parameter", "Influent", "Effluent", "Removal %"];
@@ -220,13 +220,13 @@ export function exportMassBalancePDF(
     if (results.calculationSteps && results.calculationSteps.length > 0) {
       if (y > 500) { doc.addPage(); y = 50; }
       y = addSectionHeader(doc, "Calculation Steps", y, leftMargin, contentWidth);
-      doc.font("Helvetica").fontSize(7).fillColor("#888888")
+      doc.font("Helvetica").fontSize(7).fillColor("#ADB9CA")
         .text("Step-by-step derivation of key results. Follow along to verify any value.", leftMargin, y);
       y += 12;
       const stepCategories = [...new Set(results.calculationSteps.map(s => s.category))];
       for (const cat of stepCategories) {
         if (y > 680) { doc.addPage(); y = 50; }
-        doc.font("Helvetica-Bold").fontSize(9).fillColor("#1E3A5F").text(cat, leftMargin, y);
+        doc.font("Helvetica-Bold").fontSize(9).fillColor("#00B050").text(cat, leftMargin, y);
         y += 14;
         const catSteps = results.calculationSteps.filter(s => s.category === cat);
         const calcHeaders = ["Step", "Formula", "Result"];
@@ -248,19 +248,19 @@ export function exportMassBalancePDF(
   });
 }
 
-const MB_HEADER_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
+const MB_HEADER_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FF323F4F" } };
 const MB_HEADER_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
-const MB_SECTION_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2C5F8A" } };
+const MB_SECTION_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FF00B050" } };
 const MB_SECTION_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FFFFFFFF" }, size: 12 };
-const MB_SUBSECTION_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCE6F1" } };
-const MB_SUBSECTION_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FF1E3A5F" }, size: 11 };
+const MB_SUBSECTION_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD6DCE4" } };
+const MB_SUBSECTION_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FF323F4F" }, size: 11 };
 const MB_BORDER_THIN: Partial<ExcelJS.Borders> = {
-  top: { style: "thin", color: { argb: "FFB0B0B0" } },
-  bottom: { style: "thin", color: { argb: "FFB0B0B0" } },
-  left: { style: "thin", color: { argb: "FFB0B0B0" } },
-  right: { style: "thin", color: { argb: "FFB0B0B0" } },
+  top: { style: "thin", color: { argb: "FFCFD1D4" } },
+  bottom: { style: "thin", color: { argb: "FFCFD1D4" } },
+  left: { style: "thin", color: { argb: "FFCFD1D4" } },
+  right: { style: "thin", color: { argb: "FFCFD1D4" } },
 };
-const MB_ALT_ROW_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F8FC" } };
+const MB_ALT_ROW_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE9E9EB" } };
 
 function mbApplyTableHeaders(ws: ExcelJS.Worksheet, row: number, headers: string[], widths?: number[]): void {
   const r = ws.getRow(row);
@@ -349,7 +349,7 @@ export async function exportMassBalanceExcel(
   // ==========================================
   // TAB 1: Input Parameters
   // ==========================================
-  const wsInput = wb.addWorksheet("Input Parameters", { properties: { tabColor: { argb: "FF2C5F8A" } } });
+  const wsInput = wb.addWorksheet("Input Parameters", { properties: { tabColor: { argb: "FF44546A" } } });
   let ir = 1;
 
   mbAddSectionTitle(wsInput, ir, "Input Parameters", 4);
@@ -505,16 +505,16 @@ export async function exportMassBalanceExcel(
   // ==========================================
   // TAB 2: Mass Balance (separate tables per train)
   // ==========================================
-  const wsMB = wb.addWorksheet("Mass Balance", { properties: { tabColor: { argb: "FF2E7D32" } } });
+  const wsMB = wb.addWorksheet("Mass Balance", { properties: { tabColor: { argb: "FF00B050" } } });
   let mr = 1;
 
   mbAddSectionTitle(wsMB, mr, `Mass Balance — ${projectName} / ${scenarioName}`, 6);
   mr++;
   const metaRow = wsMB.getRow(mr);
   metaRow.getCell(1).value = `Type ${projectType}: ${typeLabels[projectType] || ""}`;
-  metaRow.getCell(1).font = { italic: true, size: 10, color: { argb: "FF555555" } };
+  metaRow.getCell(1).font = { italic: true, size: 10, color: { argb: "FF8496B0" } };
   metaRow.getCell(4).value = `Generated: ${new Date().toLocaleDateString("en-US")}`;
-  metaRow.getCell(4).font = { italic: true, size: 10, color: { argb: "FF555555" } };
+  metaRow.getCell(4).font = { italic: true, size: 10, color: { argb: "FF8496B0" } };
   mr += 2;
 
   if (results.summary && Object.keys(results.summary).length > 0) {
@@ -588,7 +588,7 @@ export async function exportMassBalanceExcel(
         mr++;
         const dcRow = wsMB.getRow(mr);
         dcRow.getCell(1).value = "Design Criteria";
-        dcRow.getCell(1).font = { bold: true, italic: true, size: 10, color: { argb: "FF1E3A5F" } };
+        dcRow.getCell(1).font = { bold: true, italic: true, size: 10, color: { argb: "FF323F4F" } };
         mr++;
         mbApplyTableHeaders(wsMB, mr, ["Criterion", "Value", "Unit", "Source"], [25, 18, 15, 20]);
         mr++;
@@ -624,7 +624,7 @@ export async function exportMassBalanceExcel(
   // ==========================================
   // TAB 3: Equipment List
   // ==========================================
-  const wsEq = wb.addWorksheet("Equipment List", { properties: { tabColor: { argb: "FFE65100" } } });
+  const wsEq = wb.addWorksheet("Equipment List", { properties: { tabColor: { argb: "FF008250" } } });
   let er = 1;
 
   mbAddSectionTitle(wsEq, er, "Equipment List", 7);
@@ -658,13 +658,13 @@ export async function exportMassBalanceExcel(
   } else {
     const r = wsEq.getRow(er);
     r.getCell(1).value = "No equipment data available.";
-    r.getCell(1).font = { italic: true, color: { argb: "FF999999" } };
+    r.getCell(1).font = { italic: true, color: { argb: "FFADB9CA" } };
   }
 
   // ==========================================
   // TAB 4: Assumptions & Calculations
   // ==========================================
-  const wsCalc = wb.addWorksheet("Assumptions & Calculations", { properties: { tabColor: { argb: "FF6A1B9A" } } });
+  const wsCalc = wb.addWorksheet("Assumptions & Calculations", { properties: { tabColor: { argb: "FF8496B0" } } });
   let cr = 1;
 
   mbAddSectionTitle(wsCalc, cr, "Design Assumptions", 4);
@@ -689,7 +689,7 @@ export async function exportMassBalanceExcel(
   } else {
     const r = wsCalc.getRow(cr);
     r.getCell(1).value = "No assumptions recorded.";
-    r.getCell(1).font = { italic: true, color: { argb: "FF999999" } };
+    r.getCell(1).font = { italic: true, color: { argb: "FFADB9CA" } };
     cr++;
   }
 
@@ -801,9 +801,9 @@ export function exportCapexPDF(
     const contentWidth = 512;
     const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
 
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#1E3A5F")
+    doc.font("Helvetica-Bold").fontSize(18).fillColor("#323F4F")
       .text("Capital Cost Estimate", leftMargin, 50, { align: "center", width: contentWidth });
-    doc.font("Helvetica").fontSize(10).fillColor("#666666")
+    doc.font("Helvetica").fontSize(10).fillColor("#8496B0")
       .text(`Project: ${sanitize(projectName)}`, leftMargin, 75, { align: "center", width: contentWidth })
       .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 88, { align: "center", width: contentWidth })
       .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 101, { align: "center", width: contentWidth })
@@ -826,7 +826,7 @@ export function exportCapexPDF(
       if (summary.costPerUnit) {
         sumRows.push([`Cost per Unit (${summary.costPerUnit.basis})`, `${fmtCurrency(summary.costPerUnit.value)} / ${summary.costPerUnit.unit}`]);
       }
-      y = drawTable(doc, ["Item", "Amount"], sumRows, leftMargin, y, [300, 212], { headerBg: "#1E3A5F" });
+      y = drawTable(doc, ["Item", "Amount"], sumRows, leftMargin, y, [300, 212], { headerBg: "#323F4F" });
       y += 15;
     }
 
@@ -858,7 +858,7 @@ export function exportCapexPDF(
     if (results.methodology) {
       if (y > 700) { doc.addPage(); y = 50; }
       y = addSectionHeader(doc, "Methodology", y, leftMargin, contentWidth);
-      doc.font("Helvetica").fontSize(9).fillColor("#333333")
+      doc.font("Helvetica").fontSize(9).fillColor("#44546A")
         .text(sanitize(results.methodology), leftMargin, y, { width: contentWidth, lineGap: 2 });
     }
 
@@ -959,9 +959,9 @@ export function exportOpexPDF(
     const contentWidth = 512;
     const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
 
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#1E3A5F")
+    doc.font("Helvetica-Bold").fontSize(18).fillColor("#323F4F")
       .text("Annual Operating Cost Estimate", leftMargin, 50, { align: "center", width: contentWidth });
-    doc.font("Helvetica").fontSize(10).fillColor("#666666")
+    doc.font("Helvetica").fontSize(10).fillColor("#8496B0")
       .text(`Project: ${sanitize(projectName)}`, leftMargin, 75, { align: "center", width: contentWidth })
       .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 88, { align: "center", width: contentWidth })
       .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 101, { align: "center", width: contentWidth })
@@ -990,7 +990,7 @@ export function exportOpexPDF(
       if (summary.opexPerUnit) {
         sumRows.push([`OpEx per Unit (${summary.opexPerUnit.basis})`, `${fmtCurrency(summary.opexPerUnit.value)} / ${summary.opexPerUnit.unit}`]);
       }
-      y = drawTable(doc, ["Item", "Amount"], sumRows, leftMargin, y, [300, 212], { headerBg: "#1E3A5F" });
+      y = drawTable(doc, ["Item", "Amount"], sumRows, leftMargin, y, [300, 212], { headerBg: "#323F4F" });
       y += 15;
     }
 
@@ -1021,7 +1021,7 @@ export function exportOpexPDF(
     if (results.methodology) {
       if (y > 700) { doc.addPage(); y = 50; }
       y = addSectionHeader(doc, "Methodology", y, leftMargin, contentWidth);
-      doc.font("Helvetica").fontSize(9).fillColor("#333333")
+      doc.font("Helvetica").fontSize(9).fillColor("#44546A")
         .text(sanitize(results.methodology), leftMargin, y, { width: contentWidth, lineGap: 2 });
     }
 
@@ -1123,9 +1123,9 @@ export function exportVendorListPDF(
     const contentWidth = 512;
     const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
 
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#1E3A5F")
+    doc.font("Helvetica-Bold").fontSize(18).fillColor("#323F4F")
       .text("Recommended Vendor List", leftMargin, 50, { align: "center", width: contentWidth });
-    doc.font("Helvetica").fontSize(10).fillColor("#666666")
+    doc.font("Helvetica").fontSize(10).fillColor("#8496B0")
       .text(`Project: ${sanitize(projectName)}`, leftMargin, 75, { align: "center", width: contentWidth })
       .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 88, { align: "center", width: contentWidth })
       .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 101, { align: "center", width: contentWidth })
@@ -1137,16 +1137,16 @@ export function exportVendorListPDF(
     for (const item of vendorList.items) {
       if (y > 650) { doc.addPage(); y = 50; }
 
-      doc.rect(leftMargin, y, contentWidth, 22).fill("#2563EB");
+      doc.rect(leftMargin, y, contentWidth, 22).fill("#00B050");
       doc.font("Helvetica-Bold").fontSize(10).fillColor("#FFFFFF")
         .text(`${sanitize(item.equipmentType)} — ${sanitize(item.process)}`, leftMargin + 8, y + 5, { width: contentWidth - 16 });
       y += 26;
 
-      doc.font("Helvetica").fontSize(8).fillColor("#333333")
+      doc.font("Helvetica").fontSize(8).fillColor("#44546A")
         .text(`Quantity: ${item.quantity}`, leftMargin + 8, y);
       y += 12;
       if (item.specsSummary) {
-        doc.font("Helvetica").fontSize(8).fillColor("#555555")
+        doc.font("Helvetica").fontSize(8).fillColor("#44546A")
           .text(`Specs: ${sanitize(item.specsSummary)}`, leftMargin + 8, y, { width: contentWidth - 16 });
         y += doc.heightOfString(`Specs: ${sanitize(item.specsSummary)}`, { width: contentWidth - 16 }) + 4;
       }
@@ -1198,9 +1198,9 @@ export function exportProjectSummaryPDF(
     const addPageFooter = () => {
       if (addingFooter) return;
       addingFooter = true;
-      doc.font("Helvetica").fontSize(7).fillColor("#999999")
+      doc.font("Helvetica").fontSize(7).fillColor("#ADB9CA")
         .text("Confidential", leftMargin, 750, { width: contentWidth, align: "center", lineBreak: false });
-      doc.font("Helvetica").fontSize(7).fillColor("#999999")
+      doc.font("Helvetica").fontSize(7).fillColor("#ADB9CA")
         .text(`Page ${pageNum}`, leftMargin, 760, { width: contentWidth, align: "center", lineBreak: false });
       pageNum++;
       addingFooter = false;
@@ -1210,9 +1210,9 @@ export function exportProjectSummaryPDF(
       addPageFooter();
     });
 
-    doc.font("Helvetica-Bold").fontSize(20).fillColor("#1E3A5F")
+    doc.font("Helvetica-Bold").fontSize(20).fillColor("#323F4F")
       .text("Project Summary", leftMargin, 50, { align: "center", width: contentWidth });
-    doc.font("Helvetica").fontSize(10).fillColor("#666666")
+    doc.font("Helvetica").fontSize(10).fillColor("#8496B0")
       .text(`Project: ${sanitize(projectName)}`, leftMargin, 80, { align: "center", width: contentWidth })
       .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 95, { align: "center", width: contentWidth })
       .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 110, { align: "center", width: contentWidth })
@@ -1223,13 +1223,13 @@ export function exportProjectSummaryPDF(
     y = addSectionHeader(doc, "Project Overview", y, leftMargin, contentWidth);
     const description = upifData?.projectDescription || upifData?.description || "";
     if (description) {
-      doc.font("Helvetica").fontSize(9).fillColor("#333333")
+      doc.font("Helvetica").fontSize(9).fillColor("#44546A")
         .text(sanitize(description), leftMargin, y, { width: contentWidth, lineGap: 2 });
       y += doc.heightOfString(sanitize(description), { width: contentWidth }) + 8;
     }
     const location = upifData?.location || "";
     if (location) {
-      doc.font("Helvetica").fontSize(9).fillColor("#333333")
+      doc.font("Helvetica").fontSize(9).fillColor("#44546A")
         .text(`Location: ${sanitize(location)}`, leftMargin, y, { width: contentWidth });
       y += 14;
     }
@@ -1277,7 +1277,7 @@ export function exportProjectSummaryPDF(
         fmtCurrency(metrics.averageAnnualEbitda),
       ],
     ];
-    y = drawTable(doc, metricsHeaders, metricsRows, leftMargin, y, [100, 156, 120, 136], { headerBg: "#5B9BD5" });
+    y = drawTable(doc, metricsHeaders, metricsRows, leftMargin, y, [100, 156, 120, 136], { headerBg: "#00B050" });
     y += 15;
 
     addPageFooter();
@@ -1302,7 +1302,7 @@ export function exportProjectSummaryPDF(
       y = drawTable(doc, eqHeaders, eqRows, leftMargin, y, [100, 130, 32, 250]);
       if (truncated) {
         y += 4;
-        doc.font("Helvetica-Oblique").fontSize(8).fillColor("#666666")
+        doc.font("Helvetica-Oblique").fontSize(8).fillColor("#8496B0")
           .text("See Appendix for full list", leftMargin, y, { width: contentWidth });
         y += 14;
       }
@@ -1320,7 +1320,7 @@ export function exportProjectSummaryPDF(
       [`Engineering (${capSummary.engineeringPct}%)`, fmtCurrency(capSummary.engineeringCost)],
       ["Total Project Cost", fmtCurrency(capSummary.totalProjectCost)],
     ];
-    y = drawTable(doc, ["Item", "Amount"], capexSumRows, leftMargin, y, [300, 212], { headerBg: "#1E3A5F" });
+    y = drawTable(doc, ["Item", "Amount"], capexSumRows, leftMargin, y, [300, 212], { headerBg: "#323F4F" });
     y += 15;
 
     if (y > 680) { doc.addPage(); y = 50; }
@@ -1336,13 +1336,13 @@ export function exportProjectSummaryPDF(
       ["Other", fmtCurrency(opSummary.totalOtherCost)],
       ["Net Annual OpEx", fmtCurrency(opSummary.netAnnualOpex)],
     ];
-    y = drawTable(doc, ["Item", "Amount"], opexSumRows, leftMargin, y, [300, 212], { headerBg: "#1E3A5F" });
+    y = drawTable(doc, ["Item", "Amount"], opexSumRows, leftMargin, y, [300, 212], { headerBg: "#323F4F" });
     y += 15;
 
     if (mode === "full") {
       doc.addPage();
       y = 50;
-      doc.font("Helvetica-Bold").fontSize(14).fillColor("#1E3A5F")
+      doc.font("Helvetica-Bold").fontSize(14).fillColor("#323F4F")
         .text("Appendix A - Mass Balance Details", leftMargin, y, { width: contentWidth });
       y += 25;
 
@@ -1378,7 +1378,7 @@ export function exportProjectSummaryPDF(
         y = addSectionHeader(doc, "Process Stages Detail", y, leftMargin, contentWidth);
         for (const stage of mbResults.adStages) {
           if (y > 680) { doc.addPage(); y = 50; }
-          doc.font("Helvetica-Bold").fontSize(9).fillColor("#333333")
+          doc.font("Helvetica-Bold").fontSize(9).fillColor("#44546A")
             .text(`${sanitize(stage.name)} (${sanitize(stage.type)})`, leftMargin, y);
           y += 14;
           const allKeys = new Set([
@@ -1402,7 +1402,7 @@ export function exportProjectSummaryPDF(
 
       doc.addPage();
       y = 50;
-      doc.font("Helvetica-Bold").fontSize(14).fillColor("#1E3A5F")
+      doc.font("Helvetica-Bold").fontSize(14).fillColor("#323F4F")
         .text("Appendix B - CapEx Detail", leftMargin, y, { width: contentWidth });
       y += 25;
 
@@ -1422,7 +1422,7 @@ export function exportProjectSummaryPDF(
 
       doc.addPage();
       y = 50;
-      doc.font("Helvetica-Bold").fontSize(14).fillColor("#1E3A5F")
+      doc.font("Helvetica-Bold").fontSize(14).fillColor("#323F4F")
         .text("Appendix C - OpEx Detail", leftMargin, y, { width: contentWidth });
       y += 25;
 
@@ -1441,7 +1441,7 @@ export function exportProjectSummaryPDF(
 
       doc.addPage();
       y = 50;
-      doc.font("Helvetica-Bold").fontSize(14).fillColor("#1E3A5F")
+      doc.font("Helvetica-Bold").fontSize(14).fillColor("#323F4F")
         .text("Appendix D - Pro-Forma Financial Projections", leftMargin, y, { width: contentWidth });
       y += 25;
 
