@@ -2938,17 +2938,34 @@ export async function registerRoutes(
           modelUsed = "Deterministic Calculator";
           console.log(`Mass Balance: Deterministic calculation succeeded in ${Date.now() - startTime}ms`);
         } catch (detError) {
-          console.warn(`Mass Balance: Deterministic calculation failed, falling back to AI:`, (detError as Error).message);
-          const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
-          const aiResult = await generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
-          results = aiResult.results;
-          modelUsed = aiResult.providerLabel + " (deterministic fallback)";
-          console.log(`Mass Balance: AI fallback succeeded using ${modelUsed}`);
+          const detErrMsg = (detError as Error).message;
+          console.warn(`Mass Balance: Deterministic calculation failed, falling back to AI:`, detErrMsg);
+          try {
+            const AI_TIMEOUT_MS = 120000;
+            const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
+            const aiPromise = generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("AI mass balance generation timed out after 2 minutes")), AI_TIMEOUT_MS)
+            );
+            const aiResult = await Promise.race([aiPromise, timeoutPromise]);
+            results = aiResult.results;
+            modelUsed = aiResult.providerLabel + " (deterministic fallback)";
+            console.log(`Mass Balance: AI fallback succeeded using ${modelUsed}`);
+          } catch (aiError) {
+            const aiErrMsg = (aiError as Error).message;
+            console.error(`Mass Balance: AI fallback also failed:`, aiErrMsg);
+            throw new Error(`Deterministic calculator failed: ${detErrMsg}. AI fallback also failed: ${aiErrMsg}`);
+          }
         }
       } else {
         try {
+          const AI_TIMEOUT_MS = 120000;
           const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
-          const aiResult = await generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
+          const aiPromise = generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("AI mass balance generation timed out after 2 minutes")), AI_TIMEOUT_MS)
+          );
+          const aiResult = await Promise.race([aiPromise, timeoutPromise]);
           results = aiResult.results;
           modelUsed = aiResult.providerLabel;
           console.log(`Mass Balance: AI generation succeeded using ${modelUsed}`);
@@ -2998,8 +3015,9 @@ export async function registerRoutes(
         status: "error",
         errorMessage: (error as any)?.message || "Unknown error",
       }).catch(e => console.error("Failed to log generation:", e));
-      console.error("Error generating mass balance:", error);
-      res.status(500).json({ error: "Failed to generate mass balance" });
+      const errMsg = (error as any)?.message || "Unknown error";
+      console.error("Error generating mass balance:", errMsg, error);
+      res.status(500).json({ error: `Failed to generate mass balance: ${errMsg}` });
     }
   });
 
