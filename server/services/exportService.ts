@@ -25,10 +25,10 @@ function fmtCurrency(val: number): string {
 }
 
 function fmtCurrencyK(val: number): string {
-  if (val === undefined || val === null || isNaN(val)) return "$0K";
+  if (val === undefined || val === null || isNaN(val)) return "$0";
   const inK = Math.round(val / 1000);
-  if (inK < 0) return `($${Math.abs(inK).toLocaleString("en-US")}K)`;
-  return "$" + inK.toLocaleString("en-US") + "K";
+  if (inK < 0) return `($${Math.abs(inK).toLocaleString("en-US")})`;
+  return "$" + inK.toLocaleString("en-US");
 }
 
 function buildExecutiveSummary(

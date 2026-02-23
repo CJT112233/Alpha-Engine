@@ -421,13 +421,13 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
 function MetricsCards({ metrics }: { metrics: FinancialMetrics }) {
   const cards = [
     { label: "IRR", value: formatPct(metrics.irr), icon: TrendingUp, testId: "card-irr" },
-    { label: "NPV @ 10%", value: formatCurrencyK(metrics.npv10) + "K", icon: DollarSign, testId: "card-npv" },
+    { label: "NPV @ 10%", value: formatCurrencyK(metrics.npv10), icon: DollarSign, testId: "card-npv" },
     { label: "MOIC", value: formatMoic(metrics.moic), icon: Target, testId: "card-moic" },
     { label: "Payback Period", value: formatPayback(metrics.paybackYears), icon: Clock, testId: "card-payback" },
-    { label: "Total CapEx", value: formatCurrencyK(metrics.totalCapex) + "K", icon: Calculator, testId: "card-total-capex" },
-    { label: "ITC Proceeds", value: formatCurrencyK(metrics.itcProceeds) + "K", icon: Percent, testId: "card-itc" },
-    { label: "Total EBITDA", value: formatCurrencyK(metrics.totalEbitda) + "K", icon: BarChart3, testId: "card-total-ebitda" },
-    { label: "Avg Annual EBITDA", value: formatCurrencyK(metrics.averageAnnualEbitda) + "K", icon: BarChart3, testId: "card-avg-ebitda" },
+    { label: "Total CapEx", value: formatCurrencyK(metrics.totalCapex), icon: Calculator, testId: "card-total-capex" },
+    { label: "ITC Proceeds", value: formatCurrencyK(metrics.itcProceeds), icon: Percent, testId: "card-itc" },
+    { label: "Total EBITDA", value: formatCurrencyK(metrics.totalEbitda), icon: BarChart3, testId: "card-total-ebitda" },
+    { label: "Avg Annual EBITDA", value: formatCurrencyK(metrics.averageAnnualEbitda), icon: BarChart3, testId: "card-avg-ebitda" },
   ];
 
   return (
