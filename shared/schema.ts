@@ -373,6 +373,9 @@ export type VendorRecommendation = {
   specSheetUrl?: string;
   websiteUrl?: string;
   notes?: string;
+  strengths?: string;
+  weaknesses?: string;
+  considerations?: string;
 };
 
 export type VendorListItem = {

@@ -1133,6 +1133,12 @@ function VendorListSection({ vendorList, scenarioId, isGenerating, onGenerate }:
                 >
                   <FileText className="h-4 w-4 mr-2" /> Download PDF
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  data-testid="button-export-vendor-excel"
+                  onClick={() => window.open(`/api/scenarios/${scenarioId}/vendor-list/export-excel`, "_blank")}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Download Excel
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button
@@ -1164,42 +1170,53 @@ function VendorListSection({ vendorList, scenarioId, isGenerating, onGenerate }:
                 {item.specsSummary}
               </div>
             )}
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-8">#</TableHead>
-                  <TableHead>Manufacturer</TableHead>
-                  <TableHead>Model Number</TableHead>
-                  <TableHead>Website</TableHead>
-                  <TableHead>Notes</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {item.recommendations.map((rec, rIdx) => (
-                  <TableRow key={rIdx} data-testid={`vendor-rec-${idx}-${rIdx}`}>
-                    <TableCell className="text-xs text-muted-foreground">{rIdx + 1}</TableCell>
-                    <TableCell className="font-medium text-sm">{rec.manufacturer}</TableCell>
-                    <TableCell className="text-sm">{rec.modelNumber}</TableCell>
-                    <TableCell className="text-sm">
-                      {(rec.websiteUrl || rec.specSheetUrl) ? (
-                        <a
-                          href={rec.websiteUrl || rec.specSheetUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-                          data-testid={`link-vendor-${idx}-${rIdx}`}
-                        >
-                          Visit <ExternalLink className="h-3 w-3" />
-                        </a>
-                      ) : "\u2014"}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
-                      {rec.notes || "\u2014"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="divide-y">
+              {item.recommendations.map((rec, rIdx) => (
+                <div key={rIdx} className="px-3 py-3 space-y-2" data-testid={`vendor-rec-${idx}-${rIdx}`}>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <Badge variant="outline" className="text-xs font-normal">{rIdx + 1}</Badge>
+                    <span className="font-semibold text-sm">{rec.manufacturer}</span>
+                    <span className="text-sm text-muted-foreground">{rec.modelNumber}</span>
+                    {(rec.websiteUrl || rec.specSheetUrl) && (
+                      <a
+                        href={rec.websiteUrl || rec.specSheetUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 text-xs"
+                        data-testid={`link-vendor-${idx}-${rIdx}`}
+                      >
+                        Visit <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                  {rec.notes && (
+                    <p className="text-xs text-muted-foreground">{rec.notes}</p>
+                  )}
+                  {(rec.strengths || rec.weaknesses || rec.considerations) && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                      {rec.strengths && (
+                        <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded p-2" data-testid={`vendor-strengths-${idx}-${rIdx}`}>
+                          <span className="font-semibold text-green-700 dark:text-green-400 block mb-0.5">Strengths</span>
+                          <span className="text-green-800 dark:text-green-300">{rec.strengths}</span>
+                        </div>
+                      )}
+                      {rec.weaknesses && (
+                        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded p-2" data-testid={`vendor-weaknesses-${idx}-${rIdx}`}>
+                          <span className="font-semibold text-red-700 dark:text-red-400 block mb-0.5">Weaknesses</span>
+                          <span className="text-red-800 dark:text-red-300">{rec.weaknesses}</span>
+                        </div>
+                      )}
+                      {rec.considerations && (
+                        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded p-2" data-testid={`vendor-considerations-${idx}-${rIdx}`}>
+                          <span className="font-semibold text-amber-700 dark:text-amber-400 block mb-0.5">Considerations</span>
+                          <span className="text-amber-800 dark:text-amber-300">{rec.considerations}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </CardContent>

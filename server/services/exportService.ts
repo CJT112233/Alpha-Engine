@@ -1230,17 +1230,56 @@ export function exportVendorListPDF(
       }
 
       if (item.recommendations && item.recommendations.length > 0) {
-        y += 4;
-        const recHeaders = ["#", "Manufacturer", "Model Number", "Website", "Notes"];
-        const recWidths = [20, 110, 120, 130, 132];
-        const recRows: string[][] = item.recommendations.map((rec, idx) => [
-          String(idx + 1),
-          sanitize(rec.manufacturer),
-          sanitize(rec.modelNumber),
-          sanitize(rec.websiteUrl || rec.specSheetUrl || ""),
-          sanitize(rec.notes || ""),
-        ]);
-        y = drawTable(doc, recHeaders, recRows, leftMargin, y, recWidths, { fontSize: 7 });
+        for (let rIdx = 0; rIdx < item.recommendations.length; rIdx++) {
+          const rec = item.recommendations[rIdx];
+          if (y > 640) { doc.addPage(); y = 50; }
+
+          y += 4;
+          doc.font("Helvetica-Bold").fontSize(8).fillColor("#323F4F")
+            .text(`${rIdx + 1}. ${sanitize(rec.manufacturer)} — ${sanitize(rec.modelNumber)}`, leftMargin + 8, y, { width: contentWidth - 16 });
+          y += 12;
+
+          if (rec.websiteUrl || rec.specSheetUrl) {
+            doc.font("Helvetica").fontSize(7).fillColor("#4472C4")
+              .text(sanitize(rec.websiteUrl || rec.specSheetUrl || ""), leftMargin + 16, y, { width: contentWidth - 24, link: rec.websiteUrl || rec.specSheetUrl });
+            y += 10;
+          }
+
+          if (rec.notes) {
+            doc.font("Helvetica").fontSize(7).fillColor("#44546A")
+              .text(sanitize(rec.notes), leftMargin + 16, y, { width: contentWidth - 24 });
+            y += doc.heightOfString(sanitize(rec.notes), { width: contentWidth - 24 }) + 2;
+          }
+
+          if (rec.strengths) {
+            if (y > 700) { doc.addPage(); y = 50; }
+            doc.font("Helvetica-Bold").fontSize(7).fillColor("#00B050")
+              .text("Strengths: ", leftMargin + 16, y, { continued: true, width: contentWidth - 24 });
+            doc.font("Helvetica").fontSize(7).fillColor("#44546A")
+              .text(sanitize(rec.strengths), { width: contentWidth - 24 });
+            y += doc.heightOfString(`Strengths: ${sanitize(rec.strengths)}`, { width: contentWidth - 24 }) + 2;
+          }
+
+          if (rec.weaknesses) {
+            if (y > 700) { doc.addPage(); y = 50; }
+            doc.font("Helvetica-Bold").fontSize(7).fillColor("#C00000")
+              .text("Weaknesses: ", leftMargin + 16, y, { continued: true, width: contentWidth - 24 });
+            doc.font("Helvetica").fontSize(7).fillColor("#44546A")
+              .text(sanitize(rec.weaknesses), { width: contentWidth - 24 });
+            y += doc.heightOfString(`Weaknesses: ${sanitize(rec.weaknesses)}`, { width: contentWidth - 24 }) + 2;
+          }
+
+          if (rec.considerations) {
+            if (y > 700) { doc.addPage(); y = 50; }
+            doc.font("Helvetica-Bold").fontSize(7).fillColor("#ED7D31")
+              .text("Considerations: ", leftMargin + 16, y, { continued: true, width: contentWidth - 24 });
+            doc.font("Helvetica").fontSize(7).fillColor("#44546A")
+              .text(sanitize(rec.considerations), { width: contentWidth - 24 });
+            y += doc.heightOfString(`Considerations: ${sanitize(rec.considerations)}`, { width: contentWidth - 24 }) + 2;
+          }
+
+          y += 4;
+        }
       }
 
       y += 12;
@@ -1248,6 +1287,70 @@ export function exportVendorListPDF(
 
     doc.end();
   });
+}
+
+export function exportVendorListExcel(
+  vendorList: VendorList,
+  scenarioName: string,
+  projectName: string,
+  projectType: string
+): Buffer {
+  const wb = XLSX.utils.book_new();
+
+  const headers = [
+    "Equipment Type", "Process", "Qty", "Specs Summary",
+    "#", "Manufacturer", "Model Number", "Website",
+    "Notes", "Strengths", "Weaknesses", "Considerations"
+  ];
+
+  const rows: any[][] = [headers];
+
+  for (const item of vendorList.items) {
+    if (item.recommendations && item.recommendations.length > 0) {
+      for (let rIdx = 0; rIdx < item.recommendations.length; rIdx++) {
+        const rec = item.recommendations[rIdx];
+        rows.push([
+          rIdx === 0 ? item.equipmentType : "",
+          rIdx === 0 ? item.process : "",
+          rIdx === 0 ? item.quantity : "",
+          rIdx === 0 ? item.specsSummary : "",
+          rIdx + 1,
+          rec.manufacturer,
+          rec.modelNumber,
+          rec.websiteUrl || rec.specSheetUrl || "",
+          rec.notes || "",
+          rec.strengths || "",
+          rec.weaknesses || "",
+          rec.considerations || "",
+        ]);
+      }
+    } else {
+      rows.push([item.equipmentType, item.process, item.quantity, item.specsSummary, "", "", "", "", "", "", "", ""]);
+    }
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  ws["!cols"] = [
+    { wch: 25 }, { wch: 18 }, { wch: 5 }, { wch: 40 },
+    { wch: 4 }, { wch: 20 }, { wch: 22 }, { wch: 35 },
+    { wch: 40 }, { wch: 40 }, { wch: 40 }, { wch: 40 },
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, "Vendor List");
+
+  const infoData = [
+    ["Project", projectName],
+    ["Scenario", scenarioName],
+    ["Project Type", `Type ${projectType}`],
+    ["Generated", vendorList.generatedAt ? new Date(vendorList.generatedAt).toLocaleDateString("en-US") : new Date().toLocaleDateString("en-US")],
+    ["Model", vendorList.modelUsed || ""],
+  ];
+  const infoWs = XLSX.utils.aoa_to_sheet(infoData);
+  infoWs["!cols"] = [{ wch: 15 }, { wch: 40 }];
+  XLSX.utils.book_append_sheet(wb, infoWs, "Info");
+
+  return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
 }
 
 export function exportProjectSummaryPDF(

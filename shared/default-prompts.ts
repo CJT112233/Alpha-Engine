@@ -2069,6 +2069,9 @@ Given the equipment list below from a mass balance design, produce a RECOMMENDED
    - Spec sheet URL (if publicly available, otherwise omit)
    - Manufacturer website URL
    - Brief notes on why this manufacturer/model is recommended
+   - Strengths: key advantages of this vendor/model (e.g., reliability, efficiency, cost, market share, support network, track record)
+   - Weaknesses: potential drawbacks or limitations (e.g., lead time, cost premium, limited local support, proprietary parts)
+   - Considerations: important factors for the project team to evaluate (e.g., sole source risk, spare parts availability, integration complexity, warranty terms)
 
 EQUIPMENT LIST:
 {{EQUIPMENT_DATA}}
@@ -2091,7 +2094,10 @@ Return valid JSON matching this structure exactly:
           "modelNumber": "string (specific model or product line)",
           "specSheetUrl": "string (URL to spec sheet PDF, omit if unknown)",
           "websiteUrl": "string (manufacturer product page URL)",
-          "notes": "string (brief recommendation rationale)"
+          "notes": "string (brief recommendation rationale)",
+          "strengths": "string (key advantages: reliability, efficiency, cost, support network, track record)",
+          "weaknesses": "string (potential drawbacks: lead time, cost premium, limited support, proprietary parts)",
+          "considerations": "string (evaluation factors: sole source risk, spare parts, integration, warranty)"
         }
       ]
     }

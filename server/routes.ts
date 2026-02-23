@@ -3357,6 +3357,30 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/scenarios/:scenarioId/vendor-list/export-excel", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+      const runs = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const latestRun = runs?.[0];
+      if (!latestRun?.vendorList) return res.status(404).json({ error: "No vendor list found. Generate a vendor list first." });
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+      const { exportVendorListExcel } = await import("./services/exportService");
+      const projectType = (latestRun.results as MassBalanceResults)?.projectType || (scenario as any).projectType || "B";
+      const excelBuffer = exportVendorListExcel(latestRun.vendorList as any, scenario.name, scenario.project?.name || "Project", projectType);
+      const safeName = (scenario.name || "vendor-list").replace(/[^a-zA-Z0-9_-]/g, "_");
+      res.set({
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="VendorList-${safeName}.xlsx"`,
+        "Content-Length": excelBuffer.length.toString(),
+      });
+      res.send(excelBuffer);
+    } catch (error) {
+      console.error("Error exporting vendor list Excel:", error);
+      res.status(500).json({ error: "Failed to export vendor list Excel" });
+    }
+  });
+
   // =========================================================================
   // CapEx Estimates
   // =========================================================================
