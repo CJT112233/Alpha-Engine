@@ -4210,6 +4210,27 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Project life must be between 1 and 30 years" });
       }
 
+      const existingAssumptions = (model.results as any)?.assumptions || model.assumptions;
+      if (existingAssumptions) {
+        updatedAssumptions.rinPerMMBtu = existingAssumptions.rinPerMMBtu ?? 11.727;
+        if (updatedAssumptions.fortyFiveZ) {
+          updatedAssumptions.fortyFiveZ.targetCI = existingAssumptions.fortyFiveZ?.targetCI ?? 50;
+          updatedAssumptions.fortyFiveZ.conversionGalPerMMBtu = existingAssumptions.fortyFiveZ?.conversionGalPerMMBtu ?? 8.614;
+        }
+      }
+
+      if (updatedAssumptions.feedstockCosts && Array.isArray(updatedAssumptions.feedstockCosts)) {
+        updatedAssumptions.feedstockCosts = updatedAssumptions.feedstockCosts.map((fc: any) => ({
+          feedstockName: fc.feedstockName || "Unknown",
+          costType: fc.costType || (fc.costPerTon > 0 ? "cost" : "tip_fee"),
+          unitRate: fc.unitRate ?? fc.costPerTon ?? 0,
+          unitBasis: fc.unitBasis || "$/ton",
+          annualTons: fc.annualTons || 0,
+          escalator: fc.escalator ?? 0.025,
+          costPerTon: fc.costPerTon ?? fc.unitRate ?? 0,
+        }));
+      }
+
       const mbRun = await storage.getMassBalanceRun(model.massBalanceRunId);
       if (!mbRun) return res.status(400).json({ error: "Associated mass balance not found" });
 

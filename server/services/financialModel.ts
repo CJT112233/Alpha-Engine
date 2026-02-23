@@ -311,11 +311,16 @@ export function buildDefaultAssumptions(
           annualTons = vol;
         }
       }
+      const feedUnit = (f.feedstockUnit || "").toLowerCase();
+      const unitBasis = feedUnit.includes("gal") ? "$/gal" : "$/ton";
       return {
         feedstockName: f.feedstockType || f.name || "Unknown Feedstock",
-        costPerTon: 0,
+        costType: "tip_fee" as const,
+        unitRate: 0,
+        unitBasis,
         annualTons: Math.round(annualTons),
         escalator: 0.025,
+        costPerTon: 0,
       };
     });
   }
@@ -389,7 +394,13 @@ export function calculateFinancialModel(
       fortyFiveZRevenue = rngProductionMMBtu * net45ZPricePerMMBtu;
     }
 
-    const tippingFeeRev = opexBreakdown.tippingFeeRevenue * inflationFactor;
+    let tippingFeeRev = opexBreakdown.tippingFeeRevenue * inflationFactor;
+    for (const fs of assumptions.feedstockCosts) {
+      if ((fs.costType || "cost") === "tip_fee" && fs.unitRate > 0) {
+        const fsFactor = Math.pow(1 + (fs.escalator || assumptions.inflationRate), y - 1);
+        tippingFeeRev += fs.unitRate * fs.annualTons * fsFactor;
+      }
+    }
 
     const totalRevenue = isVoluntary
       ? voluntaryRevenue + fortyFiveZRevenue + tippingFeeRev
@@ -403,8 +414,13 @@ export function calculateFinancialModel(
 
     let feedstockCost = opexBreakdown.feedstockLogisticsCost * inflationFactor;
     for (const fs of assumptions.feedstockCosts) {
-      const fsFactor = Math.pow(1 + (fs.escalator || assumptions.inflationRate), y - 1);
-      feedstockCost += fs.costPerTon * fs.annualTons * fsFactor;
+      if ((fs.costType || "cost") === "cost" && fs.unitRate > 0) {
+        const fsFactor = Math.pow(1 + (fs.escalator || assumptions.inflationRate), y - 1);
+        feedstockCost += fs.unitRate * fs.annualTons * fsFactor;
+      } else if (!fs.costType && fs.costPerTon > 0) {
+        const fsFactor = Math.pow(1 + (fs.escalator || assumptions.inflationRate), y - 1);
+        feedstockCost += fs.costPerTon * fs.annualTons * fsFactor;
+      }
     }
 
     const digestateManagementCost = opexBreakdown.digestateManagementCost * inflationFactor;

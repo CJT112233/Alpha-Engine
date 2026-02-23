@@ -614,9 +614,12 @@ export type FinancialAssumptions = {
   };
   feedstockCosts: Array<{
     feedstockName: string;
-    costPerTon: number;
+    costType: "cost" | "tip_fee";
+    unitRate: number;
+    unitBasis: string;
     annualTons: number;
     escalator: number;
+    costPerTon: number;
   }>;
   debtFinancing: {
     enabled: boolean;

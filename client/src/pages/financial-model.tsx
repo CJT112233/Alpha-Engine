@@ -260,7 +260,7 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
     setLocalAssumptions(updated);
   };
 
-  const updateFeedstockCost = (index: number, field: string, value: number) => {
+  const updateFeedstockCost = (index: number, field: string, value: number | string) => {
     if (!assumptions) return;
     const updated = {
       ...assumptions,
@@ -458,7 +458,7 @@ function AssumptionsEditor({
   assumptions: FinancialAssumptions;
   readOnly: boolean;
   onUpdate: (path: string, value: number | string) => void;
-  onUpdateFeedstock: (index: number, field: string, value: number) => void;
+  onUpdateFeedstock: (index: number, field: string, value: number | string) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -514,7 +514,7 @@ function AssumptionsEditor({
                 <AssumptionField label="RIN Price" unit="$/RIN" value={assumptions.rinPricePerRIN} onChange={(v) => onUpdate("rinPricePerRIN", v)} readOnly={readOnly} testId="input-rin-price" />
                 <AssumptionField label="RIN Price Escalator" unit="%/yr" value={assumptions.rinPriceEscalator} onChange={(v) => onUpdate("rinPriceEscalator", v)} readOnly={readOnly} testId="input-rin-escalator" />
                 <AssumptionField label="RIN Brokerage" unit="%" value={assumptions.rinBrokeragePct} onChange={(v) => onUpdate("rinBrokeragePct", v)} readOnly={readOnly} testId="input-rin-brokerage" />
-                <AssumptionField label="RINs per MMBtu" unit="" value={assumptions.rinPerMMBtu} onChange={(v) => onUpdate("rinPerMMBtu", v)} readOnly={readOnly} testId="input-rin-per-mmbtu" />
+                <AssumptionField label="RINs per MMBtu" unit="" value={assumptions.rinPerMMBtu} onChange={(v) => onUpdate("rinPerMMBtu", v)} readOnly={true} testId="input-rin-per-mmbtu" />
                 <AssumptionField label="Natural Gas Price" unit="$/MMBtu" value={assumptions.natGasPricePerMMBtu} onChange={(v) => onUpdate("natGasPricePerMMBtu", v)} readOnly={readOnly} testId="input-natgas-price" />
                 <AssumptionField label="Nat Gas Escalator" unit="%/yr" value={assumptions.natGasPriceEscalator} onChange={(v) => onUpdate("natGasPriceEscalator", v)} readOnly={readOnly} testId="input-natgas-escalator" />
               </>
@@ -556,19 +556,51 @@ function AssumptionsEditor({
         {assumptions.feedstockCosts && assumptions.feedstockCosts.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Feedstock Costs</CardTitle>
+              <CardTitle className="text-sm">Feedstock Economics</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {assumptions.feedstockCosts.map((fc, idx) => (
-                <div key={idx} className="space-y-2 pb-3 border-b last:border-b-0 last:pb-0">
-                  <div className="text-xs font-medium">{fc.feedstockName}</div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <AssumptionField label="Cost" unit="$/ton" value={fc.costPerTon} onChange={(v) => onUpdateFeedstock(idx, "costPerTon", v)} readOnly={readOnly} testId={`input-feedstock-cost-${idx}`} />
-                    <AssumptionField label="Annual Tons" unit="" value={fc.annualTons} onChange={(v) => onUpdateFeedstock(idx, "annualTons", v)} readOnly={readOnly} step="1" testId={`input-feedstock-tons-${idx}`} />
-                    <AssumptionField label="Escalator" unit="%/yr" value={fc.escalator} onChange={(v) => onUpdateFeedstock(idx, "escalator", v)} readOnly={readOnly} testId={`input-feedstock-escalator-${idx}`} />
+              {assumptions.feedstockCosts.map((fc, idx) => {
+                const costType = fc.costType || (fc.costPerTon > 0 ? "cost" : "tip_fee");
+                const unitBasis = fc.unitBasis || "$/ton";
+                const unitRate = fc.unitRate ?? fc.costPerTon ?? 0;
+                const isTipFee = costType === "tip_fee";
+                return (
+                  <div key={idx} className="space-y-2 pb-3 border-b last:border-b-0 last:pb-0" data-testid={`feedstock-economics-${idx}`}>
+                    <div className="text-xs font-medium">{fc.feedstockName}</div>
+                    <div className="flex gap-1 mb-2">
+                      <Button
+                        size="sm"
+                        variant={isTipFee ? "default" : "outline"}
+                        onClick={() => onUpdateFeedstock(idx, "costType", "tip_fee")}
+                        disabled={readOnly}
+                        data-testid={`button-feedstock-tipfee-${idx}`}
+                      >
+                        Tip Fee (Revenue)
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={!isTipFee ? "default" : "outline"}
+                        onClick={() => onUpdateFeedstock(idx, "costType", "cost")}
+                        disabled={readOnly}
+                        data-testid={`button-feedstock-cost-${idx}`}
+                      >
+                        We Pay (Cost)
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <AssumptionField label={isTipFee ? "Tip Fee" : "Cost"} unit={unitBasis} value={unitRate} onChange={(v) => onUpdateFeedstock(idx, "unitRate", v)} readOnly={readOnly} testId={`input-feedstock-rate-${idx}`} />
+                      <AssumptionField label="Annual Tons" unit="" value={fc.annualTons} onChange={(v) => onUpdateFeedstock(idx, "annualTons", v)} readOnly={readOnly} step="1" testId={`input-feedstock-tons-${idx}`} />
+                      <AssumptionField label="Escalator" unit="%/yr" value={fc.escalator} onChange={(v) => onUpdateFeedstock(idx, "escalator", v)} readOnly={readOnly} testId={`input-feedstock-escalator-${idx}`} />
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {isTipFee
+                        ? `Tip fee revenue: $${(unitRate * fc.annualTons).toLocaleString()}/yr`
+                        : `Feedstock cost: $${(unitRate * fc.annualTons).toLocaleString()}/yr`
+                      }
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
         )}
@@ -591,9 +623,9 @@ function AssumptionsEditor({
             {assumptions.fortyFiveZ?.enabled && (
               <>
                 <AssumptionField label="CI Score" unit="gCO₂e/MJ" value={assumptions.fortyFiveZ.ciScore} onChange={(v) => onUpdate("fortyFiveZ.ciScore", v)} readOnly={readOnly} step="1" testId="input-45z-ci-score" />
-                <AssumptionField label="Target CI" unit="gCO₂e/MJ" value={assumptions.fortyFiveZ.targetCI} onChange={(v) => onUpdate("fortyFiveZ.targetCI", v)} readOnly={readOnly} step="1" testId="input-45z-target-ci" />
+                <AssumptionField label="Target CI" unit="gCO₂e/MJ" value={assumptions.fortyFiveZ.targetCI} onChange={(v) => onUpdate("fortyFiveZ.targetCI", v)} readOnly={true} step="1" testId="input-45z-target-ci" />
                 <AssumptionField label="Credit Price" unit="$/gal" value={assumptions.fortyFiveZ.creditPricePerGal} onChange={(v) => onUpdate("fortyFiveZ.creditPricePerGal", v)} readOnly={readOnly} testId="input-45z-credit-price" />
-                <AssumptionField label="Conversion Factor" unit="gal/MMBtu" value={assumptions.fortyFiveZ.conversionGalPerMMBtu} onChange={(v) => onUpdate("fortyFiveZ.conversionGalPerMMBtu", v)} readOnly={readOnly} testId="input-45z-conversion" />
+                <AssumptionField label="Conversion Factor" unit="gal/MMBtu" value={assumptions.fortyFiveZ.conversionGalPerMMBtu} onChange={(v) => onUpdate("fortyFiveZ.conversionGalPerMMBtu", v)} readOnly={true} testId="input-45z-conversion" />
                 <AssumptionField label="Monetization" unit="%" value={assumptions.fortyFiveZ.monetizationPct} onChange={(v) => onUpdate("fortyFiveZ.monetizationPct", v)} readOnly={readOnly} testId="input-45z-monetization" />
                 <AssumptionField label="Credits End Year" unit="" value={assumptions.fortyFiveZ.endYear} onChange={(v) => onUpdate("fortyFiveZ.endYear", v)} readOnly={readOnly} step="1" testId="input-45z-end-year" />
                 {(() => {
