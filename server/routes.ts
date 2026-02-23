@@ -3790,6 +3790,75 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/opex/:id/recompute", async (req: Request, res: Response) => {
+    try {
+      const id = req.params.id as string;
+      const estimate = await storage.getOpexEstimate(id);
+      if (!estimate) return res.status(404).json({ error: "OpEx estimate not found" });
+
+      const results = estimate.results as OpexResults;
+      if (!results) return res.status(400).json({ error: "No OpEx results to recompute" });
+
+      const { editableAssumptions: rawAssumptions } = req.body;
+      if (!rawAssumptions || !Array.isArray(rawAssumptions)) {
+        return res.status(400).json({ error: "editableAssumptions array is required" });
+      }
+
+      const validatedAssumptions: import("@shared/schema").OpexEditableAssumption[] = [];
+      for (const item of rawAssumptions) {
+        if (!item || typeof item !== "object" || !item.key || typeof item.key !== "string") {
+          return res.status(400).json({ error: `Invalid assumption: missing or invalid 'key'` });
+        }
+        const numVal = typeof item.value === "number" ? item.value : parseFloat(String(item.value));
+        if (isNaN(numVal) || !isFinite(numVal)) {
+          return res.status(400).json({ error: `Invalid numeric value for assumption '${item.key}'` });
+        }
+        if (numVal < 0) {
+          return res.status(400).json({ error: `Negative value not allowed for assumption '${item.key}'` });
+        }
+        validatedAssumptions.push({
+          key: String(item.key),
+          parameter: String(item.parameter || ""),
+          value: numVal,
+          unit: String(item.unit || ""),
+          source: String(item.source || "User override"),
+          category: String(item.category || "Other"),
+          description: item.description ? String(item.description) : undefined,
+        });
+      }
+
+      const mbRun = await storage.getMassBalanceRun(estimate.massBalanceRunId);
+      const mbResults = mbRun ? (mbRun.results as MassBalanceResults) : ({ summary: {}, equipment: [], assumptions: [], projectType: results.projectType || "B", stages: [], recycleStreams: [], convergenceIterations: 0, convergenceAchieved: true, warnings: [] } as unknown as MassBalanceResults);
+
+      let capexResults: CapexResults | null = null;
+      if (estimate.capexEstimateId) {
+        const capexEst = await storage.getCapexEstimate(estimate.capexEstimateId);
+        if (capexEst) capexResults = capexEst.results as CapexResults;
+      }
+
+      const scenario = await storage.getScenario(estimate.scenarioId);
+      const projectType = results.projectType || (scenario as any)?.projectType || "B";
+
+      const { recomputeOpexFromAssumptions } = await import("./services/opexAI");
+      const updatedResults = recomputeOpexFromAssumptions(
+        validatedAssumptions,
+        mbResults,
+        capexResults,
+        projectType,
+        results,
+      );
+
+      const updated = await storage.updateOpexEstimate(id, {
+        results: updatedResults,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error recomputing OpEx:", error);
+      res.status(500).json({ error: `Failed to recompute OpEx: ${(error as Error).message}` });
+    }
+  });
+
   app.get("/api/scenarios/:scenarioId/opex/export-pdf", async (req: Request, res: Response) => {
     try {
       const scenarioId = req.params.scenarioId as string;

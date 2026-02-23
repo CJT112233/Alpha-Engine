@@ -1,5 +1,5 @@
 import { llmComplete, isProviderAvailable, getAvailableProviders, providerLabels, type LLMProvider } from "../llm";
-import type { OpexResults, OpexLineItem, OpexSummary, MassBalanceResults, CapexResults, EquipmentItem } from "@shared/schema";
+import type { OpexResults, OpexLineItem, OpexSummary, MassBalanceResults, CapexResults, EquipmentItem, OpexEditableAssumption } from "@shared/schema";
 import type { PromptKey } from "@shared/default-prompts";
 import { DEFAULT_PROMPTS } from "@shared/default-prompts";
 
@@ -9,6 +9,442 @@ const opexPromptMap: Record<string, PromptKey> = {
   c: "opex_type_c",
   d: "opex_type_d",
 };
+
+export function getDefaultOpexAssumptions(projectType: string, massBalanceResults?: MassBalanceResults, capexResults?: CapexResults | null): OpexEditableAssumption[] {
+  const pt = normalizeProjectType(projectType);
+  const isWW = pt === "a";
+  const isRNG = pt === "b" || pt === "c" || pt === "d";
+
+  const maintenanceRate = isWW ? 3 : 4;
+  const electricityRate = 0.08;
+  const loadFactor = 75;
+  const operatingHoursPerYear = 8760;
+  const insuranceRate = 0.5;
+
+  const assumptions: OpexEditableAssumption[] = [
+    { key: "maintenance_rate", parameter: "Maintenance Rate", value: maintenanceRate, unit: "% of equipment CapEx", source: "WEF MOP 8 / Industry benchmark", category: "Maintenance", description: "Annual maintenance & repair cost as a percentage of total equipment capital cost" },
+    { key: "electricity_rate", parameter: "Electricity Rate", value: electricityRate, unit: "$/kWh", source: "EIA national average", category: "Energy", description: "Average electricity cost per kilowatt-hour" },
+    { key: "load_factor", parameter: "Equipment Load Factor", value: loadFactor, unit: "%", source: "Engineering estimate", category: "Energy", description: "Average equipment utilization as a fraction of installed capacity" },
+    { key: "operating_hours", parameter: "Operating Hours per Year", value: operatingHoursPerYear, unit: "hr/yr", source: "Continuous operation", category: "Energy", description: "Total operating hours per year (8,760 = 24/7)" },
+    { key: "insurance_rate", parameter: "Insurance Rate", value: insuranceRate, unit: "% of total project cost", source: "Industry benchmark", category: "Other", description: "Annual property & liability insurance as percentage of total project cost" },
+  ];
+
+  if (isWW) {
+    assumptions.push(
+      { key: "operator_count", parameter: "Number of Operators", value: 4, unit: "FTEs", source: "WEF staffing guidelines", category: "Labor", description: "Full-time equivalent operators for plant operation" },
+      { key: "operator_salary", parameter: "Operator Salary", value: 65000, unit: "$/yr per FTE", source: "BLS median wastewater operator", category: "Labor", description: "Average annual salary per operator including benefits loading" },
+      { key: "management_count", parameter: "Management Staff", value: 1, unit: "FTEs", source: "Typical for plant size", category: "Labor", description: "Plant manager / superintendent" },
+      { key: "management_salary", parameter: "Management Salary", value: 95000, unit: "$/yr per FTE", source: "BLS data", category: "Labor", description: "Annual salary for management staff" },
+      { key: "benefits_loading", parameter: "Benefits Loading Factor", value: 35, unit: "%", source: "Industry standard", category: "Labor", description: "Fringe benefits as percentage of base salary (health insurance, retirement, etc.)" },
+      { key: "chemical_cost_per_mg", parameter: "Chemical Cost", value: 200, unit: "$/MG treated", source: "EPA CWNS benchmark", category: "Chemical", description: "Average chemical costs per million gallons treated" },
+      { key: "sludge_disposal_cost", parameter: "Sludge Disposal Cost", value: 60, unit: "$/wet ton", source: "Regional average", category: "Disposal", description: "Cost to haul and dispose of dewatered biosolids" },
+      { key: "lab_testing_annual", parameter: "Lab & Testing", value: 25000, unit: "$/yr", source: "Regulatory compliance estimate", category: "Other", description: "Annual laboratory analysis and compliance testing costs" },
+    );
+  } else {
+    const operatorCount = pt === "b" ? 3 : 2;
+    assumptions.push(
+      { key: "operator_count", parameter: "Number of Operators", value: operatorCount, unit: "FTEs", source: "RNG facility staffing", category: "Labor", description: "Full-time equivalent operators for facility operation" },
+      { key: "operator_salary", parameter: "Operator Salary", value: 75000, unit: "$/yr per FTE", source: "BLS median", category: "Labor", description: "Average annual salary per operator" },
+      { key: "management_count", parameter: "Management Staff", value: 1, unit: "FTEs", source: "Typical for facility size", category: "Labor", description: "Site manager" },
+      { key: "management_salary", parameter: "Management Salary", value: 100000, unit: "$/yr per FTE", source: "Industry benchmark", category: "Labor", description: "Annual salary for management staff" },
+      { key: "benefits_loading", parameter: "Benefits Loading Factor", value: 35, unit: "%", source: "Industry standard", category: "Labor", description: "Fringe benefits as percentage of base salary" },
+      { key: "feedstock_receiving_cost", parameter: "Feedstock Receiving & Handling", value: pt === "b" ? 15 : 5, unit: "$/ton", source: "Industry estimate", category: "Chemical", description: "Cost for feedstock receiving, screening, and preprocessing" },
+      { key: "digestate_disposal_cost", parameter: "Digestate Disposal Cost", value: 20, unit: "$/wet ton", source: "Regional average", category: "Disposal", description: "Cost to haul and land-apply or dispose of digestate" },
+      { key: "membrane_replacement", parameter: "Membrane/Media Replacement", value: pt === "b" ? 50000 : 35000, unit: "$/yr", source: "Prodeval maintenance schedule", category: "Maintenance", description: "Annual membrane and media replacement for gas upgrading system" },
+      { key: "lab_testing_annual", parameter: "Lab & Testing", value: 15000, unit: "$/yr", source: "Regulatory compliance estimate", category: "Other", description: "Annual gas quality testing and environmental monitoring" },
+      { key: "interconnect_fees", parameter: "Pipeline Interconnect Fees", value: 12000, unit: "$/yr", source: "Utility estimate", category: "Other", description: "Annual gas pipeline interconnection and metering fees" },
+    );
+  }
+
+  return assumptions;
+}
+
+export function calculateAllDeterministicLineItems(
+  assumptions: OpexEditableAssumption[],
+  massBalanceResults: MassBalanceResults,
+  capexResults: CapexResults | null,
+  projectType: string,
+): OpexLineItem[] {
+  const lineItems: OpexLineItem[] = [];
+  const pt = normalizeProjectType(projectType);
+  let idCounter = 1;
+  const makeId = () => `opex-det-${idCounter++}`;
+
+  const getVal = (key: string): number => {
+    const a = assumptions.find(a => a.key === key);
+    return a ? a.value : 0;
+  };
+
+  const totalEquipmentCost = capexResults?.summary?.totalEquipmentCost || 0;
+  const totalProjectCost = capexResults?.summary?.totalProjectCost || 0;
+
+  const maintenanceRate = getVal("maintenance_rate") / 100;
+  if (totalEquipmentCost > 0 && maintenanceRate > 0) {
+    const maintenanceCost = Math.round(totalEquipmentCost * maintenanceRate);
+    lineItems.push({
+      id: makeId(),
+      category: "Maintenance",
+      description: `Annual maintenance & repairs (${(maintenanceRate * 100).toFixed(1)}% of equipment CapEx $${totalEquipmentCost.toLocaleString()})`,
+      annualCost: maintenanceCost,
+      unitCost: undefined,
+      unitBasis: undefined,
+      scalingBasis: `$${totalEquipmentCost.toLocaleString()} equipment cost`,
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: ${(maintenanceRate * 100).toFixed(1)}% × $${totalEquipmentCost.toLocaleString()}`,
+      source: "WEF MOP 8 / industry benchmark",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  const membraneReplacement = getVal("membrane_replacement");
+  if (membraneReplacement > 0) {
+    lineItems.push({
+      id: makeId(),
+      category: "Maintenance",
+      description: "Membrane & media replacement (gas upgrading system)",
+      annualCost: Math.round(membraneReplacement),
+      unitCost: undefined,
+      unitBasis: undefined,
+      scalingBasis: "Per Prodeval maintenance schedule",
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: $${membraneReplacement.toLocaleString()}/yr`,
+      source: "Prodeval maintenance schedule",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  const powerKeys = ["power", "motor", "hp", "installed power", "rated power", "brake horsepower"];
+  let totalKw = 0;
+  if (massBalanceResults.equipment && massBalanceResults.equipment.length > 0) {
+    for (const eq of massBalanceResults.equipment) {
+      if (!eq.specs) continue;
+      let bestKw = 0;
+      for (const [key, spec] of Object.entries(eq.specs)) {
+        const keyLower = key.toLowerCase();
+        if (!powerKeys.some(pk => keyLower.includes(pk))) continue;
+        const numVal = parseFloat(String(spec.value).replace(/,/g, ""));
+        if (isNaN(numVal) || numVal <= 0) continue;
+        const unitLower = (spec.unit || "").toLowerCase();
+        let kw = 0;
+        if (unitLower.includes("hp") || unitLower.includes("horsepower")) {
+          kw = numVal * 0.7457;
+        } else if (unitLower.includes("mw")) {
+          kw = numVal * 1000;
+        } else if (unitLower.includes("kw")) {
+          kw = numVal;
+        } else if (unitLower.includes("w")) {
+          kw = numVal / 1000;
+        } else {
+          kw = numVal * 0.7457;
+        }
+        if (kw > bestKw) bestKw = kw;
+      }
+      totalKw += bestKw * (eq.quantity || 1);
+    }
+  }
+
+  const electricityRate = getVal("electricity_rate");
+  const loadFactor = getVal("load_factor") / 100;
+  const operatingHours = getVal("operating_hours");
+  if (totalKw > 0 && electricityRate > 0) {
+    const annualEnergyCost = Math.round(totalKw * loadFactor * operatingHours * electricityRate);
+    lineItems.push({
+      id: makeId(),
+      category: "Energy",
+      description: `Electrical power (${Math.round(totalKw)} kW installed, ${(loadFactor * 100).toFixed(0)}% load factor, $${electricityRate}/kWh)`,
+      annualCost: annualEnergyCost,
+      unitCost: electricityRate,
+      unitBasis: "$/kWh",
+      scalingBasis: `${Math.round(totalKw)} kW installed capacity`,
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: ${Math.round(totalKw)} kW × ${(loadFactor * 100).toFixed(0)}% × ${operatingHours.toLocaleString()} hr × $${electricityRate}/kWh`,
+      source: "Equipment specs + EIA rates",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  const operatorCount = getVal("operator_count");
+  const operatorSalary = getVal("operator_salary");
+  const managementCount = getVal("management_count");
+  const managementSalary = getVal("management_salary");
+  const benefitsLoading = getVal("benefits_loading") / 100;
+
+  if (operatorCount > 0 && operatorSalary > 0) {
+    const totalOperatorCost = Math.round(operatorCount * operatorSalary * (1 + benefitsLoading));
+    lineItems.push({
+      id: makeId(),
+      category: "Labor",
+      description: `Plant operators (${operatorCount} FTEs × $${operatorSalary.toLocaleString()}/yr × ${((1 + benefitsLoading) * 100).toFixed(0)}% loaded)`,
+      annualCost: totalOperatorCost,
+      unitCost: operatorSalary,
+      unitBasis: "$/yr per FTE",
+      scalingBasis: `${operatorCount} FTEs`,
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: ${operatorCount} × $${operatorSalary.toLocaleString()} × ${((1 + benefitsLoading) * 100).toFixed(0)}%`,
+      source: "BLS / industry staffing",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  if (managementCount > 0 && managementSalary > 0) {
+    const totalMgmtCost = Math.round(managementCount * managementSalary * (1 + benefitsLoading));
+    lineItems.push({
+      id: makeId(),
+      category: "Labor",
+      description: `Management staff (${managementCount} FTE × $${managementSalary.toLocaleString()}/yr × ${((1 + benefitsLoading) * 100).toFixed(0)}% loaded)`,
+      annualCost: totalMgmtCost,
+      unitCost: managementSalary,
+      unitBasis: "$/yr per FTE",
+      scalingBasis: `${managementCount} FTEs`,
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: ${managementCount} × $${managementSalary.toLocaleString()} × ${((1 + benefitsLoading) * 100).toFixed(0)}%`,
+      source: "Industry benchmark",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  const chemicalCostPerMG = getVal("chemical_cost_per_mg");
+  if (chemicalCostPerMG > 0 && pt === "a") {
+    const flowMGD = parseFloat(String(massBalanceResults.summary?.["designFlow"]?.value || "1"));
+    const annualMG = flowMGD * 365;
+    const annualChemCost = Math.round(chemicalCostPerMG * annualMG);
+    lineItems.push({
+      id: makeId(),
+      category: "Chemical",
+      description: `Treatment chemicals ($${chemicalCostPerMG}/MG × ${annualMG.toLocaleString()} MG/yr)`,
+      annualCost: annualChemCost,
+      unitCost: chemicalCostPerMG,
+      unitBasis: "$/MG",
+      scalingBasis: `${flowMGD} MGD × 365 days`,
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: $${chemicalCostPerMG}/MG × ${annualMG.toLocaleString()} MG/yr`,
+      source: "EPA CWNS benchmark",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  const feedstockReceivingCost = getVal("feedstock_receiving_cost");
+  if (feedstockReceivingCost > 0 && (pt === "b" || pt === "c" || pt === "d")) {
+    let annualTons = 0;
+    const summary = massBalanceResults.summary;
+    if (summary) {
+      for (const [key, val] of Object.entries(summary)) {
+        if (key.toLowerCase().includes("feedstock") && val.unit?.toLowerCase().includes("ton")) {
+          const v = parseFloat(String(val.value).replace(/,/g, ""));
+          if (!isNaN(v) && v > 0) annualTons = v * 365;
+        }
+      }
+    }
+    if (annualTons <= 0) annualTons = 36500;
+    const annualCost = Math.round(feedstockReceivingCost * annualTons);
+    lineItems.push({
+      id: makeId(),
+      category: "Chemical",
+      description: `Feedstock receiving & handling ($${feedstockReceivingCost}/ton × ${annualTons.toLocaleString()} tons/yr)`,
+      annualCost: annualCost,
+      unitCost: feedstockReceivingCost,
+      unitBasis: "$/ton",
+      scalingBasis: `${annualTons.toLocaleString()} tons/yr throughput`,
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: $${feedstockReceivingCost}/ton × ${annualTons.toLocaleString()} tons/yr`,
+      source: "Industry estimate",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  const sludgeDisposalCost = getVal("sludge_disposal_cost");
+  if (sludgeDisposalCost > 0 && pt === "a") {
+    const flowMGD = parseFloat(String(massBalanceResults.summary?.["designFlow"]?.value || "1"));
+    const annualWetTons = Math.round(flowMGD * 365 * 8.34 * 0.01 * 0.2);
+    const annualCost = Math.round(sludgeDisposalCost * annualWetTons);
+    lineItems.push({
+      id: makeId(),
+      category: "Disposal",
+      description: `Biosolids disposal ($${sludgeDisposalCost}/wet ton × ${annualWetTons.toLocaleString()} wet tons/yr)`,
+      annualCost: annualCost,
+      unitCost: sludgeDisposalCost,
+      unitBasis: "$/wet ton",
+      scalingBasis: `${annualWetTons.toLocaleString()} wet tons/yr`,
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: $${sludgeDisposalCost}/wet ton × ${annualWetTons.toLocaleString()} wet tons/yr`,
+      source: "Regional average",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  const digestateDisposalCost = getVal("digestate_disposal_cost");
+  if (digestateDisposalCost > 0 && (pt === "b" || pt === "c" || pt === "d")) {
+    let annualDigestateTons = 0;
+    const summary = massBalanceResults.summary;
+    if (summary) {
+      for (const [key, val] of Object.entries(summary)) {
+        if (key.toLowerCase().includes("digestate") && val.unit?.toLowerCase().includes("ton")) {
+          const v = parseFloat(String(val.value).replace(/,/g, ""));
+          if (!isNaN(v) && v > 0) annualDigestateTons = v * 365;
+        }
+      }
+    }
+    if (annualDigestateTons <= 0) annualDigestateTons = 18250;
+    const annualCost = Math.round(digestateDisposalCost * annualDigestateTons);
+    lineItems.push({
+      id: makeId(),
+      category: "Disposal",
+      description: `Digestate disposal ($${digestateDisposalCost}/wet ton × ${annualDigestateTons.toLocaleString()} wet tons/yr)`,
+      annualCost: annualCost,
+      unitCost: digestateDisposalCost,
+      unitBasis: "$/wet ton",
+      scalingBasis: `${annualDigestateTons.toLocaleString()} wet tons/yr`,
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: $${digestateDisposalCost}/wet ton × ${annualDigestateTons.toLocaleString()} wet tons/yr`,
+      source: "Regional average",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  const insuranceRate = getVal("insurance_rate") / 100;
+  if (totalProjectCost > 0 && insuranceRate > 0) {
+    const insuranceCost = Math.round(totalProjectCost * insuranceRate);
+    lineItems.push({
+      id: makeId(),
+      category: "Other",
+      description: `Property & liability insurance (${(insuranceRate * 100).toFixed(1)}% of $${totalProjectCost.toLocaleString()} project cost)`,
+      annualCost: insuranceCost,
+      unitCost: undefined,
+      unitBasis: undefined,
+      scalingBasis: `$${totalProjectCost.toLocaleString()} total project cost`,
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: ${(insuranceRate * 100).toFixed(1)}% × $${totalProjectCost.toLocaleString()}`,
+      source: "Industry benchmark",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  const labTestingAnnual = getVal("lab_testing_annual");
+  if (labTestingAnnual > 0) {
+    lineItems.push({
+      id: makeId(),
+      category: "Other",
+      description: "Laboratory analysis & compliance testing",
+      annualCost: Math.round(labTestingAnnual),
+      unitCost: undefined,
+      unitBasis: undefined,
+      scalingBasis: "Annual lump sum",
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: $${labTestingAnnual.toLocaleString()}/yr`,
+      source: "Regulatory compliance estimate",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  const interconnectFees = getVal("interconnect_fees");
+  if (interconnectFees > 0) {
+    lineItems.push({
+      id: makeId(),
+      category: "Other",
+      description: "Pipeline interconnection & metering fees",
+      annualCost: Math.round(interconnectFees),
+      unitCost: undefined,
+      unitBasis: undefined,
+      scalingBasis: "Annual lump sum",
+      percentOfRevenue: undefined,
+      costBasis: `Deterministic: $${interconnectFees.toLocaleString()}/yr`,
+      source: "Utility estimate",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
+
+  return lineItems;
+}
+
+function buildOpexSummaryFromLineItems(lineItems: OpexLineItem[], totalProjectCapex: number): OpexSummary {
+  const categorize = (cat: string): string => {
+    const c = cat.toLowerCase();
+    if (c.includes("labor") || c.includes("staff") || c.includes("personnel")) return "Labor";
+    if (c.includes("energy") || c.includes("electric") || c.includes("utilit")) return "Energy";
+    if (c.includes("chemical") || c.includes("consumab") || c.includes("media") || c.includes("membrane") || c.includes("feedstock")) return "Chemical";
+    if (c.includes("mainten") || c.includes("repair") || c.includes("spare")) return "Maintenance";
+    if (c.includes("dispos") || c.includes("haul") || c.includes("sludge") || c.includes("digestate")) return "Disposal";
+    if (c.includes("revenue") || c.includes("offset") || c.includes("credit")) return "Revenue Offset";
+    return "Other";
+  };
+
+  const totalLaborCost = lineItems.filter(li => categorize(li.category) === "Labor").reduce((s, li) => s + li.annualCost, 0);
+  const totalEnergyCost = lineItems.filter(li => categorize(li.category) === "Energy").reduce((s, li) => s + li.annualCost, 0);
+  const totalChemicalCost = lineItems.filter(li => categorize(li.category) === "Chemical").reduce((s, li) => s + li.annualCost, 0);
+  const totalMaintenanceCost = lineItems.filter(li => categorize(li.category) === "Maintenance").reduce((s, li) => s + li.annualCost, 0);
+  const totalDisposalCost = lineItems.filter(li => categorize(li.category) === "Disposal").reduce((s, li) => s + li.annualCost, 0);
+  const totalOtherCost = lineItems.filter(li => categorize(li.category) === "Other").reduce((s, li) => s + li.annualCost, 0);
+  const revenueOffsets = lineItems.filter(li => categorize(li.category) === "Revenue Offset").reduce((s, li) => s + li.annualCost, 0);
+
+  const totalAnnualOpex = totalLaborCost + totalEnergyCost + totalChemicalCost + totalMaintenanceCost + totalDisposalCost + totalOtherCost;
+  const netAnnualOpex = totalAnnualOpex + revenueOffsets;
+
+  return {
+    totalAnnualOpex,
+    totalLaborCost,
+    totalEnergyCost,
+    totalChemicalCost,
+    totalMaintenanceCost,
+    totalDisposalCost,
+    totalOtherCost,
+    revenueOffsets,
+    netAnnualOpex,
+    opexAsPercentOfCapex: totalProjectCapex > 0 ? Math.round((totalAnnualOpex / totalProjectCapex) * 1000) / 10 : undefined,
+  };
+}
+
+export function recomputeOpexFromAssumptions(
+  editableAssumptions: OpexEditableAssumption[],
+  massBalanceResults: MassBalanceResults,
+  capexResults: CapexResults | null,
+  projectType: string,
+  existingResults: OpexResults,
+): OpexResults {
+  const lineItems = calculateAllDeterministicLineItems(editableAssumptions, massBalanceResults, capexResults, projectType);
+  const totalProjectCapex = capexResults?.summary?.totalProjectCost || 0;
+  const summary = buildOpexSummaryFromLineItems(lineItems, totalProjectCapex);
+
+  const displayAssumptions = editableAssumptions.map(a => ({
+    parameter: a.parameter,
+    value: typeof a.value === "number"
+      ? (a.unit.includes("$") || a.unit.includes("/yr") ? `$${a.value.toLocaleString()} ${a.unit}` : `${a.value.toLocaleString()} ${a.unit}`)
+      : `${a.value} ${a.unit}`,
+    source: a.source,
+  }));
+
+  return {
+    ...existingResults,
+    lineItems,
+    summary,
+    assumptions: displayAssumptions,
+    editableAssumptions,
+    methodology: "Deterministic bottom-up operating cost estimate from editable assumptions",
+  };
+}
 
 function normalizeProjectType(projectType: string): string {
   const pt = projectType.toLowerCase().trim();
@@ -418,6 +854,22 @@ export async function generateOpexWithAI(
 
   const totalProjectCapex = capexResults?.summary?.totalProjectCost || 0;
   const results = validateOpexResults(parsed, totalProjectCapex);
+
+  const editableAssumptions = getDefaultOpexAssumptions(projectType, massBalanceResults, capexResults);
+  results.editableAssumptions = editableAssumptions;
+
+  const displayAssumptions = editableAssumptions.map(a => ({
+    parameter: a.parameter,
+    value: typeof a.value === "number"
+      ? (a.unit.includes("$") || a.unit.includes("/yr") ? `$${a.value.toLocaleString()} ${a.unit}` : `${a.value.toLocaleString()} ${a.unit}`)
+      : `${a.value} ${a.unit}`,
+    source: a.source,
+  }));
+  if (results.assumptions.length === 0 || results.assumptions.every(a => !a.parameter)) {
+    results.assumptions = displayAssumptions;
+  } else {
+    results.assumptions = [...displayAssumptions, ...results.assumptions];
+  }
 
   return {
     results,

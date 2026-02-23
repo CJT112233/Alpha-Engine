@@ -521,11 +521,22 @@ export type OpexSummary = {
   opexAsPercentOfCapex?: number;
 };
 
+export type OpexEditableAssumption = {
+  key: string;
+  parameter: string;
+  value: number;
+  unit: string;
+  source: string;
+  category: string;
+  description?: string;
+};
+
 export type OpexResults = {
   projectType?: string;
   lineItems: OpexLineItem[];
   summary: OpexSummary;
   assumptions: Array<{ parameter: string; value: string; source: string }>;
+  editableAssumptions?: OpexEditableAssumption[];
   warnings: Array<{ field: string; message: string; severity: "error" | "warning" | "info" }>;
   costYear: string;
   currency: string;

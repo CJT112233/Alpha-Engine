@@ -47,7 +47,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { OpexEstimate, OpexResults, OpexLineItem, OpexOverrides, OpexLocks, OpexSummary } from "@shared/schema";
+import type { OpexEstimate, OpexResults, OpexLineItem, OpexOverrides, OpexLocks, OpexSummary, OpexEditableAssumption } from "@shared/schema";
+import { Calculator, Save } from "lucide-react";
 
 function formatCurrency(val: number): string {
   const prefix = val < 0 ? "-$" : "$";
@@ -226,6 +227,226 @@ function AssumptionsList({ assumptions }: { assumptions: OpexResults["assumption
           <span><span className="font-medium">{a.parameter}:</span> {a.value} <span className="text-xs">({a.source})</span></span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function AssumptionsEditor({
+  editableAssumptions,
+  estimateId,
+  scenarioId,
+  isFinalized,
+}: {
+  editableAssumptions: OpexEditableAssumption[];
+  estimateId: string;
+  scenarioId: string;
+  isFinalized: boolean;
+}) {
+  const { toast } = useToast();
+  const [localAssumptions, setLocalAssumptions] = useState<OpexEditableAssumption[]>(editableAssumptions);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  useEffect(() => {
+    setLocalAssumptions(editableAssumptions);
+    setHasChanges(false);
+  }, [editableAssumptions]);
+
+  useEffect(() => {
+    if (editingKey && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingKey]);
+
+  const recomputeMutation = useMutation({
+    mutationFn: async (assumptions: OpexEditableAssumption[]) => {
+      const res = await apiRequest("POST", `/api/opex/${estimateId}/recompute`, {
+        editableAssumptions: assumptions,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "opex"] });
+      setHasChanges(false);
+      toast({ title: "OpEx Recalculated", description: "All line items updated from new assumptions." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const startEdit = (assumption: OpexEditableAssumption) => {
+    if (isFinalized) return;
+    setEditingKey(assumption.key);
+    setEditValue(String(assumption.value));
+  };
+
+  const saveEdit = (key: string) => {
+    const numVal = parseFloat(editValue.replace(/[$,\s]/g, ""));
+    if (isNaN(numVal) || !isFinite(numVal) || numVal < 0) {
+      toast({ title: "Invalid Value", description: "Please enter a valid positive number.", variant: "destructive" });
+      setEditingKey(null);
+      return;
+    }
+
+    const updated = localAssumptions.map(a =>
+      a.key === key ? { ...a, value: numVal, source: a.source.includes("User") ? a.source : `User override (default: ${a.source})` } : a
+    );
+    setLocalAssumptions(updated);
+    setEditingKey(null);
+    setHasChanges(true);
+  };
+
+  const cancelEdit = () => {
+    setEditingKey(null);
+    setEditValue("");
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, key: string) => {
+    if (e.key === "Enter") saveEdit(key);
+    if (e.key === "Escape") cancelEdit();
+  };
+
+  const handleRecalculate = () => {
+    recomputeMutation.mutate(localAssumptions);
+  };
+
+  const categories = [...new Set(localAssumptions.map(a => a.category))];
+
+  const formatAssumptionValue = (a: OpexEditableAssumption): string => {
+    if (a.unit.includes("$")) {
+      if (a.value >= 1000) return `$${a.value.toLocaleString()}`;
+      return `$${a.value}`;
+    }
+    if (a.value >= 1000) return a.value.toLocaleString();
+    return String(a.value);
+  };
+
+  const isChanged = (key: string): boolean => {
+    const original = editableAssumptions.find(a => a.key === key);
+    const current = localAssumptions.find(a => a.key === key);
+    return original && current ? original.value !== current.value : false;
+  };
+
+  return (
+    <div className="space-y-4">
+      {!isFinalized && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Edit any assumption below, then click Recalculate to update all OpEx line items.
+          </p>
+          <Button
+            onClick={handleRecalculate}
+            disabled={!hasChanges || recomputeMutation.isPending}
+            size="sm"
+            data-testid="button-recalculate-opex"
+          >
+            {recomputeMutation.isPending ? (
+              <><RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Recalculating...</>
+            ) : (
+              <><Calculator className="h-3.5 w-3.5 mr-1.5" /> Recalculate OpEx</>
+            )}
+          </Button>
+        </div>
+      )}
+
+      {categories.map(cat => (
+        <div key={cat}>
+          <h4 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2" data-testid={`assumption-category-${cat}`}>
+            <Badge variant="secondary" className={`text-xs ${getCategoryColor(cat)} no-default-hover-elevate no-default-active-elevate`}>
+              {cat}
+            </Badge>
+          </h4>
+          <div className="space-y-1">
+            {localAssumptions.filter(a => a.category === cat).map(a => {
+              const isEditing = editingKey === a.key;
+              const changed = isChanged(a.key);
+
+              return (
+                <div
+                  key={a.key}
+                  className={`flex items-center gap-3 p-2 rounded-md text-sm group ${changed ? "bg-blue-500/5 border border-blue-200 dark:border-blue-800" : "hover:bg-muted/50"}`}
+                  data-testid={`assumption-row-${a.key}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-foreground">{a.parameter}</span>
+                      {a.description && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3 w-3 text-muted-foreground shrink-0 cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">{a.description}</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">{a.source}</div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isEditing ? (
+                      <>
+                        <Input
+                          ref={inputRef}
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(e, a.key)}
+                          className="text-sm w-28 text-right"
+                          data-testid={`input-assumption-${a.key}`}
+                        />
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">{a.unit}</span>
+                        <Button size="icon" variant="ghost" onClick={() => saveEdit(a.key)} data-testid={`button-save-assumption-${a.key}`}>
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={cancelEdit} data-testid={`button-cancel-assumption-${a.key}`}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          className={`font-mono text-sm cursor-pointer ${changed ? "text-blue-600 dark:text-blue-400 font-semibold" : "text-foreground"} ${isFinalized ? "" : "hover:underline"}`}
+                          onClick={() => startEdit(a)}
+                          data-testid={`value-assumption-${a.key}`}
+                        >
+                          {formatAssumptionValue(a)}
+                        </span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">{a.unit}</span>
+                        {!isFinalized && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="invisible group-hover:visible"
+                            onClick={() => startEdit(a)}
+                            data-testid={`button-edit-assumption-${a.key}`}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {changed && (
+                          <Badge variant="secondary" className="text-[10px] px-1 py-0 no-default-hover-elevate no-default-active-elevate">changed</Badge>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {hasChanges && !isFinalized && (
+        <div className="flex items-center gap-2 p-3 rounded-md bg-blue-500/10 border border-blue-200 dark:border-blue-800 text-sm">
+          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+          <span className="text-blue-700 dark:text-blue-300">
+            You have unsaved changes. Click <strong>Recalculate OpEx</strong> to update all line items and totals.
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -685,10 +906,22 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                 <TabsContent value="assumptions" className="mt-4">
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Operating Assumptions</CardTitle>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Calculator className="h-4 w-4" />
+                        Operating Assumptions
+                      </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <AssumptionsList assumptions={results.assumptions} />
+                      {results.editableAssumptions && results.editableAssumptions.length > 0 ? (
+                        <AssumptionsEditor
+                          editableAssumptions={results.editableAssumptions}
+                          estimateId={latestEstimate!.id}
+                          scenarioId={scenarioId}
+                          isFinalized={latestEstimate!.status === "finalized"}
+                        />
+                      ) : (
+                        <AssumptionsList assumptions={results.assumptions} />
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
