@@ -3,6 +3,7 @@ export interface DesignOverrides {
   vsDestructionPct?: number;
   olrTarget?: number;
   digesterTempF?: number;
+  digesterTempC?: number;
   eqRetentionDays?: number;
   feedDensityLbPerGal?: number;
   ch4Pct?: number;
@@ -99,8 +100,10 @@ function matchDesignCriteriaKey(fieldKey: string): keyof DesignOverrides | null 
   const criteriaMap: Record<string, keyof DesignOverrides> = {
     hrt: "hrtDays",
     olr: "olrTarget",
+    organicLoadingRate: "olrTarget",
     vsDestruction: "vsDestructionPct",
     temperature: "digesterTempF",
+    digesterVolume: "hrtDays",
     mixingPower: "mixingPowerWPerM3",
     retentionTime: "eqRetentionDays",
     solidsCaptureEfficiency: "solidsCaptureEff",
@@ -135,7 +138,8 @@ export function isRecalculableField(fieldKey: string): boolean {
   if (fieldKey.includes("designCriteria.")) {
     const lastPart = fieldKey.split(".").pop() || "";
     const criteriaKeys = [
-      "hrt", "olr", "vsDestruction", "temperature", "mixingPower",
+      "hrt", "olr", "organicLoadingRate", "vsDestruction", "temperature",
+      "digesterVolume", "mixingPower",
       "retentionTime", "solidsCaptureEfficiency", "cakeSolids", "polymerDosing",
       "tssRemoval", "fogRemoval", "hydraulicLoading", "storageDays",
       "targetParticleSize", "depackagingRejectRate", "headspacePct",

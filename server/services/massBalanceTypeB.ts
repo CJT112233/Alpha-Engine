@@ -11,6 +11,7 @@ import {
   getProdevalEquipmentList,
   getProdevalGasTrainDesignCriteria,
 } from "@shared/prodeval-equipment-library";
+import type { DesignOverrides } from "./designOverrides";
 
 type DesignCriterion = { value: number; unit: string; source: string };
 
@@ -207,7 +208,35 @@ function fmt(v: number, decimals: number = 1): string {
   return roundTo(v, decimals).toLocaleString();
 }
 
-export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults {
+function cloneDefaults(): Record<string, Record<string, DesignCriterion>> {
+  return JSON.parse(JSON.stringify(AD_DESIGN_DEFAULTS));
+}
+
+function applyDesignOverrides(defaults: Record<string, Record<string, DesignCriterion>>, overrides: DesignOverrides): void {
+  if (overrides.hrtDays !== undefined) defaults.digester.hrt.value = overrides.hrtDays;
+  if (overrides.vsDestructionPct !== undefined) defaults.digester.vsDestruction.value = overrides.vsDestructionPct;
+  if (overrides.olrTarget !== undefined) defaults.digester.organicLoadingRate.value = overrides.olrTarget;
+  if (overrides.gasYield !== undefined) defaults.digester.gasYield.value = overrides.gasYield;
+  if (overrides.ch4Pct !== undefined) defaults.digester.ch4Content.value = overrides.ch4Pct;
+  if (overrides.co2Pct !== undefined) defaults.digester.co2Content.value = overrides.co2Pct;
+  if (overrides.h2sPpmv !== undefined) defaults.digester.h2sContent.value = overrides.h2sPpmv;
+  if (overrides.headspacePct !== undefined) defaults.digester.headspacePct.value = overrides.headspacePct;
+  if (overrides.mixingPowerWPerM3 !== undefined) defaults.digester.mixingPower.value = overrides.mixingPowerWPerM3;
+  if (overrides.preheatTempC !== undefined) defaults.equalization.preheatTemp.value = overrides.preheatTempC;
+  if (overrides.eqRetentionDays !== undefined) defaults.equalization.retentionTime.value = overrides.eqRetentionDays;
+  if (overrides.targetTSPct !== undefined) defaults.equalization.targetTS.value = overrides.targetTSPct;
+  if (overrides.solidsCaptureEff !== undefined) defaults.centrifuge.solidsCaptureEff.value = overrides.solidsCaptureEff;
+  if (overrides.cakeSolidsPct !== undefined) defaults.centrifuge.cakeSolids.value = overrides.cakeSolidsPct;
+  if (overrides.polymerDoseKgPerTon !== undefined) defaults.centrifuge.polymerDose.value = overrides.polymerDoseKgPerTon;
+  if (overrides.dafTssRemoval !== undefined) defaults.daf.tssRemoval.value = overrides.dafTssRemoval;
+  if (overrides.dafFogRemoval !== undefined) defaults.daf.fogRemoval.value = overrides.dafFogRemoval;
+  if (overrides.dafHydraulicLoading !== undefined) defaults.daf.hydraulicLoading.value = overrides.dafHydraulicLoading;
+  if (overrides.storageDays !== undefined) defaults.receiving.storageTime.value = overrides.storageDays;
+  if (overrides.targetParticleSize !== undefined) defaults.maceration.targetParticleSize.value = overrides.targetParticleSize;
+  if (overrides.depackagingRejectRate !== undefined) defaults.maceration.depackagingRejectRate.value = overrides.depackagingRejectRate;
+}
+
+export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: DesignOverrides): MassBalanceResults {
   const warnings: MassBalanceResults["warnings"] = [];
   const assumptions: MassBalanceResults["assumptions"] = [];
   const calculationSteps: CalculationStep[] = [];
@@ -215,6 +244,12 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   const equipment: EquipmentItem[] = [];
   let eqId = 1;
   const makeId = (prefix: string) => `${prefix}-${eqId++}`;
+
+  const defaults = cloneDefaults();
+  if (designOverrides && Object.keys(designOverrides).length > 0) {
+    applyDesignOverrides(defaults, designOverrides);
+    console.log(`Mass Balance Type B: Applying design overrides: ${JSON.stringify(designOverrides)}`);
+  }
 
   const feedstocks = (upif.feedstocks || []) as FeedstockEntry[];
   if (feedstocks.length === 0) {
@@ -393,12 +428,12 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       ...receivingSolids,
       ...receivingCodFrac,
     },
-    designCriteria: AD_DESIGN_DEFAULTS.receiving,
+    designCriteria: defaults.receiving,
     notes: [`Receiving ${feedstocks.length} feedstock stream(s), total ${roundTo(totalFeedTpd).toLocaleString()} tons/day`],
   };
   adStages.push(receivingStage);
 
-  const storageVolM3 = (totalFeedTpd * 1000 / 1.05) * AD_DESIGN_DEFAULTS.receiving.storageTime.value;
+  const storageVolM3 = (totalFeedTpd * 1000 / 1.05) * defaults.receiving.storageTime.value;
   const receivingVolGal = roundTo(m3ToGal(storageVolM3));
   const receivingDims = rectDimensions(receivingVolGal, 10);
   equipment.push({
@@ -425,7 +460,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   // ══════════════════════════════════════════════════════════
   // STAGE 2: FEEDSTOCK PREPARATION (MACERATION & SIZE REDUCTION)
   // ══════════════════════════════════════════════════════════
-  const rejectRate = isPackaged ? AD_DESIGN_DEFAULTS.maceration.depackagingRejectRate.value / 100 : 0;
+  const rejectRate = isPackaged ? defaults.maceration.depackagingRejectRate.value / 100 : 0;
   const postMacerationTpd = totalFeedTpd * (1 - rejectRate);
   const postMacCODMgL = rejectRate > 0 ? effectiveCODMgL / (1 - rejectRate) : effectiveCODMgL;
   const postMacSolids = buildSolidsStream(postMacerationTpd, avgTS, avgVS, postMacCODMgL);
@@ -441,12 +476,12 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     outputStream: {
       ...postMacSolids,
       ...postMacCodFrac,
-      particleSize: { value: AD_DESIGN_DEFAULTS.maceration.targetParticleSize.value, unit: "mm" },
+      particleSize: { value: defaults.maceration.targetParticleSize.value, unit: "mm" },
       rejects: { value: roundTo(totalFeedTpd * rejectRate), unit: "tons/day" },
     },
-    designCriteria: AD_DESIGN_DEFAULTS.maceration,
+    designCriteria: defaults.maceration,
     notes: [
-      `Particle size reduction to < ${AD_DESIGN_DEFAULTS.maceration.targetParticleSize.value} mm for optimal digestion`,
+      `Particle size reduction to < ${defaults.maceration.targetParticleSize.value} mm for optimal digestion`,
       ...(isPackaged ? [`Depackaging included — ${roundTo(rejectRate * 100)}% reject rate for packaging/contaminants`] : ["No depackaging required for this feedstock mix"]),
       "Magnetic separation for ferrous metal removal",
     ],
@@ -500,8 +535,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   // ══════════════════════════════════════════════════════════
   // STAGE 3: EQUALIZATION (EQ) TANK
   // ══════════════════════════════════════════════════════════
-  const eqRetentionDays = AD_DESIGN_DEFAULTS.equalization.retentionTime.value;
-  const targetEqTS = AD_DESIGN_DEFAULTS.equalization.targetTS.value;
+  const eqRetentionDays = defaults.equalization.retentionTime.value;
+  const targetEqTS = defaults.equalization.targetTS.value;
   const needsDilution = avgTS > targetEqTS;
   const dilutionWaterTpd = needsDilution ? postMacerationTpd * ((avgTS / targetEqTS) - 1) : 0;
   const eqOutputTpd = postMacerationTpd + dilutionWaterTpd;
@@ -529,20 +564,20 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     outputStream: {
       ...eqOutputSolids,
       ...eqOutputCodFrac,
-      temperature: { value: AD_DESIGN_DEFAULTS.equalization.preheatTemp.value, unit: "°C" },
+      temperature: { value: defaults.equalization.preheatTemp.value, unit: "°C" },
       vsLoad: { value: roundTo(eqVSLoadKgPerDay), unit: "kg VS/day" },
     },
-    designCriteria: AD_DESIGN_DEFAULTS.equalization,
+    designCriteria: defaults.equalization,
     notes: [
       `EQ tank volume: ${roundTo(m3ToGal(eqVolumeM3)).toLocaleString()} gallons (${roundTo(eqRetentionDays, 1)}-day retention)`,
       "Continuous mixing for homogenization and stratification prevention",
-      `Pre-heated to ${AD_DESIGN_DEFAULTS.equalization.preheatTemp.value}°C via heat exchanger`,
+      `Pre-heated to ${defaults.equalization.preheatTemp.value}°C via heat exchanger`,
       ...(needsDilution ? [`Dilution water: ${roundTo(dilutionWaterTpd)} tons/day to reduce TS from ${roundTo(avgTS)}% to ${targetEqTS}%`] : []),
     ],
   };
   adStages.push(eqStage);
 
-  const heatDutyKW = roundTo(eqOutputTpd * 1000 * 4.18 * (AD_DESIGN_DEFAULTS.equalization.preheatTemp.value - 15) / 3600, 0);
+  const heatDutyKW = roundTo(eqOutputTpd * 1000 * 4.18 * (defaults.equalization.preheatTemp.value - 15) / 3600, 0);
 
   const eqTankVolGal = roundTo(m3ToGal(eqVolumeM3));
   const eqTankDims = cylinderDimensions(eqTankVolGal, 1.2);
@@ -595,14 +630,14 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     quantity: 1,
     specs: {
       heatDuty: { value: String(heatDutyKW), unit: "kW" },
-      targetTemp: { value: String(AD_DESIGN_DEFAULTS.equalization.preheatTemp.value), unit: "°C" },
+      targetTemp: { value: String(defaults.equalization.preheatTemp.value), unit: "°C" },
       inletTemp: { value: "15", unit: "°C" },
       dimensionsL: { value: "10", unit: "ft" },
       dimensionsW: { value: "3", unit: "ft" },
       dimensionsH: { value: "4", unit: "ft" },
       power: { value: "2", unit: "HP" },
     },
-    designBasis: `Heating from 15°C ambient to ${AD_DESIGN_DEFAULTS.equalization.preheatTemp.value}°C mesophilic`,
+    designBasis: `Heating from 15°C ambient to ${defaults.equalization.preheatTemp.value}°C mesophilic`,
     notes: "Waste heat recovery from biogas utilization where available",
     isOverridden: false,
     isLocked: false,
@@ -633,14 +668,14 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   // ══════════════════════════════════════════════════════════
   // STAGE 4: ANAEROBIC DIGESTION (CSTR)
   // ══════════════════════════════════════════════════════════
-  const vsDestruction = AD_DESIGN_DEFAULTS.digester.vsDestruction.value / 100;
-  const hrt = AD_DESIGN_DEFAULTS.digester.hrt.value;
-  const olr = AD_DESIGN_DEFAULTS.digester.organicLoadingRate.value;
-  const gasYield = AD_DESIGN_DEFAULTS.digester.gasYield.value;
-  const ch4Pct = AD_DESIGN_DEFAULTS.digester.ch4Content.value;
-  const co2Pct = AD_DESIGN_DEFAULTS.digester.co2Content.value;
-  const h2sPpmv = AD_DESIGN_DEFAULTS.digester.h2sContent.value;
-  const headspacePct = AD_DESIGN_DEFAULTS.digester.headspacePct.value / 100;
+  const vsDestruction = defaults.digester.vsDestruction.value / 100;
+  const hrt = defaults.digester.hrt.value;
+  const olr = defaults.digester.organicLoadingRate.value;
+  const gasYield = defaults.digester.gasYield.value;
+  const ch4Pct = defaults.digester.ch4Content.value;
+  const co2Pct = defaults.digester.co2Content.value;
+  const h2sPpmv = defaults.digester.h2sContent.value;
+  const headspacePct = defaults.digester.headspacePct.value / 100;
 
   const vsDestroyedKgPerDay = eqVSLoadKgPerDay * vsDestruction;
   const biogasM3PerDay = vsDestroyedKgPerDay * gasYield;
@@ -758,7 +793,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       ...eqOutputSolids,
       ...eqOutputCodFrac,
       vsLoad: { value: roundTo(eqVSLoadKgPerDay), unit: "kg VS/day" },
-      temperature: { value: AD_DESIGN_DEFAULTS.equalization.preheatTemp.value, unit: "°C" },
+      temperature: { value: defaults.equalization.preheatTemp.value, unit: "°C" },
     },
     outputStream: {
       ...biogasRawStream,
@@ -766,7 +801,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       ...digestateSolids,
       ...digestateCodFrac,
     },
-    designCriteria: AD_DESIGN_DEFAULTS.digester,
+    designCriteria: defaults.digester,
     notes: [
       `${numDigesters} CSTR digester(s) at ${roundTo(m3ToGal(perDigesterVol)).toLocaleString()} gallons each (including ${roundTo(headspacePct * 100)}% headspace)`,
       `Active volume: ${roundTo(m3ToGal(activeDigesterVolM3)).toLocaleString()} gallons`,
@@ -794,7 +829,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       dimensionsH: { value: String(digesterDims.heightFt), unit: "ft" },
       dimensionsW: { value: String(digesterDims.diameterFt), unit: "ft (dia)" },
       dimensionsL: { value: String(digesterDims.diameterFt), unit: "ft (dia)" },
-      power: { value: String(kWToHP(AD_DESIGN_DEFAULTS.digester.mixingPower.value * (activeDigesterVolM3 / numDigesters) / 1000)), unit: "HP" },
+      power: { value: String(kWToHP(defaults.digester.mixingPower.value * (activeDigesterVolM3 / numDigesters) / 1000)), unit: "HP" },
     },
     designBasis: `${hrt}-day HRT, OLR ≤ ${olr} kg VS/m³·d, ${roundTo(headspacePct * 100)}% headspace`,
     notes: "Includes gas collection dome, internal heating coils, and insulation",
@@ -802,7 +837,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
-  const digesterMixerPowerKW = roundTo(AD_DESIGN_DEFAULTS.digester.mixingPower.value * (activeDigesterVolM3 / numDigesters) / 1000, 1);
+  const digesterMixerPowerKW = roundTo(defaults.digester.mixingPower.value * (activeDigesterVolM3 / numDigesters) / 1000, 1);
   equipment.push({
     id: makeId("digester-mixer"),
     process: "Anaerobic Digestion",
@@ -810,13 +845,13 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     description: "Mechanical mixing system for digester contents",
     quantity: numDigesters,
     specs: {
-      specificPower: { value: String(AD_DESIGN_DEFAULTS.digester.mixingPower.value), unit: "W/m³" },
+      specificPower: { value: String(defaults.digester.mixingPower.value), unit: "W/m³" },
       dimensionsL: { value: "5", unit: "ft" },
       dimensionsW: { value: "5", unit: "ft" },
       dimensionsH: { value: String(roundTo(digesterDims.heightFt + 4, 0)), unit: "ft" },
       power: { value: String(kWToHP(digesterMixerPowerKW)), unit: "HP" },
     },
-    designBasis: `${AD_DESIGN_DEFAULTS.digester.mixingPower.value} W/m³ mixing intensity`,
+    designBasis: `${defaults.digester.mixingPower.value} W/m³ mixing intensity`,
     notes: "Draft tube or top-entry mechanical mixer",
     isOverridden: false,
     isLocked: false,
@@ -825,8 +860,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   // ══════════════════════════════════════════════════════════
   // STAGE 5: SOLIDS-LIQUID SEPARATION (CENTRIFUGE)
   // ══════════════════════════════════════════════════════════
-  const centSolidsCaptureEff = AD_DESIGN_DEFAULTS.centrifuge.solidsCaptureEff.value / 100;
-  const centCakeSolidsPct = AD_DESIGN_DEFAULTS.centrifuge.cakeSolids.value;
+  const centSolidsCaptureEff = defaults.centrifuge.solidsCaptureEff.value / 100;
+  const centCakeSolidsPct = defaults.centrifuge.cakeSolids.value;
   const digestateTSKgPerDay = digestateTPD * 1000 * (digestateTS / 100);
   const cakeSolidsKgPerDay = digestateTSKgPerDay * centSolidsCaptureEff;
   const cakeTPD = cakeSolidsKgPerDay / (centCakeSolidsPct / 100) / 1000;
@@ -870,12 +905,12 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       ...cakeSolids,
       ...centrateWW,
     },
-    designCriteria: AD_DESIGN_DEFAULTS.centrifuge,
+    designCriteria: defaults.centrifuge,
     notes: [
       "Decanter centrifuge for digestate dewatering",
       `Cake: ${roundTo(cakeTPD)} tons/day at ${centCakeSolidsPct}% TS — conveyed to storage/hauling`,
       `Centrate: ${roundTo(centrateTPD)} tons/day — sent to DAF for liquid cleanup`,
-      `Polymer conditioning: ${AD_DESIGN_DEFAULTS.centrifuge.polymerDose.value} kg/ton dry solids`,
+      `Polymer conditioning: ${defaults.centrifuge.polymerDose.value} kg/ton dry solids`,
     ],
   };
   adStages.push(centrifugeStage);
@@ -891,7 +926,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       capacity: { value: String(roundTo(digestateTPD)), unit: "tons/day" },
       solidsCaptureEff: { value: String(roundTo(centSolidsCaptureEff * 100)), unit: "%" },
       cakeSolids: { value: String(centCakeSolidsPct), unit: "% TS" },
-      polymerDose: { value: String(AD_DESIGN_DEFAULTS.centrifuge.polymerDose.value), unit: "kg/ton DS" },
+      polymerDose: { value: String(defaults.centrifuge.polymerDose.value), unit: "kg/ton DS" },
       dimensionsL: { value: "14", unit: "ft" },
       dimensionsW: { value: "5", unit: "ft" },
       dimensionsH: { value: "6", unit: "ft" },
@@ -928,11 +963,11 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
   // ══════════════════════════════════════════════════════════
   // STAGE 6: LIQUID CLEANUP — DISSOLVED AIR FLOTATION (DAF)
   // ══════════════════════════════════════════════════════════
-  const dafTSSRemoval = AD_DESIGN_DEFAULTS.daf.tssRemoval.value / 100;
-  const dafFOGRemoval = AD_DESIGN_DEFAULTS.daf.fogRemoval.value / 100;
+  const dafTSSRemoval = defaults.daf.tssRemoval.value / 100;
+  const dafFOGRemoval = defaults.daf.fogRemoval.value / 100;
   const centrateFlowGPD = centrateTPD * 1000 / 3.785;
   const centrateFlowGPM = centrateFlowGPD / 1440;
-  const dafSurfaceAreaFt2 = centrateFlowGPM / AD_DESIGN_DEFAULTS.daf.hydraulicLoading.value;
+  const dafSurfaceAreaFt2 = centrateFlowGPM / defaults.daf.hydraulicLoading.value;
   const dafEffluentTSSMgL = centrateTSSMgL * (1 - dafTSSRemoval);
   const dafFloatTPD = centrateTPD * 0.03;
   const dafEffluentTPD = centrateTPD - dafFloatTPD;
@@ -969,7 +1004,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       ...dafEffluentWW,
       floatSludge: { value: roundTo(dafFloatTPD), unit: "tons/day" },
     },
-    designCriteria: AD_DESIGN_DEFAULTS.daf,
+    designCriteria: defaults.daf,
     notes: [
       `TSS removal: ${roundTo(dafTSSRemoval * 100)}% (${roundTo(centrateTSSMgL, 0)} → ${roundTo(dafEffluentTSSMgL, 0)} mg/L)`,
       `FOG removal: ${roundTo(dafFOGRemoval * 100)}%`,
@@ -991,7 +1026,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
     quantity: 1,
     specs: {
       surfaceArea: { value: String(roundTo(dafSurfaceAreaFt2)), unit: "ft²" },
-      hydraulicLoading: { value: String(AD_DESIGN_DEFAULTS.daf.hydraulicLoading.value), unit: "gpm/ft²" },
+      hydraulicLoading: { value: String(defaults.daf.hydraulicLoading.value), unit: "gpm/ft²" },
       designFlow: { value: String(roundTo(centrateFlowGPM, 1)), unit: "gpm" },
       tssRemoval: { value: String(roundTo(dafTSSRemoval * 100)), unit: "%" },
       fogRemoval: { value: String(roundTo(dafFOGRemoval * 100)), unit: "%" },
@@ -1000,7 +1035,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord): MassBalanceResults 
       dimensionsH: { value: "8", unit: "ft" },
       power: { value: String(dafPowerHP), unit: "HP" },
     },
-    designBasis: `${AD_DESIGN_DEFAULTS.daf.hydraulicLoading.value} gpm/ft² hydraulic loading rate`,
+    designBasis: `${defaults.daf.hydraulicLoading.value} gpm/ft² hydraulic loading rate`,
     notes: "Includes recycle pump, saturator, chemical feed system (coagulant + polymer)",
     isOverridden: false,
     isLocked: false,

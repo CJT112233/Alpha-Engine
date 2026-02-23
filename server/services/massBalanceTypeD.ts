@@ -15,6 +15,7 @@ import {
   getProdevalEquipmentList,
   getProdevalGasTrainDesignCriteria,
 } from "@shared/prodeval-equipment-library";
+import type { DesignOverrides } from "./designOverrides";
 
 type DesignCriterion = { value: number; unit: string; source: string };
 
@@ -109,7 +110,25 @@ function fmt(v: number, decimals: number = 1): string {
   return roundTo(v, decimals).toLocaleString();
 }
 
-export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults {
+function cloneDefaults(): Record<string, Record<string, DesignCriterion>> {
+  return JSON.parse(JSON.stringify(AD_DEFAULTS));
+}
+
+function applyDesignOverridesD(defs: Record<string, Record<string, DesignCriterion>>, overrides: DesignOverrides): void {
+  if (overrides.hrtDays !== undefined) defs.digester.hrt.value = overrides.hrtDays;
+  if (overrides.vsDestructionPct !== undefined) defs.digester.vsDestruction.value = overrides.vsDestructionPct;
+  if (overrides.olrTarget !== undefined) defs.digester.organicLoadingRate.value = overrides.olrTarget;
+  if (overrides.digesterTempC !== undefined) defs.digester.temperature.value = overrides.digesterTempC;
+  if (overrides.mixingPowerWPerM3 !== undefined) defs.digester.mixingPower.value = overrides.mixingPowerWPerM3;
+  if (overrides.gasYield !== undefined) defs.digester.gasYield.value = overrides.gasYield;
+  if (overrides.ch4Pct !== undefined) defs.digester.ch4Content.value = overrides.ch4Pct;
+  if (overrides.co2Pct !== undefined) defs.digester.co2Content.value = overrides.co2Pct;
+  if (overrides.h2sPpmv !== undefined) defs.digester.h2sContent.value = overrides.h2sPpmv;
+  if (overrides.cakeSolidsPct !== undefined && defs.dewateringPost) defs.dewateringPost.cakeSolids.value = overrides.cakeSolidsPct;
+  if (overrides.solidsCaptureEff !== undefined && defs.dewateringPost) defs.dewateringPost.captureRate.value = overrides.solidsCaptureEff;
+}
+
+export function calculateMassBalanceTypeD(upif: UpifRecord, designOverrides?: DesignOverrides): MassBalanceResults {
   const warnings: MassBalanceResults["warnings"] = [];
   const assumptions: MassBalanceResults["assumptions"] = [];
   const calculationSteps: CalculationStep[] = [];
@@ -117,6 +136,12 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
   const allEquipment: EquipmentItem[] = [];
   let eqId = 100;
   const makeId = () => `eq-d-${eqId++}`;
+
+  const defaults = cloneDefaults();
+  if (designOverrides && Object.keys(designOverrides).length > 0) {
+    applyDesignOverridesD(defaults, designOverrides);
+    console.log(`Mass Balance Type D: Applying design overrides: ${JSON.stringify(designOverrides)}`);
+  }
 
   const feedstocks = (upif.feedstocks || []) as FeedstockEntry[];
   const wwFeedstocks = feedstocks.filter(isWastewaterFeedstock);
@@ -164,8 +189,8 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
   for (const fs of truckedFeedstocks) {
     const tpd = parseFeedstockVolume(fs);
     if (tpd <= 0) continue;
-    const ts = getSpecValue(fs, ["totalSolids", "total solids", "ts"], AD_DEFAULTS.truckedFeedstock.defaultTS.value);
-    const vsOfTs = getSpecValue(fs, ["volatileSolids", "volatile solids", "vs", "vs/ts"], AD_DEFAULTS.truckedFeedstock.defaultVS.value);
+    const ts = getSpecValue(fs, ["totalSolids", "total solids", "ts"], defaults.truckedFeedstock.defaultTS.value);
+    const vsOfTs = getSpecValue(fs, ["volatileSolids", "volatile solids", "vs", "vs/ts"], defaults.truckedFeedstock.defaultVS.value);
     const feedKg = tpd * 1000;
     const tsKg = feedKg * (ts / 100);
     const vsKg = tsKg * (vsOfTs / 100);
@@ -184,7 +209,7 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
     warnings.push({ field: "AD Feed", message: "No VS load available for anaerobic digestion. Check wastewater and trucked feedstock inputs.", severity: "error" });
   }
 
-  const thickenedTS = AD_DEFAULTS.sludgeThickening.thickenedSolids.value / 100;
+  const thickenedTS = defaults.sludgeThickening.thickenedSolids.value / 100;
   const sludgeVolM3PerDay = totalTSLoad > 0 ? (totalTSLoad / (thickenedTS * 1000)) : 0;
 
   const thickeningStage: ADProcessStage = {
@@ -197,10 +222,10 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
     },
     outputStream: {
       blendedSludgeVolume: { value: roundTo(m3ToGal(sludgeVolM3PerDay)), unit: "gpd" },
-      thickenedTS: { value: AD_DEFAULTS.sludgeThickening.thickenedSolids.value, unit: "% TS" },
+      thickenedTS: { value: defaults.sludgeThickening.thickenedSolids.value, unit: "% TS" },
       totalVS: { value: roundTo(totalVSLoad), unit: "kg VS/day" },
     },
-    designCriteria: AD_DEFAULTS.sludgeThickening,
+    designCriteria: defaults.sludgeThickening,
     notes: [
       truckedFeedstocks.length > 0
         ? `Blending WW sludge + ${truckedFeedstocks.length} trucked feedstock(s)`
@@ -226,12 +251,12 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
     isLocked: false,
   });
 
-  const vsDestruction = AD_DEFAULTS.digester.vsDestruction.value / 100;
-  const hrt = AD_DEFAULTS.digester.hrt.value;
-  const olr = AD_DEFAULTS.digester.organicLoadingRate.value;
-  const gasYield = AD_DEFAULTS.digester.gasYield.value;
-  const ch4Pct = AD_DEFAULTS.digester.ch4Content.value;
-  const h2sPpmv = AD_DEFAULTS.digester.h2sContent.value;
+  const vsDestruction = defaults.digester.vsDestruction.value / 100;
+  const hrt = defaults.digester.hrt.value;
+  const olr = defaults.digester.organicLoadingRate.value;
+  const gasYield = defaults.digester.gasYield.value;
+  const ch4Pct = defaults.digester.ch4Content.value;
+  const h2sPpmv = defaults.digester.h2sContent.value;
 
   const vsDestroyedKgPerDay = totalVSLoad * vsDestruction;
   const biogasM3PerDay = vsDestroyedKgPerDay * gasYield;
@@ -264,7 +289,7 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
       h2sContent: { value: h2sPpmv, unit: "ppmv" },
       vsDestroyed: { value: roundTo(vsDestroyedKgPerDay), unit: "kg/day" },
     },
-    designCriteria: AD_DEFAULTS.digester,
+    designCriteria: defaults.digester,
     notes: [
       `${numDigesters} digester(s) at ${roundTo(m3ToGal(perDigesterVol)).toLocaleString()} gallons each`,
       `Actual OLR: ${roundTo(totalVSLoad / digesterVolM3, 2)} kg VS/m³·d`,
@@ -396,8 +421,8 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
   });
 
   const digestedTSKgPerDay = totalTSLoad - vsDestroyedKgPerDay;
-  const dewateringCaptureRate = AD_DEFAULTS.dewateringPost.captureRate.value / 100;
-  const cakeSolids = AD_DEFAULTS.dewateringPost.cakeSolids.value / 100;
+  const dewateringCaptureRate = defaults.dewateringPost.captureRate.value / 100;
+  const cakeSolids = defaults.dewateringPost.cakeSolids.value / 100;
   const cakeKgPerDay = (digestedTSKgPerDay * dewateringCaptureRate) / cakeSolids;
   const cakeTPD = cakeKgPerDay / 1000;
 
@@ -409,9 +434,9 @@ export function calculateMassBalanceTypeD(upif: UpifRecord): MassBalanceResults 
     },
     outputStream: {
       cake: { value: roundTo(cakeTPD), unit: "tons/day" },
-      cakeSolidsContent: { value: AD_DEFAULTS.dewateringPost.cakeSolids.value, unit: "% TS" },
+      cakeSolidsContent: { value: defaults.dewateringPost.cakeSolids.value, unit: "% TS" },
     },
-    designCriteria: AD_DEFAULTS.dewateringPost,
+    designCriteria: defaults.dewateringPost,
     notes: ["Belt filter press or centrifuge", "Filtrate returned to headworks"],
   };
   adStages.push(dewateringStage);

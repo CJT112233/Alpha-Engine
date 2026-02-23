@@ -1391,6 +1391,28 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
     },
   });
 
+  const RECALCULABLE_EXACT_KEYS = new Set([
+    "summary.hrt", "summary.vsDestruction",
+  ]);
+
+  const RECALCULABLE_DESIGN_CRITERIA_SUFFIXES = new Set([
+    "hrt", "olr", "vsDestruction", "temperature", "digesterVolume", "mixingPower",
+    "retentionTime", "solidsCaptureEfficiency", "cakeSolids", "polymerDosing",
+    "tssRemoval", "fogRemoval", "hydraulicLoading", "storageDays",
+    "targetParticleSize", "depackagingRejectRate", "headspacePct",
+    "gasYield", "ch4Content", "co2Content", "h2sContent", "preheatTemp",
+    "targetTS", "thickenedSolids", "captureRate", "organicLoadingRate",
+  ]);
+
+  const isRecalculableField = (fieldKey: string): boolean => {
+    if (RECALCULABLE_EXACT_KEYS.has(fieldKey)) return true;
+    if (fieldKey.includes("designCriteria.")) {
+      const lastPart = fieldKey.split(".").pop() || "";
+      return RECALCULABLE_DESIGN_CRITERIA_SUFFIXES.has(lastPart);
+    }
+    return false;
+  };
+
   const recomputeMutation = useMutation({
     mutationFn: async () => {
       const controller = new AbortController();
@@ -1436,9 +1458,12 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
       const res = await apiRequest("PATCH", `/api/mass-balance/${latestRun!.id}/overrides`, overrideData);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables, _ctx) => {
       queryClient.invalidateQueries({ queryKey: ["/api/scenarios", scenarioId, "mass-balance"] });
-      toast({ title: "Value Updated", description: "Override saved. Lock the field to preserve it on recompute." });
+      const fieldKey = Object.keys(variables.overrides)[0];
+      if (!fieldKey || !isRecalculableField(fieldKey)) {
+        toast({ title: "Value Updated", description: "Override saved. Lock the field to preserve it on recompute." });
+      }
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -1499,7 +1524,18 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
         originalValue,
       },
     };
-    overrideMutation.mutate({ overrides: overrideEntry });
+    const shouldRecompute = isRecalculableField(fieldKey);
+    overrideMutation.mutate(
+      { overrides: overrideEntry },
+      {
+        onSuccess: () => {
+          if (shouldRecompute) {
+            toast({ title: "Design Input Changed", description: "Recalculating downstream values..." });
+            recomputeMutation.mutate();
+          }
+        },
+      },
+    );
   };
 
   if (isLoading) {

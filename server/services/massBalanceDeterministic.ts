@@ -5,6 +5,7 @@ import {
   getProdevalEquipmentList,
   getProdevalGasTrainDesignCriteria,
 } from "@shared/prodeval-equipment-library";
+import type { DesignOverrides } from "./designOverrides";
 
 interface ParsedFeedstock {
   name: string;
@@ -185,18 +186,18 @@ function parseFeedstocks(upif: any): ParsedFeedstock[] {
   return feedstocks;
 }
 
-function calculateBiogasProduction(feedstocks: ParsedFeedstock[]): BiogasCalcResult {
+function calculateBiogasProduction(feedstocks: ParsedFeedstock[], overrides?: DesignOverrides): BiogasCalcResult {
   let totalTonsPerYear = 0;
   let totalTsLbPerDay = 0;
   let totalVsLbPerDay = 0;
   let totalNetFeedLbPerDay = 0;
 
-  const CH4_PCT = 60;
-  const CO2_PCT = 40;
+  const CH4_PCT = overrides?.ch4Pct ?? 60;
+  const CO2_PCT = overrides?.co2Pct ?? 40;
   const M3_TO_SCF = 35.3147;
   const KG_TO_LB = 2.20462;
   const RNG_BTU_PER_SCF = 1012;
-  const VS_DESTRUCTION_PCT = 58;
+  const VS_DESTRUCTION_PCT = overrides?.vsDestructionPct ?? 58;
 
   for (const fs of feedstocks) {
     const tpy = fs.tonsPerYear;
@@ -289,13 +290,14 @@ function rv(val: number, decimals: number = 0): number {
 function buildTypeBAdStages(
   feedstocks: ParsedFeedstock[],
   calc: BiogasCalcResult,
+  overrides?: DesignOverrides,
 ): ADProcessStage[] {
   const stages: ADProcessStage[] = [];
-  const HRT_DAYS = 25;
-  const OLR_TARGET = 3.5;
-  const DIGESTER_TEMP_F = 98;
-  const EQ_RETENTION_DAYS = 1.5;
-  const FEED_DENSITY_LB_PER_GAL = 8.5;
+  const HRT_DAYS = overrides?.hrtDays ?? 25;
+  const OLR_TARGET = overrides?.olrTarget ?? 3.5;
+  const DIGESTER_TEMP_F = overrides?.digesterTempF ?? 98;
+  const EQ_RETENTION_DAYS = overrides?.eqRetentionDays ?? 1.5;
+  const FEED_DENSITY_LB_PER_GAL = overrides?.feedDensityLbPerGal ?? 8.5;
 
   const feedGpd = calc.totalFeedLbPerDay / FEED_DENSITY_LB_PER_GAL;
   const feedM3PerDay = feedGpd * 0.003785;
@@ -538,15 +540,16 @@ function buildTypeBAdStages(
 function buildTypeBEquipment(
   feedstocks: ParsedFeedstock[],
   calc: BiogasCalcResult,
+  overrides?: DesignOverrides,
 ): EquipmentItem[] {
   const equipment: EquipmentItem[] = [];
   let idCounter = 0;
   const makeId = (suffix: string) => `det-${suffix}-${idCounter++}`;
 
-  const FEED_DENSITY_LB_PER_GAL = 8.5;
+  const FEED_DENSITY_LB_PER_GAL = overrides?.feedDensityLbPerGal ?? 8.5;
   const feedGpd = calc.totalFeedLbPerDay / FEED_DENSITY_LB_PER_GAL;
-  const HRT_DAYS = 25;
-  const EQ_RETENTION_DAYS = 1.5;
+  const HRT_DAYS = overrides?.hrtDays ?? 25;
+  const EQ_RETENTION_DAYS = overrides?.eqRetentionDays ?? 1.5;
 
   equipment.push({
     id: makeId("receiving"),
@@ -884,14 +887,17 @@ function buildTypeBEquipment(
   return equipment;
 }
 
-function buildAssumptions(feedstocks: ParsedFeedstock[], calc: BiogasCalcResult): Array<{ parameter: string; value: string; source: string }> {
+function buildAssumptions(feedstocks: ParsedFeedstock[], calc: BiogasCalcResult, overrides?: DesignOverrides): Array<{ parameter: string; value: string; source: string }> {
   const assumptions: Array<{ parameter: string; value: string; source: string }> = [];
+  const hrt = overrides?.hrtDays ?? 25;
+  const digTempF = overrides?.digesterTempF ?? 98;
+  const oSrc = (key: keyof DesignOverrides) => overrides?.[key] !== undefined ? "User override" : undefined;
 
   assumptions.push(
     { parameter: "Digester Type", value: "Mesophilic CSTR", source: "Standard for mixed organic feedstocks" },
-    { parameter: "Digester Temperature", value: "98°F (37°C)", source: "Mesophilic range" },
-    { parameter: "Hydraulic Retention Time (HRT)", value: "25 days", source: "Typical for mixed feedstock AD" },
-    { parameter: "VS Destruction", value: `${calc.vsDestructionPct}%`, source: "Mesophilic AD typical range 60-80%" },
+    { parameter: "Digester Temperature", value: `${digTempF}°F`, source: oSrc("digesterTempF") || "Mesophilic range" },
+    { parameter: "Hydraulic Retention Time (HRT)", value: `${hrt} days`, source: oSrc("hrtDays") || "Typical for mixed feedstock AD" },
+    { parameter: "VS Destruction", value: `${calc.vsDestructionPct}%`, source: oSrc("vsDestructionPct") || "Engineering practice — CSTR" },
     { parameter: "Biogas CH₄ Content", value: `${calc.ch4Pct}%`, source: "Typical for organic waste AD" },
     { parameter: "Biogas CO₂ Content", value: `${calc.co2Pct}%`, source: "Typical for organic waste AD" },
     { parameter: "Biogas H₂S", value: "1,500 ppmv", source: "Conservative estimate for mixed feedstocks" },
@@ -1900,7 +1906,7 @@ export interface DeterministicMBResult {
   calculations: BiogasCalcResult;
 }
 
-export function generateDeterministicMassBalance(upif: any, projectType: string): DeterministicMBResult {
+export function generateDeterministicMassBalance(upif: any, projectType: string, designOverrides?: DesignOverrides): DeterministicMBResult {
   const ptLower = projectType.toLowerCase().trim();
 
   if (ptLower === "c" || ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
@@ -1911,7 +1917,7 @@ export function generateDeterministicMassBalance(upif: any, projectType: string)
     return generateTypeDMassBalance(upif);
   }
 
-  console.log(`Deterministic MB: Starting calculation for project type ${projectType}`);
+  console.log(`Deterministic MB: Starting calculation for project type ${projectType}${designOverrides && Object.keys(designOverrides).length > 0 ? ` with overrides: ${JSON.stringify(designOverrides)}` : ""}`);
   const startTime = Date.now();
 
   const feedstocks = parseFeedstocks(upif);
@@ -1929,16 +1935,16 @@ export function generateDeterministicMassBalance(upif: any, projectType: string)
     console.log(`  - ${fs.name}: ${r(fs.tonsPerYear)} TPY, TS=${fs.tsPct}%, VS=${fs.vsPctOfTs}% of TS, BMP=${fs.bmpM3CH4PerKgVS} m³ CH₄/kg VS${fs.libraryMatch ? ` (matched: ${fs.libraryMatch})` : ""}`);
   }
 
-  const calc = calculateBiogasProduction(feedstocks);
+  const calc = calculateBiogasProduction(feedstocks, designOverrides);
   console.log(`Deterministic MB: Biogas = ${r(calc.biogasScfm, 1)} SCFM (${r(calc.biogasScfd)} SCFD), RNG = ${r(calc.rngScfm, 1)} SCFM (${r(calc.rngMmbtuPerDay, 1)} MMBTU/day)`);
 
   if (calc.biogasScfm > MAX_PRODEVAL_CAPACITY_SCFM) {
     throw new Error(`Biogas flow of ${r(calc.biogasScfm, 0)} SCFM exceeds maximum Prodeval equipment capacity (${MAX_PRODEVAL_CAPACITY_SCFM} SCFM). Falling back to AI for custom solution.`);
   }
 
-  const adStages = buildTypeBAdStages(feedstocks, calc);
-  const equipment = buildTypeBEquipment(feedstocks, calc);
-  const assumptions = buildAssumptions(feedstocks, calc);
+  const adStages = buildTypeBAdStages(feedstocks, calc, designOverrides);
+  const equipment = buildTypeBEquipment(feedstocks, calc, designOverrides);
+  const assumptions = buildAssumptions(feedstocks, calc, designOverrides);
   const summary = buildSummary(calc);
 
   const warnings: Array<{ field: string; message: string; severity: "error" | "warning" | "info" }> = [];

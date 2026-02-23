@@ -3125,37 +3125,62 @@ export async function registerRoutes(
 
       const scenario = await storage.getScenario(run.scenarioId);
       const projectType = (scenario as any)?.projectType || (upif as any).projectType || "";
-      const preferredModel = (scenario?.preferredModel || "gpt5") as LLMProvider;
+
+      const existingOverrides = (run.overrides || {}) as Record<string, any>;
+      const existingLocks = (run.locks || {}) as Record<string, boolean>;
+
+      const { extractDesignOverrides, isRecalculableField } = await import("./services/designOverrides");
+      const designOverrides = extractDesignOverrides(existingOverrides, existingLocks);
+      const hasDesignOverrides = Object.keys(designOverrides).length > 0;
 
       let results;
-      try {
-        const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
-        const aiResult = await generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
-        results = aiResult.results;
-        console.log(`Mass Balance Recompute: AI succeeded using ${aiResult.providerLabel}`);
-      } catch (aiError) {
-        console.warn(`Mass Balance Recompute: AI failed, falling back to deterministic:`, (aiError as Error).message);
-        const ptLower = projectType.toLowerCase().trim();
+      const ptLower = projectType.toLowerCase().trim();
+
+      if (hasDesignOverrides) {
+        console.log(`Mass Balance Recompute: Deterministic recalculation with design overrides: ${JSON.stringify(designOverrides)}`);
         if (ptLower === "b" || ptLower.includes("type b") || ptLower.includes("greenfield")) {
           const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
-          results = calculateMassBalanceTypeB(upif);
+          results = calculateMassBalanceTypeB(upif, designOverrides);
         } else if (ptLower === "c" || ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
           const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
           results = calculateMassBalanceTypeC(upif);
         } else if (ptLower === "d" || ptLower.includes("type d") || ptLower.includes("hybrid")) {
           const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
-          results = calculateMassBalanceTypeD(upif);
+          results = calculateMassBalanceTypeD(upif, designOverrides);
         } else {
           const { calculateMassBalance } = await import("./services/massBalance");
           results = calculateMassBalance(upif);
         }
+      } else {
+        const preferredModel = (scenario?.preferredModel || "gpt5") as LLMProvider;
+        try {
+          const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
+          const aiResult = await generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
+          results = aiResult.results;
+          console.log(`Mass Balance Recompute: AI succeeded using ${aiResult.providerLabel}`);
+        } catch (aiError) {
+          console.warn(`Mass Balance Recompute: AI failed, falling back to deterministic:`, (aiError as Error).message);
+          if (ptLower === "b" || ptLower.includes("type b") || ptLower.includes("greenfield")) {
+            const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
+            results = calculateMassBalanceTypeB(upif);
+          } else if (ptLower === "c" || ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
+            const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
+            results = calculateMassBalanceTypeC(upif);
+          } else if (ptLower === "d" || ptLower.includes("type d") || ptLower.includes("hybrid")) {
+            const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
+            results = calculateMassBalanceTypeD(upif);
+          } else {
+            const { calculateMassBalance } = await import("./services/massBalance");
+            results = calculateMassBalance(upif);
+          }
+        }
       }
 
-      const lockedKeys = Object.entries(run.locks || {}).filter(([_, v]) => v).map(([k]) => k);
-      const existingOverrides = (run.overrides || {}) as Record<string, any>;
+      const lockedKeys = Object.entries(existingLocks).filter(([_, v]) => v).map(([k]) => k);
 
       if (lockedKeys.length > 0) {
         for (const key of lockedKeys) {
+          if (isRecalculableField(key)) continue;
           const override = existingOverrides[key];
           if (!override) continue;
           const parts = key.split(".");
