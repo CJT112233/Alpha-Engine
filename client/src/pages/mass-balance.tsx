@@ -67,6 +67,12 @@ function formatNum(val: number | undefined, decimals: number = 1): string {
   return val.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
+function resolveValue(fieldKey: string, originalValue: string, overrides: MassBalanceOverrides): string {
+  const override = overrides[fieldKey];
+  if (override && override.value !== undefined) return String(override.value);
+  return originalValue;
+}
+
 function EditableValue({
   fieldKey,
   displayValue,
@@ -89,6 +95,10 @@ function EditableValue({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(displayValue);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isEditing) setEditValue(displayValue);
+  }, [displayValue, isEditing]);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -189,6 +199,7 @@ function EditableTableCell({
   isOverridden,
   onSaveOverride,
   onToggleLock,
+  overrideValue,
 }: {
   fieldKey: string;
   displayValue: number | undefined;
@@ -197,11 +208,16 @@ function EditableTableCell({
   isOverridden: boolean;
   onSaveOverride: (key: string, value: string, originalValue: string) => void;
   onToggleLock: (key: string, currentValue?: string) => void;
+  overrideValue?: string;
 }) {
   const [isEditing, setIsEditing] = useState(false);
-  const formatted = formatNum(displayValue, decimals);
+  const formatted = overrideValue !== undefined ? overrideValue : formatNum(displayValue, decimals);
   const [editValue, setEditValue] = useState(formatted);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isEditing) setEditValue(formatted);
+  }, [formatted, isEditing]);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -342,6 +358,7 @@ function StreamTable({ stages, overrides, locks, onSaveOverride, onToggleLock }:
                     isOverridden={!!overrides[inKey]}
                     onSaveOverride={onSaveOverride}
                     onToggleLock={onToggleLock}
+                    overrideValue={overrides[inKey]?.value !== undefined ? String(overrides[inKey].value) : undefined}
                   />
                   <EditableTableCell
                     key={`f-out-${i}`}
@@ -352,6 +369,7 @@ function StreamTable({ stages, overrides, locks, onSaveOverride, onToggleLock }:
                     isOverridden={!!overrides[outKey]}
                     onSaveOverride={onSaveOverride}
                     onToggleLock={onToggleLock}
+                    overrideValue={overrides[outKey]?.value !== undefined ? String(overrides[outKey].value) : undefined}
                   />
                 </>
               );
@@ -375,6 +393,7 @@ function StreamTable({ stages, overrides, locks, onSaveOverride, onToggleLock }:
                       isOverridden={!!overrides[inKey]}
                       onSaveOverride={onSaveOverride}
                       onToggleLock={onToggleLock}
+                      overrideValue={overrides[inKey]?.value !== undefined ? String(overrides[inKey].value) : undefined}
                     />
                     <EditableTableCell
                       key={`${p}-out-${i}`}
@@ -384,6 +403,7 @@ function StreamTable({ stages, overrides, locks, onSaveOverride, onToggleLock }:
                       isOverridden={!!overrides[outKey]}
                       onSaveOverride={onSaveOverride}
                       onToggleLock={onToggleLock}
+                      overrideValue={overrides[outKey]?.value !== undefined ? String(overrides[outKey].value) : undefined}
                     />
                   </>
                 );
@@ -453,7 +473,8 @@ function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLoc
                       <div className="space-y-1">
                         {Object.entries(inputStream).map(([key, val]) => {
                           const fieldKey = `adStages.${idx}.inputStream.${key}`;
-                          const valStr = typeof val?.value === 'number' ? val.value.toLocaleString() : String(val?.value ?? "");
+                          const rawStr = typeof val?.value === 'number' ? val.value.toLocaleString() : String(val?.value ?? "");
+                          const valStr = resolveValue(fieldKey, rawStr, overrides);
                           return (
                             <div key={key} className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-2 py-1">
                               <span className="text-muted-foreground">{formatLabel(key)}</span>
@@ -479,7 +500,8 @@ function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLoc
                       <div className="space-y-1">
                         {Object.entries(outputStream).map(([key, val]) => {
                           const fieldKey = `adStages.${idx}.outputStream.${key}`;
-                          const valStr = typeof val?.value === 'number' ? val.value.toLocaleString() : String(val?.value ?? "");
+                          const rawStr = typeof val?.value === 'number' ? val.value.toLocaleString() : String(val?.value ?? "");
+                          const valStr = resolveValue(fieldKey, rawStr, overrides);
                           return (
                             <div key={key} className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-2 py-1">
                               <span className="text-muted-foreground">{formatLabel(key)}</span>
@@ -507,7 +529,8 @@ function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLoc
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       {Object.entries(designCriteria).map(([key, val]) => {
                         const fieldKey = `adStages.${idx}.designCriteria.${key}`;
-                        const valStr = String(val?.value ?? "");
+                        const rawStr = String(val?.value ?? "");
+                        const valStr = resolveValue(fieldKey, rawStr, overrides);
                         return (
                           <div key={key} className="rounded-md bg-muted/40 p-2">
                             <div className="text-xs text-muted-foreground">{formatLabel(key)}</div>
@@ -622,32 +645,38 @@ function ADStageSubTable({ title, icon, testId, stageEntries, allAdStages, overr
                     const outFieldKey = `adStages.${originalIndex}.outputStream.${paramKey}`;
                     const inIsNumeric = inVal?.value !== undefined && typeof inVal.value === 'number';
                     const outIsNumeric = outVal?.value !== undefined && typeof outVal.value === 'number';
-                    const inDisplay = inVal?.value !== undefined ? (inIsNumeric ? (inVal.value as number).toLocaleString() : String(inVal.value)) : "\u2014";
-                    const outDisplay = outVal?.value !== undefined ? (outIsNumeric ? (outVal.value as number).toLocaleString() : String(outVal.value)) : "\u2014";
+                    const inOverride = overrides[inFieldKey];
+                    const outOverride = overrides[outFieldKey];
+                    const inResolvedNum = inOverride ? parseFloat(String(inOverride.value)) : (inIsNumeric ? (inVal.value as number) : undefined);
+                    const outResolvedNum = outOverride ? parseFloat(String(outOverride.value)) : (outIsNumeric ? (outVal.value as number) : undefined);
+                    const inDisplay = inOverride ? String(inOverride.value) : (inVal?.value !== undefined ? (inIsNumeric ? (inVal.value as number).toLocaleString() : String(inVal.value)) : "\u2014");
+                    const outDisplay = outOverride ? String(outOverride.value) : (outVal?.value !== undefined ? (outIsNumeric ? (outVal.value as number).toLocaleString() : String(outVal.value)) : "\u2014");
                     return (
                       <Fragment key={`${paramKey}-${originalIndex}`}>
-                        {inIsNumeric ? (
+                        {(inIsNumeric || inOverride) && inResolvedNum !== undefined && !isNaN(inResolvedNum) ? (
                           <EditableTableCell
                             fieldKey={inFieldKey}
-                            displayValue={inVal.value as number}
+                            displayValue={inResolvedNum}
                             decimals={1}
                             isLocked={!!locks[inFieldKey]}
                             isOverridden={!!overrides[inFieldKey]}
                             onSaveOverride={onSaveOverride}
                             onToggleLock={onToggleLock}
+                            overrideValue={inOverride?.value !== undefined ? String(inOverride.value) : undefined}
                           />
                         ) : (
                           <TableCell className="text-center text-muted-foreground">{inDisplay}</TableCell>
                         )}
-                        {outIsNumeric ? (
+                        {(outIsNumeric || outOverride) && outResolvedNum !== undefined && !isNaN(outResolvedNum) ? (
                           <EditableTableCell
                             fieldKey={outFieldKey}
-                            displayValue={outVal.value as number}
+                            displayValue={outResolvedNum}
                             decimals={1}
                             isLocked={!!locks[outFieldKey]}
                             isOverridden={!!overrides[outFieldKey]}
                             onSaveOverride={onSaveOverride}
                             onToggleLock={onToggleLock}
+                            overrideValue={outOverride?.value !== undefined ? String(outOverride.value) : undefined}
                           />
                         ) : (
                           <TableCell className="text-center text-muted-foreground">{outDisplay}</TableCell>
@@ -758,6 +787,7 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
                               isOverridden={!!overrides[fieldKey]}
                               onSaveOverride={onSaveOverride}
                               onToggleLock={onToggleLock}
+                              overrideValue={overrides[fieldKey]?.value !== undefined ? String(overrides[fieldKey].value) : undefined}
                             />
                           );
                         })()
@@ -777,6 +807,7 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
                             isOverridden={!!overrides[fieldKey]}
                             onSaveOverride={onSaveOverride}
                             onToggleLock={onToggleLock}
+                            overrideValue={overrides[fieldKey]?.value !== undefined ? String(overrides[fieldKey].value) : undefined}
                           />
                         );
                       })}
@@ -908,7 +939,8 @@ function StatsCard({ summary, overrides, locks, onSaveOverride, onToggleLock }: 
           {Object.entries(summary).map(([key, val]) => {
             const fieldKey = `summary.${key}`;
             const rawVal = val.value;
-            const displayVal = (rawVal !== null && typeof rawVal === "object" && "value" in (rawVal as any)) ? String((rawVal as any).value) : String(rawVal ?? "");
+            const originalVal = (rawVal !== null && typeof rawVal === "object" && "value" in (rawVal as any)) ? String((rawVal as any).value) : String(rawVal ?? "");
+            const displayVal = resolveValue(fieldKey, originalVal, overrides);
             const displayUnit = val.unit || ((rawVal !== null && typeof rawVal === "object" && "unit" in (rawVal as any)) ? (rawVal as any).unit : "");
             return (
               <div key={key} className="rounded-md bg-muted/40 p-3">
@@ -998,7 +1030,8 @@ function EquipmentTable({ equipment, locks, overrides, onToggleLock, onSaveOverr
                   {Object.entries(eq.specs).map(([key, spec]) => {
                     const fieldKey = `equipment.${eq.id}.specs.${key}`;
                     const rawVal = spec.value;
-                    const displayVal = (rawVal !== null && typeof rawVal === "object" && "value" in rawVal) ? String((rawVal as any).value) : String(rawVal ?? "");
+                    const originalVal = (rawVal !== null && typeof rawVal === "object" && "value" in rawVal) ? String((rawVal as any).value) : String(rawVal ?? "");
+                    const displayVal = resolveValue(fieldKey, originalVal, overrides);
                     const displayUnit = spec.unit || ((rawVal !== null && typeof rawVal === "object" && "unit" in rawVal) ? (rawVal as any).unit : "");
                     return (
                       <div key={key} className="rounded-md bg-muted/40 p-2">
