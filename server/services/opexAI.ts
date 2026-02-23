@@ -466,22 +466,24 @@ function buildEquipmentDataString(massBalanceResults: MassBalanceResults): strin
   }
 
   if (massBalanceResults.equipment && massBalanceResults.equipment.length > 0) {
+    const opexRelevantSpecs = new Set([
+      "power", "totalPower", "capacity", "throughput", "flowRate", "volume", "totalVolume",
+      "duty", "gasFlow", "totalGasFlow", "hydraulicCapacity", "storageCapacity",
+      "temperature", "retentionTime", "hrt", "mixingIntensity", "mixingPower"
+    ]);
     const eqLines = massBalanceResults.equipment.map((eq: EquipmentItem, i: number) => {
       const parts: string[] = [];
-      parts.push(`Equipment ${i + 1}: ${eq.equipmentType} (${eq.process})`);
-      parts.push(`  ID: ${eq.id}`);
-      parts.push(`  Description: ${eq.description}`);
-      parts.push(`  Quantity: ${eq.quantity}`);
-      parts.push(`  Design Basis: ${eq.designBasis}`);
+      parts.push(`${i + 1}. ${eq.equipmentType} (${eq.process}) ×${eq.quantity}`);
       if (eq.specs && Object.keys(eq.specs).length > 0) {
-        for (const [key, spec] of Object.entries(eq.specs)) {
-          parts.push(`  ${key}: ${spec.value} ${spec.unit}`);
-        }
+        const relevantSpecs = Object.entries(eq.specs)
+          .filter(([key]) => opexRelevantSpecs.has(key))
+          .map(([key, spec]) => `${key}:${spec.value}${spec.unit}`)
+          .join(", ");
+        if (relevantSpecs) parts.push(`  ${relevantSpecs}`);
       }
-      if (eq.notes) parts.push(`  Notes: ${eq.notes}`);
       return parts.join("\n");
     });
-    sections.push("EQUIPMENT LIST:\n" + eqLines.join("\n\n"));
+    sections.push("EQUIPMENT LIST:\n" + eqLines.join("\n"));
   }
 
   return sections.join("\n\n");
@@ -523,15 +525,20 @@ function buildCapexDataString(capexResults: CapexResults | null): string {
     sections.push(`  Total Installed Cost: $${summary.totalInstalledCost?.toLocaleString() || 0}`);
     sections.push(`  Total Project Cost: $${summary.totalProjectCost?.toLocaleString() || 0}`);
     if (summary.costPerUnit) {
-      sections.push(`  Cost per Unit: $${summary.costPerUnit.value?.toLocaleString() || 0} ${summary.costPerUnit.unit} (${summary.costPerUnit.basis})`);
+      sections.push(`  Cost per Unit: $${summary.costPerUnit.value?.toLocaleString() || 0} ${summary.costPerUnit.unit}`);
     }
   }
 
   if (capexResults.lineItems && capexResults.lineItems.length > 0) {
-    const liLines = capexResults.lineItems.map((li, i) =>
-      `  ${i + 1}. ${li.equipmentType} (${li.process}): Base $${li.baseCostPerUnit?.toLocaleString() || 0}/unit × ${li.quantity}, Installed $${li.installedCost?.toLocaleString() || 0}, Total $${li.totalCost?.toLocaleString() || 0}`
-    );
-    sections.push("CAPEX LINE ITEMS:\n" + liLines.join("\n"));
+    const processTotals = new Map<string, number>();
+    for (const li of capexResults.lineItems) {
+      const proc = li.process || "Other";
+      processTotals.set(proc, (processTotals.get(proc) || 0) + (li.totalCost || 0));
+    }
+    const procLines = Array.from(processTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([proc, total]) => `  ${proc}: $${total.toLocaleString()}`);
+    sections.push("CAPEX BY PROCESS AREA:\n" + procLines.join("\n"));
   }
 
   return sections.join("\n");
@@ -805,10 +812,8 @@ export async function generateOpexWithAI(
     : "";
 
   const isOpus = model === "claude-opus";
-  const opexMaxTokens = isOpus ? 16384 : 32768;
-  const opexUserMsg = isOpus
-    ? `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. CRITICAL: Keep descriptions and notes extremely concise to reduce output size and prevent timeout.${skipNote}`
-    : `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep the response concise to stay within output limits.${skipNote}`;
+  const opexMaxTokens = isOpus ? 12288 : 16384;
+  const opexUserMsg = `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep descriptions and notes concise (1 sentence max). Combine similar items where possible.${skipNote}`;
 
   const response = await llmComplete({
     model,
