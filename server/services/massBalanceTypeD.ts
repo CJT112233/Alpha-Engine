@@ -26,7 +26,7 @@ const AD_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
   digester: {
     hrt: { value: 20, unit: "days", source: "WEF MOP 8 — WWTP sludge" },
     organicLoadingRate: { value: 2.5, unit: "kg VS/m³·d", source: "WEF MOP 8" },
-    vsDestruction: { value: 55, unit: "%", source: "WEF MOP 8 — mixed sludge" },
+    vsDestruction: { value: 58, unit: "%", source: "WEF MOP 8 — mixed sludge" },
     temperature: { value: 35, unit: "°C", source: "Mesophilic standard" },
     mixingPower: { value: 5, unit: "W/m³", source: "WEF MOP 8" },
     gasYield: { value: 0.9, unit: "scf/lb VS destroyed", source: "WEF MOP 8 — municipal sludge" },

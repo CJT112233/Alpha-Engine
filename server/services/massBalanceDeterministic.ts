@@ -196,7 +196,7 @@ function calculateBiogasProduction(feedstocks: ParsedFeedstock[]): BiogasCalcRes
   const M3_TO_SCF = 35.3147;
   const KG_TO_LB = 2.20462;
   const RNG_BTU_PER_SCF = 1012;
-  const VS_DESTRUCTION_PCT = 70;
+  const VS_DESTRUCTION_PCT = 58;
 
   for (const fs of feedstocks) {
     const tpy = fs.tonsPerYear;
@@ -1419,7 +1419,7 @@ function generateTypeDMassBalance(upif: any): DeterministicMBResult {
   const CO2_PCT = 40;
   const M3_TO_SCF = 35.3147;
   const KG_TO_LB = 2.20462;
-  const VS_DESTRUCTION_PCT = 65;
+  const VS_DESTRUCTION_PCT = 58;
   const SLUDGE_BMP = 0.22;
 
   let coDigestionFeedstocks: ParsedFeedstock[] = [];
