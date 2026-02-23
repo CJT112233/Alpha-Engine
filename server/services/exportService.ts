@@ -1262,7 +1262,7 @@ export function exportProjectSummaryPDF(
   financialResults: FinancialModelResults,
 ): Promise<Buffer> {
   return new Promise((resolve) => {
-    const doc = new PDFDocument({ size: "letter", margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+    const doc = new PDFDocument({ size: "letter", margins: { top: 50, bottom: 10, left: 50, right: 50 }, bufferPages: true });
     const chunks: Buffer[] = [];
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
@@ -1270,23 +1270,6 @@ export function exportProjectSummaryPDF(
     const leftMargin = 50;
     const contentWidth = 512;
     const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
-    let pageNum = 1;
-
-    let addingFooter = false;
-    const addPageFooter = () => {
-      if (addingFooter) return;
-      addingFooter = true;
-      doc.font("Helvetica").fontSize(7).fillColor("#ADB9CA")
-        .text("Confidential", leftMargin, 750, { width: contentWidth, align: "center", lineBreak: false });
-      doc.font("Helvetica").fontSize(7).fillColor("#ADB9CA")
-        .text(`Page ${pageNum}`, leftMargin, 760, { width: contentWidth, align: "center", lineBreak: false });
-      pageNum++;
-      addingFooter = false;
-    };
-
-    doc.on("pageAdded", () => {
-      addPageFooter();
-    });
 
     doc.font("Helvetica-Bold").fontSize(20).fillColor("#323F4F")
       .text("Project Summary", leftMargin, 50, { align: "center", width: contentWidth });
@@ -1350,7 +1333,6 @@ export function exportProjectSummaryPDF(
     y = drawTable(doc, metricsHeaders, metricsRows, leftMargin, y, [100, 156, 120, 136], { headerBg: "#00B050" });
     y += 15;
 
-    addPageFooter();
     if (y > 580) { doc.addPage(); y = 50; } else { y += 10; }
 
     y = addSectionHeader(doc, "Equipment Summary", y, leftMargin, contentWidth);
@@ -1593,7 +1575,15 @@ export function exportProjectSummaryPDF(
       }
     }
 
-    addPageFooter();
+    const totalPages = doc.bufferedPageRange().count;
+    for (let i = 0; i < totalPages; i++) {
+      doc.switchToPage(i);
+      doc.font("Helvetica").fontSize(7).fillColor("#ADB9CA")
+        .text("Confidential", leftMargin, 750, { width: contentWidth, align: "center", lineBreak: false });
+      doc.font("Helvetica").fontSize(7).fillColor("#ADB9CA")
+        .text(`Page ${i + 1}`, leftMargin, 760, { width: contentWidth, align: "center", lineBreak: false });
+    }
+
     doc.end();
   });
 }
