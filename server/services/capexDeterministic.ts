@@ -95,6 +95,7 @@ export interface DeterministicCapexOptions {
   escalationPct?: number;
   contingencyPct?: number;
   stateForSalesTax?: string;
+  upstreamEquipmentLineItems?: CapexLineItem[];
 }
 
 export interface DeterministicCapexResult {
@@ -188,7 +189,15 @@ export function generateCapexDeterministic(
     isLocked: false,
   });
 
-  const subtotalEquipment = tier.majorEquipment.guu + tier.majorEquipment.flare + tier.majorEquipment.compressor;
+  const upstreamItems = options.upstreamEquipmentLineItems || [];
+  if (upstreamItems.length > 0) {
+    for (const item of upstreamItems) {
+      lineItems.push(item);
+    }
+  }
+
+  const subtotalUpstreamEquipment = upstreamItems.reduce((sum, i) => sum + i.totalCost, 0);
+  const subtotalEquipment = tier.majorEquipment.guu + tier.majorEquipment.flare + tier.majorEquipment.compressor + subtotalUpstreamEquipment;
 
   const engineeringTotal = tier.engineering.bopDesign + tier.engineering.bopConstructionAdmin +
     tier.engineering.thirdPartyTesting + tier.engineering.asBuilts;
@@ -634,10 +643,14 @@ export function generateCapexDeterministic(
     },
   };
 
+  const hasUpstreamAI = upstreamItems.length > 0;
   const assumptions = [
     { parameter: "Biogas Flow Rate", value: `${biogasScfm.toLocaleString()} SCFM`, source: "Mass Balance" },
     { parameter: "GUU Size Tier", value: tierLabel, source: "Prodeval equipment selection" },
     { parameter: "Prodeval GUU Price", value: `$${tier.majorEquipment.guu.toLocaleString()}`, source: "Prodeval firm pricing" },
+    ...(hasUpstreamAI ? [
+      { parameter: "Upstream Equipment", value: `${upstreamItems.length} items, $${subtotalUpstreamEquipment.toLocaleString()}`, source: "AI estimate (vendor benchmarks)" },
+    ] : []),
     { parameter: "Interconnect Facility", value: `$${interconnectFacility.toLocaleString()}`, source: "Default / user input" },
     { parameter: "Lateral Distance", value: `${lateralMiles} miles`, source: "Default / user input" },
     { parameter: "Lateral Cost", value: `$${lateralCostPerMile.toLocaleString()}/mile`, source: "Pipeline utility estimates" },
@@ -648,6 +661,9 @@ export function generateCapexDeterministic(
     { parameter: "Dev Costs", value: `${comm.devCostsPctOfEpc}% of EPC`, source: "Burnham standard" },
     { parameter: "Cost Year", value: "Feb 2026", source: "Burnham CapEx Model V5.1" },
     { parameter: "ITC Eligible CapEx", value: `$${itcEligible.toLocaleString()}`, source: "Calculated" },
+    ...(hasUpstreamAI ? [
+      { parameter: "Estimation Method", value: "Hybrid: deterministic (GUU/BOP/internals) + AI (upstream equipment)", source: "Burnham CapEx Model V5.1" },
+    ] : []),
   ];
 
   const warnings: Array<{ field: string; message: string; severity: "error" | "warning" | "info" }> = [];
@@ -682,12 +698,16 @@ export function generateCapexDeterministic(
     warnings,
     costYear: "2026",
     currency: "USD",
-    methodology: "Burnham CapEx Model V5.1 — deterministic pricing based on firm Prodeval quotes and BOP estimates",
+    methodology: hasUpstreamAI
+      ? "Burnham CapEx Model V5.1 — hybrid: deterministic pricing (Prodeval/BOP/internals) + AI estimation (upstream process equipment)"
+      : "Burnham CapEx Model V5.1 — deterministic pricing based on firm Prodeval quotes and BOP estimates",
   };
 
   return {
     results,
-    provider: "deterministic",
-    providerLabel: "Deterministic (Burnham CapEx Model V5.1)",
+    provider: hasUpstreamAI ? "hybrid" : "deterministic",
+    providerLabel: hasUpstreamAI
+      ? "Hybrid (Burnham V5.1 + AI upstream equipment)"
+      : "Deterministic (Burnham CapEx Model V5.1)",
   };
 }

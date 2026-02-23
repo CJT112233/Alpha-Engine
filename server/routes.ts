@@ -3417,12 +3417,26 @@ export async function registerRoutes(
       if (isRngType) {
         try {
           const { generateCapexDeterministic } = await import("./services/capexDeterministic");
-          const detResult = generateCapexDeterministic(mbResults, projectType);
+          const { estimateUpstreamEquipmentCosts, getUncoveredEquipment } = await import("./services/capexAI");
+
+          const uncoveredCount = getUncoveredEquipment(mbResults).length;
+          let upstreamLineItems: import("@shared/schema").CapexLineItem[] = [];
+
+          if (uncoveredCount > 0) {
+            console.log(`CapEx Hybrid: ${uncoveredCount} upstream equipment items need AI estimation...`);
+            const upstreamResult = await estimateUpstreamEquipmentCosts(upifData, mbResults, projectType, preferredModel, storage);
+            upstreamLineItems = upstreamResult.lineItems;
+            console.log(`CapEx Hybrid: AI estimated ${upstreamLineItems.length} upstream items in ${Date.now() - startTime}ms`);
+          }
+
+          const detResult = generateCapexDeterministic(mbResults, projectType, {
+            upstreamEquipmentLineItems: upstreamLineItems,
+          });
           capexResult = { results: detResult.results, providerLabel: detResult.providerLabel };
           modelUsed = detResult.providerLabel;
-          console.log(`CapEx: Deterministic calculator succeeded for type ${projectType} in ${Date.now() - startTime}ms`);
+          console.log(`CapEx: Hybrid calculator succeeded for type ${projectType} in ${Date.now() - startTime}ms`);
         } catch (detError) {
-          console.log(`CapEx: Deterministic calculator failed (${(detError as Error).message}), falling back to AI...`);
+          console.log(`CapEx: Hybrid calculator failed (${(detError as Error).message}), falling back to full AI...`);
           const { generateCapexWithAI } = await import("./services/capexAI");
           const aiResult = await generateCapexWithAI(upifData, mbResults, projectType, preferredModel, storage);
           capexResult = { results: aiResult.results, providerLabel: aiResult.providerLabel };
@@ -3521,11 +3535,24 @@ export async function registerRoutes(
       if (isRngType) {
         try {
           const { generateCapexDeterministic } = await import("./services/capexDeterministic");
-          const detResult = generateCapexDeterministic(mbResults, projectType);
+          const { estimateUpstreamEquipmentCosts, getUncoveredEquipment } = await import("./services/capexAI");
+
+          const uncoveredCount = getUncoveredEquipment(mbResults).length;
+          let upstreamLineItems: import("@shared/schema").CapexLineItem[] = [];
+
+          if (uncoveredCount > 0) {
+            console.log(`CapEx recompute hybrid: ${uncoveredCount} upstream equipment items need AI estimation...`);
+            const upstreamResult = await estimateUpstreamEquipmentCosts(upifData, mbResults, projectType, preferredModel, storage);
+            upstreamLineItems = upstreamResult.lineItems;
+          }
+
+          const detResult = generateCapexDeterministic(mbResults, projectType, {
+            upstreamEquipmentLineItems: upstreamLineItems,
+          });
           capexResult = { results: detResult.results, providerLabel: detResult.providerLabel };
           modelUsed = detResult.providerLabel;
         } catch (detError) {
-          console.log(`CapEx recompute: Deterministic failed (${(detError as Error).message}), falling back to AI...`);
+          console.log(`CapEx recompute: Hybrid failed (${(detError as Error).message}), falling back to full AI...`);
           const { generateCapexWithAI } = await import("./services/capexAI");
           const aiResult = await generateCapexWithAI(upifData, mbResults, projectType, preferredModel, storage);
           capexResult = { results: aiResult.results, providerLabel: aiResult.providerLabel };
