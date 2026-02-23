@@ -130,10 +130,10 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
     queryKey: ["/api/scenarios", scenarioId, "opex"],
   });
 
-  const mbFinalized = massBalanceRuns?.[0]?.status === "finalized";
-  const capexFinalized = capexEstimates?.[0]?.status === "finalized";
-  const opexFinalized = opexEstimates?.[0]?.status === "finalized";
-  const prerequisitesMet = mbFinalized && capexFinalized && opexFinalized;
+  const mbExists = !!massBalanceRuns?.[0];
+  const capexExists = !!capexEstimates?.[0];
+  const opexExists = !!opexEstimates?.[0];
+  const prerequisitesMet = mbExists && capexExists && opexExists;
 
   const latestModel = models?.[0];
   const results = latestModel?.results as FinancialModelResults | undefined;
@@ -289,13 +289,13 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
             <div className="text-center">
               <h3 className="font-medium">No Financial Model Generated</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Generate a 10-year pro-forma financial model from the finalized CapEx, OpEx, and mass balance data.
+                Generate a 20-year pro-forma financial model from the CapEx, OpEx, and mass balance data.
               </p>
               {!prerequisitesMet && (
                 <div className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-                  {!mbFinalized && <p>Mass balance must be finalized first.</p>}
-                  {!capexFinalized && <p>CapEx estimate must be finalized first.</p>}
-                  {!opexFinalized && <p>OpEx estimate must be finalized first.</p>}
+                  {!mbExists && <p>Mass balance must be generated first.</p>}
+                  {!capexExists && <p>CapEx estimate must be generated first.</p>}
+                  {!opexExists && <p>OpEx estimate must be generated first.</p>}
                 </div>
               )}
             </div>

@@ -4032,20 +4032,20 @@ export async function registerRoutes(
 
       const mbRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
       const latestMB = mbRuns[0];
-      if (!latestMB || latestMB.status !== "finalized") {
-        return res.status(400).json({ error: "Mass balance must be finalized first." });
+      if (!latestMB) {
+        return res.status(400).json({ error: "Mass balance must be generated first." });
       }
 
       const capexEstimates = await storage.getCapexEstimatesByScenario(scenarioId);
       const latestCapex = capexEstimates[0];
-      if (!latestCapex || latestCapex.status !== "finalized") {
-        return res.status(400).json({ error: "CapEx must be finalized first." });
+      if (!latestCapex) {
+        return res.status(400).json({ error: "CapEx estimate must be generated first." });
       }
 
       const opexEstimates = await storage.getOpexEstimatesByScenario(scenarioId);
       const latestOpex = opexEstimates[0];
-      if (!latestOpex || latestOpex.status !== "finalized") {
-        return res.status(400).json({ error: "OpEx must be finalized first." });
+      if (!latestOpex) {
+        return res.status(400).json({ error: "OpEx estimate must be generated first." });
       }
 
       const financialModels = await storage.getFinancialModelsByScenario(scenarioId);
@@ -4116,20 +4116,20 @@ export async function registerRoutes(
 
       const mbRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
       const latestMB = mbRuns[0];
-      if (!latestMB || latestMB.status !== "finalized") {
-        return res.status(400).json({ error: "Mass balance must be finalized first." });
+      if (!latestMB) {
+        return res.status(400).json({ error: "Mass balance must be generated first." });
       }
 
       const capexEstimates = await storage.getCapexEstimatesByScenario(scenarioId);
       const latestCapex = capexEstimates[0];
-      if (!latestCapex || latestCapex.status !== "finalized") {
-        return res.status(400).json({ error: "CapEx must be finalized first." });
+      if (!latestCapex) {
+        return res.status(400).json({ error: "CapEx estimate must be generated first." });
       }
 
       const opexEstimates = await storage.getOpexEstimatesByScenario(scenarioId);
       const latestOpex = opexEstimates[0];
-      if (!latestOpex || latestOpex.status !== "finalized") {
-        return res.status(400).json({ error: "OpEx must be finalized first." });
+      if (!latestOpex) {
+        return res.status(400).json({ error: "OpEx estimate must be generated first." });
       }
 
       const mbResults = latestMB.results as MassBalanceResults;

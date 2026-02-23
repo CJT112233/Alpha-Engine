@@ -55,6 +55,18 @@ function formatCurrency(val: number): string {
   return prefix + Math.abs(val).toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
+function formatUnitCost(val: number): string {
+  const abs = Math.abs(val);
+  const prefix = val < 0 ? "-$" : "$";
+  if (abs < 1) {
+    return prefix + abs.toFixed(2);
+  }
+  if (abs < 100) {
+    return prefix + abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return prefix + abs.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
 function formatCurrencyK(val: number | undefined | null): string {
   if (val === undefined || val === null || isNaN(val)) return "—";
   const inK = Math.round(val / 1000);
@@ -324,8 +336,10 @@ function AssumptionsEditor({
   const categories = [...new Set(localAssumptions.map(a => a.category))];
 
   const formatAssumptionValue = (a: OpexEditableAssumption): string => {
-    if (a.unit.includes("$")) {
+    if (a.unit.includes("$") || a.unit.includes("/kWh") || a.unit.includes("/gal") || a.unit.includes("/ton") || a.unit.includes("/MG") || a.unit.includes("/wet ton")) {
       if (a.value >= 1000) return `$${a.value.toLocaleString()}`;
+      if (a.value < 1) return `$${a.value.toFixed(2)}`;
+      if (a.value < 100) return `$${a.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       return `$${a.value}`;
     }
     if (a.value >= 1000) return a.value.toLocaleString();
@@ -574,6 +588,24 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
     const numVal = parseNumericValue(newValue);
     let updatedResults = { ...results, lineItems: [...results.lineItems], summary: { ...results.summary } };
 
+    const unitCostMatch = fieldKey.match(/^lineItems\.(.+?)\.unitCost$/);
+    if (unitCostMatch) {
+      const [, itemId] = unitCostMatch;
+      updatedResults.lineItems = updatedResults.lineItems.map((li) => {
+        if ((li.id || "") !== itemId) return li;
+        const oldUnitCost = li.unitCost || 0;
+        let newAnnualCost = li.annualCost;
+        if (oldUnitCost > 0) {
+          newAnnualCost = Math.round((numVal / oldUnitCost) * li.annualCost);
+        }
+        return { ...li, unitCost: numVal, annualCost: newAnnualCost, isOverridden: true };
+      });
+      updatedResults.summary = recalculateSummary(updatedResults.lineItems);
+      patchMutation.mutate({ overrides: newOverrides, results: updatedResults });
+      toast({ title: "Unit Cost Updated", description: "Annual cost recalculated from new unit rate." });
+      return;
+    }
+
     const lineItemMatch = fieldKey.match(/^lineItems\.(.+?)\.annualCost$/);
     if (lineItemMatch) {
       const [, itemId] = lineItemMatch;
@@ -712,16 +744,8 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                   <Card data-testid="card-total-annual-opex">
                     <CardContent className="p-4">
                       <div className="text-xs text-muted-foreground">Total Annual OpEx</div>
-                      <div className="mt-1">
-                        <EditableValue
-                          fieldKey="summary.totalAnnualOpex"
-                          displayValue={formatCurrencyK(summary.totalAnnualOpex)}
-                          isLocked={!!locks["summary.totalAnnualOpex"]}
-                          isOverridden={!!overrides["summary.totalAnnualOpex"]}
-                          onSaveOverride={handleSaveOverride}
-                          onToggleLock={handleToggleLock}
-                          compact
-                        />
+                      <div className="mt-1 text-lg font-semibold" data-testid="value-total-annual-opex">
+                        {formatCurrencyK(summary.totalAnnualOpex)}
                       </div>
                     </CardContent>
                   </Card>
@@ -732,16 +756,8 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                           {summary.revenueOffsets < 0 ? <TrendingDown className="h-3 w-3 text-emerald-500" /> : <TrendingUp className="h-3 w-3" />}
                           Revenue Offsets
                         </div>
-                        <div className="mt-1">
-                          <EditableValue
-                            fieldKey="summary.revenueOffsets"
-                            displayValue={formatCurrencyK(summary.revenueOffsets)}
-                            isLocked={!!locks["summary.revenueOffsets"]}
-                            isOverridden={!!overrides["summary.revenueOffsets"]}
-                            onSaveOverride={handleSaveOverride}
-                            onToggleLock={handleToggleLock}
-                            compact
-                          />
+                        <div className="mt-1 text-lg font-semibold" data-testid="value-revenue-offsets">
+                          {formatCurrencyK(summary.revenueOffsets)}
                         </div>
                       </CardContent>
                     </Card>
@@ -749,16 +765,8 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                   <Card data-testid="card-net-annual-opex">
                     <CardContent className="p-4">
                       <div className="text-xs text-muted-foreground font-medium">Net Annual OpEx</div>
-                      <div className="mt-1">
-                        <EditableValue
-                          fieldKey="summary.netAnnualOpex"
-                          displayValue={formatCurrencyK(summary.netAnnualOpex)}
-                          isLocked={!!locks["summary.netAnnualOpex"]}
-                          isOverridden={!!overrides["summary.netAnnualOpex"]}
-                          onSaveOverride={handleSaveOverride}
-                          onToggleLock={handleToggleLock}
-                          compact
-                        />
+                      <div className="mt-1 text-lg font-semibold" data-testid="value-net-annual-opex">
+                        {formatCurrencyK(summary.netAnnualOpex)}
                       </div>
                     </CardContent>
                   </Card>
@@ -766,17 +774,8 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                     <Card data-testid="card-opex-per-unit">
                       <CardContent className="p-4">
                         <div className="text-xs text-muted-foreground">OpEx per Unit</div>
-                        <div className="mt-1">
-                          <EditableValue
-                            fieldKey="summary.opexPerUnit"
-                            displayValue={formatCurrency(summary.opexPerUnit.value)}
-                            unit={summary.opexPerUnit.unit}
-                            isLocked={!!locks["summary.opexPerUnit"]}
-                            isOverridden={!!overrides["summary.opexPerUnit"]}
-                            onSaveOverride={handleSaveOverride}
-                            onToggleLock={handleToggleLock}
-                            compact
-                          />
+                        <div className="mt-1 text-sm font-semibold" data-testid="value-opex-per-unit">
+                          {formatCurrency(summary.opexPerUnit.value)} <span className="text-xs text-muted-foreground">{summary.opexPerUnit.unit}</span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">{summary.opexPerUnit.basis}</div>
                       </CardContent>
@@ -852,7 +851,7 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                           <TableBody>
                             {results.lineItems?.map((item, idx) => {
                               const itemId = item.id || `item-${idx}`;
-                              const annualCostKey = `lineItems.${itemId}.annualCost`;
+                              const unitCostKey = `lineItems.${itemId}.unitCost`;
 
                               return (
                                 <TableRow key={item.id || idx} data-testid={`row-opex-line-item-${idx}`}>
@@ -863,18 +862,24 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                                   </TableCell>
                                   <TableCell className="text-sm">{item.description}</TableCell>
                                   <TableCell className="text-right">
-                                    <EditableValue
-                                      fieldKey={annualCostKey}
-                                      displayValue={formatCurrencyK(item.annualCost)}
-                                      isLocked={!!locks[annualCostKey]}
-                                      isOverridden={!!overrides[annualCostKey]}
-                                      onSaveOverride={handleSaveOverride}
-                                      onToggleLock={handleToggleLock}
-                                      compact
-                                    />
+                                    <span className={`text-sm font-medium ${item.isOverridden ? "text-blue-600 dark:text-blue-400" : ""}`} data-testid={`value-annual-cost-${idx}`}>
+                                      {formatCurrencyK(item.annualCost)}
+                                    </span>
                                   </TableCell>
-                                  <TableCell className="text-right text-sm text-muted-foreground">
-                                    {item.unitCost != null ? formatCurrency(item.unitCost) : "-"}
+                                  <TableCell className="text-right">
+                                    {item.unitCost != null ? (
+                                      <EditableValue
+                                        fieldKey={unitCostKey}
+                                        displayValue={formatUnitCost(item.unitCost)}
+                                        isLocked={!!locks[unitCostKey]}
+                                        isOverridden={!!overrides[unitCostKey]}
+                                        onSaveOverride={handleSaveOverride}
+                                        onToggleLock={handleToggleLock}
+                                        compact
+                                      />
+                                    ) : (
+                                      <span className="text-sm text-muted-foreground">-</span>
+                                    )}
                                   </TableCell>
                                   <TableCell className="text-sm text-muted-foreground">{item.unitBasis || "-"}</TableCell>
                                   <TableCell className="text-sm text-muted-foreground">{item.scalingBasis || "-"}</TableCell>
