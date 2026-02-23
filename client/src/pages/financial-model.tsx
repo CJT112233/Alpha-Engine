@@ -749,6 +749,7 @@ function ProFormaTable({ proForma, results }: { proForma: ProFormaYear[]; result
               </>
             )}
             <DataRow label="(+) 45Z Tax Credits" values={proForma.map((yr) => yr.fortyFiveZRevenue || 0)} year0Value={0} />
+            <DataRow label="(+) Tipping Fees" values={proForma.map((yr) => yr.tippingFeeRevenue || 0)} year0Value={0} />
             <DataRow label="= Total Revenue" values={proForma.map((yr) => yr.totalRevenue)} isBold year0Value={0} />
 
             <SectionHeaderRow label="Operating Expenses ($000)" colSpan={totalCols} />
@@ -758,7 +759,8 @@ function ProFormaTable({ proForma, results }: { proForma: ProFormaYear[]; result
             <DataRow label="Maintenance" values={proForma.map((yr) => yr.maintenanceCost)} year0Value={0} />
             <DataRow label="Chemicals" values={proForma.map((yr) => yr.chemicalCost)} year0Value={0} />
             <DataRow label="Insurance" values={proForma.map((yr) => yr.insuranceCost)} year0Value={0} />
-            <DataRow label="Other" values={proForma.map((yr) => yr.otherOpex)} year0Value={0} />
+            <DataRow label="Digestate Management" values={proForma.map((yr) => yr.digestateManagementCost || 0)} year0Value={0} />
+            <DataRow label="Admin & Overhead" values={proForma.map((yr) => yr.adminOverheadCost || 0)} year0Value={0} />
             <DataRow label="= Total OpEx" values={proForma.map((yr) => yr.totalOpex)} isBold year0Value={0} />
 
             <SectionHeaderRow label="Cash Flow ($000)" colSpan={totalCols} />

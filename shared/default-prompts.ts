@@ -2253,7 +2253,7 @@ RULES:
 - All costs in USD, annual basis.
 - Use realistic US utility rates, labor rates, and chemical costs for 2025.
 - Maintenance costs should reference the CapEx equipment values where applicable.
-- Include revenue offsets if applicable (e.g., biosolids sales, water reuse credits) as negative values.
+- Include ONLY tipping fee revenue as a "Revenue Offset" line item (negative annualCost). Do NOT include RNG commodity sales, RIN revenue, LCFS credits, or soil amendment/digestate sales — those are handled separately in the financial model.
 - opexPerUnit should reflect $/1,000 gallons for WW projects.
 - opexAsPercentOfCapex should be calculated from total annual OpEx / total project CapEx * 100.
 - OpEx line item IDs: descriptive lowercase with hyphens prefixed with "opex-".
@@ -2324,10 +2324,7 @@ ADMINISTRATIVE & OVERHEAD:
 - Office, IT, training
 
 REVENUE OFFSETS (show as negative costs):
-- RNG sales revenue (estimate based on production rate × market price)
-- Tipping fees received for feedstock acceptance
-- RIN/LCFS credit revenue
-- Digestate/compost sales
+- Include ONLY tipping fee revenue (if applicable). Do NOT include RNG sales, RIN revenue, LCFS credits, carbon credits, or soil amendment/digestate sales — those are handled separately in the financial model.
 
 Return JSON in this exact format:
 {
@@ -2373,7 +2370,7 @@ Return JSON in this exact format:
 
 RULES:
 - All costs in USD, annual basis.
-- Revenue offsets should be shown as NEGATIVE annualCost values with category "Revenue Offset".
+- Include ONLY tipping fee revenue as a "Revenue Offset" line item (negative annualCost). Do NOT include RNG commodity sales, RIN revenue, LCFS credits, or soil amendment/digestate sales — those are handled separately in the financial model.
 - Maintenance costs should reference CapEx equipment values where applicable.
 - opexPerUnit should reflect $/MMBTU of RNG produced.
 - opexAsPercentOfCapex = total annual OpEx / total project CapEx * 100.
@@ -2433,14 +2430,11 @@ ADMINISTRATIVE:
 - Reporting and compliance
 
 REVENUE OFFSETS (show as negative costs):
-- RNG sales revenue
-- RIN/LCFS credit revenue
-- Carbon credit revenue
+- Include ONLY tipping fee revenue (if applicable). Do NOT include RNG sales, RIN revenue, LCFS credits, carbon credits, or soil amendment/digestate sales — those are handled separately in the financial model.
 
 Return JSON in the same format as other OpEx types with:
 - "projectType": "C"
 - opexPerUnit in $/MMBTU of RNG produced
-- Revenue offsets as negative annualCost values
 
 RULES:
 - All costs in USD, annual basis.
@@ -2516,15 +2510,11 @@ ADMINISTRATIVE & OVERHEAD:
 - Office, IT, training
 
 REVENUE OFFSETS (show as negative costs):
-- RNG sales revenue
-- RIN/LCFS credit revenue
-- Tipping fees for co-digestion feedstock
-- Water reuse credits (if applicable)
+- Include ONLY tipping fee revenue (if applicable). Do NOT include RNG sales, RIN revenue, LCFS credits, carbon credits, water reuse credits, or soil amendment/digestate sales — those are handled separately in the financial model.
 
 Return JSON in the same format as other OpEx types with:
 - "projectType": "D"
 - opexPerUnit can use either $/1,000 gal or $/MMBTU RNG depending on primary driver
-- Revenue offsets as negative annualCost values
 
 RULES:
 - All costs in USD, annual basis.

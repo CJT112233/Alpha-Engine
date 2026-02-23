@@ -1384,8 +1384,6 @@ export function exportProjectSummaryPDF(
       ["Chemicals", fmtCurrencyK(opSummary.totalChemicalCost)],
       ["Maintenance", fmtCurrencyK(opSummary.totalMaintenanceCost)],
       ["Disposal", fmtCurrencyK(opSummary.totalDisposalCost)],
-      ["Other", fmtCurrencyK(opSummary.totalOtherCost)],
-      ["Net Annual OpEx", fmtCurrencyK(opSummary.netAnnualOpex)],
     ];
     y = drawTable(doc, ["Item", "Amount"], opexSumRows, leftMargin, y, [300, 212], { headerBg: "#323F4F" });
     y += 15;

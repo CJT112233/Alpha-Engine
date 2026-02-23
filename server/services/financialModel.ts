@@ -114,46 +114,67 @@ function extractOpexBreakdown(opexResults: OpexResults): {
   maintenanceCost: number;
   chemicalCost: number;
   insuranceCost: number;
-  otherCost: number;
+  feedstockLogisticsCost: number;
+  digestateManagementCost: number;
+  adminOverheadCost: number;
+  tippingFeeRevenue: number;
 } {
   let utilityCost = 0;
   let laborCost = 0;
   let maintenanceCost = 0;
   let chemicalCost = 0;
   let insuranceCost = 0;
-  let otherCost = 0;
+  let feedstockLogisticsCost = 0;
+  let digestateManagementCost = 0;
+  let adminOverheadCost = 0;
+  let tippingFeeRevenue = 0;
 
   for (const item of opexResults.lineItems) {
     const cat = (item.category || "").toLowerCase();
     const desc = (item.description || "").toLowerCase();
     const cost = item.annualCost || 0;
 
+    if (cat.includes("revenue offset") || (cat.includes("revenue") && !cat.includes("admin") && !cat.includes("overhead"))) {
+      if (desc.includes("tipping") || desc.includes("tip fee")) {
+        tippingFeeRevenue += Math.abs(cost);
+      }
+      continue;
+    }
+
     if (cat.includes("utilit") || cat.includes("energy") || cat.includes("electric") || cat.includes("power")) {
       utilityCost += cost;
-    } else if (cat.includes("labor") || cat.includes("staff") || cat.includes("personnel") || cat.includes("management")) {
+    } else if (cat.includes("labor") || cat.includes("staff") || cat.includes("personnel")) {
       laborCost += cost;
-    } else if (cat.includes("mainten") || cat.includes("repair") || cat.includes("r&m") || cat.includes("consumab")) {
+    } else if (cat.includes("mainten") || cat.includes("repair") || cat.includes("r&m")) {
       maintenanceCost += cost;
-    } else if (cat.includes("chemical") || cat.includes("reagent")) {
+    } else if (cat.includes("chemical") || cat.includes("reagent") || cat.includes("consumab")) {
       chemicalCost += cost;
-    } else if (cat.includes("insurance")) {
+    } else if (cat.includes("insurance") || cat.includes("regulatory")) {
       insuranceCost += cost;
+    } else if (cat.includes("feedstock") || cat.includes("logistics")) {
+      feedstockLogisticsCost += cost;
+    } else if (cat.includes("digestate") || cat.includes("disposal") || cat.includes("residual")) {
+      digestateManagementCost += cost;
+    } else if (cat.includes("admin") || cat.includes("overhead") || cat.includes("general")) {
+      adminOverheadCost += cost;
     } else if (desc.includes("utilit") || desc.includes("electric") || desc.includes("power") || desc.includes("gas cost")) {
       utilityCost += cost;
-    } else if (desc.includes("labor") || desc.includes("operator") || desc.includes("management")) {
+    } else if (desc.includes("labor") || desc.includes("operator") || desc.includes("staff")) {
       laborCost += cost;
-    } else if (desc.includes("mainten") || desc.includes("repair") || desc.includes("consumab")) {
+    } else if (desc.includes("mainten") || desc.includes("repair")) {
       maintenanceCost += cost;
-    } else if (desc.includes("chemical")) {
+    } else if (desc.includes("chemical") || desc.includes("consumab")) {
       chemicalCost += cost;
     } else if (desc.includes("insurance")) {
       insuranceCost += cost;
+    } else if (desc.includes("tipping") || desc.includes("tip fee")) {
+      tippingFeeRevenue += Math.abs(cost);
     } else {
-      otherCost += cost;
+      adminOverheadCost += cost;
     }
   }
 
-  return { utilityCost, laborCost, maintenanceCost, chemicalCost, insuranceCost, otherCost };
+  return { utilityCost, laborCost, maintenanceCost, chemicalCost, insuranceCost, feedstockLogisticsCost, digestateManagementCost, adminOverheadCost, tippingFeeRevenue };
 }
 
 function calculateIRR(cashFlows: number[], maxIterations = 1000, tolerance = 1e-7): number | null {
@@ -312,7 +333,7 @@ export function calculateFinancialModel(
   const rngMMBtuPerDayBase = extractRngMMBtuPerDay(mbResults, biogasScfmBase);
   const capexTotal = capexResults.summary.totalProjectCost;
   const opexBreakdown = extractOpexBreakdown(opexResults);
-  const opexAnnualBase = opexResults.summary.totalAnnualOpex || opexResults.summary.netAnnualOpex || 0;
+  const opexAnnualBase = opexBreakdown.utilityCost + opexBreakdown.laborCost + opexBreakdown.maintenanceCost + opexBreakdown.chemicalCost + opexBreakdown.insuranceCost + opexBreakdown.feedstockLogisticsCost + opexBreakdown.digestateManagementCost + opexBreakdown.adminOverheadCost;
   const years = assumptions.projectLifeYears;
   const currentYear = new Date().getFullYear();
   const codYear = currentYear + Math.ceil(assumptions.constructionMonths / 12);
@@ -368,24 +389,28 @@ export function calculateFinancialModel(
       fortyFiveZRevenue = rngProductionMMBtu * net45ZPricePerMMBtu;
     }
 
+    const tippingFeeRev = opexBreakdown.tippingFeeRevenue * inflationFactor;
+
     const totalRevenue = isVoluntary
-      ? voluntaryRevenue + fortyFiveZRevenue
-      : rinRevenue - rinBrokerage + natGasRevenue + fortyFiveZRevenue;
+      ? voluntaryRevenue + fortyFiveZRevenue + tippingFeeRev
+      : rinRevenue - rinBrokerage + natGasRevenue + fortyFiveZRevenue + tippingFeeRev;
 
     const utilityCost = opexBreakdown.utilityCost * Math.pow(1 + assumptions.electricityEscalator, y - 1);
     const laborCost = opexBreakdown.laborCost * inflationFactor;
     const maintenanceCost = opexBreakdown.maintenanceCost * inflationFactor;
     const chemicalCost = opexBreakdown.chemicalCost * inflationFactor;
     const insuranceCost = opexBreakdown.insuranceCost * inflationFactor;
-    const otherOpex = opexBreakdown.otherCost * inflationFactor;
 
-    let feedstockCost = 0;
+    let feedstockCost = opexBreakdown.feedstockLogisticsCost * inflationFactor;
     for (const fs of assumptions.feedstockCosts) {
       const fsFactor = Math.pow(1 + (fs.escalator || assumptions.inflationRate), y - 1);
       feedstockCost += fs.costPerTon * fs.annualTons * fsFactor;
     }
 
-    const totalOpex = utilityCost + feedstockCost + laborCost + maintenanceCost + chemicalCost + insuranceCost + otherOpex;
+    const digestateManagementCost = opexBreakdown.digestateManagementCost * inflationFactor;
+    const adminOverheadCost = opexBreakdown.adminOverheadCost * inflationFactor;
+
+    const totalOpex = utilityCost + feedstockCost + laborCost + maintenanceCost + chemicalCost + insuranceCost + digestateManagementCost + adminOverheadCost;
     const ebitda = totalRevenue - totalOpex;
     const maintenanceCapex = capexTotal * assumptions.maintenanceCapexPct * inflationFactor;
 
@@ -415,6 +440,7 @@ export function calculateFinancialModel(
       natGasRevenue: Math.round(natGasRevenue),
       voluntaryRevenue: Math.round(voluntaryRevenue),
       fortyFiveZRevenue: Math.round(fortyFiveZRevenue),
+      tippingFeeRevenue: Math.round(tippingFeeRev),
       totalRevenue: Math.round(totalRevenue),
       utilityCost: Math.round(utilityCost),
       feedstockCost: Math.round(feedstockCost),
@@ -422,7 +448,8 @@ export function calculateFinancialModel(
       maintenanceCost: Math.round(maintenanceCost),
       chemicalCost: Math.round(chemicalCost),
       insuranceCost: Math.round(insuranceCost),
-      otherOpex: Math.round(otherOpex),
+      digestateManagementCost: Math.round(digestateManagementCost),
+      adminOverheadCost: Math.round(adminOverheadCost),
       totalOpex: Math.round(totalOpex),
       ebitda: Math.round(ebitda),
       maintenanceCapex: Math.round(maintenanceCapex),

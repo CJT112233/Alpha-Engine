@@ -642,6 +642,7 @@ export type ProFormaYear = {
   natGasRevenue: number;
   voluntaryRevenue: number;
   fortyFiveZRevenue: number;
+  tippingFeeRevenue: number;
   totalRevenue: number;
   utilityCost: number;
   feedstockCost: number;
@@ -649,7 +650,8 @@ export type ProFormaYear = {
   maintenanceCost: number;
   chemicalCost: number;
   insuranceCost: number;
-  otherOpex: number;
+  digestateManagementCost: number;
+  adminOverheadCost: number;
   totalOpex: number;
   ebitda: number;
   maintenanceCapex: number;
