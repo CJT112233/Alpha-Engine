@@ -908,6 +908,7 @@ function StatsCard({ summary, overrides, locks, onSaveOverride, onToggleLock }: 
     biogasProduction: "Biogas Production",
     biogasFlowSCFM: "Biogas Flow",
     rngProduction: "RNG Production",
+    rngProductionAnnual: "RNG Production (Annual)",
     rngFlowSCFM: "RNG Flow",
     rngEnergy: "RNG Energy",
     rngEnergyGJ: "RNG Energy (GJ)",
