@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import * as XLSX from "xlsx";
-import type { MassBalanceResults, TreatmentStage, ADProcessStage, EquipmentItem, CapexResults, CapexLineItem, CapexSummary, OpexResults, OpexLineItem, OpexSummary, VendorList, FinancialModelResults, FinancialMetrics, ProFormaYear, FinancialAssumptions } from "@shared/schema";
+import ExcelJS from "exceljs";
+import type { MassBalanceResults, TreatmentStage, ADProcessStage, EquipmentItem, CapexResults, CapexLineItem, CapexSummary, OpexResults, OpexLineItem, OpexSummary, VendorList, FinancialModelResults, FinancialMetrics, ProFormaYear, FinancialAssumptions, UpifRecord, FeedstockEntry, EnrichedFeedstockSpecRecord } from "@shared/schema";
 
 function sanitize(text: string): string {
   if (!text) return "";
@@ -220,117 +221,507 @@ export function exportMassBalancePDF(
   });
 }
 
-export function exportMassBalanceExcel(
+const MB_HEADER_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
+const MB_HEADER_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+const MB_SECTION_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2C5F8A" } };
+const MB_SECTION_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FFFFFFFF" }, size: 12 };
+const MB_SUBSECTION_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCE6F1" } };
+const MB_SUBSECTION_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FF1E3A5F" }, size: 11 };
+const MB_BORDER_THIN: Partial<ExcelJS.Borders> = {
+  top: { style: "thin", color: { argb: "FFB0B0B0" } },
+  bottom: { style: "thin", color: { argb: "FFB0B0B0" } },
+  left: { style: "thin", color: { argb: "FFB0B0B0" } },
+  right: { style: "thin", color: { argb: "FFB0B0B0" } },
+};
+const MB_ALT_ROW_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F8FC" } };
+
+function mbApplyTableHeaders(ws: ExcelJS.Worksheet, row: number, headers: string[], widths?: number[]): void {
+  const r = ws.getRow(row);
+  headers.forEach((h, i) => {
+    const cell = r.getCell(i + 1);
+    cell.value = h;
+    cell.fill = MB_HEADER_FILL;
+    cell.font = MB_HEADER_FONT;
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border = MB_BORDER_THIN;
+  });
+  r.height = 22;
+  if (widths) {
+    widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  }
+}
+
+function mbAddSectionTitle(ws: ExcelJS.Worksheet, row: number, title: string, colSpan: number): void {
+  const r = ws.getRow(row);
+  const cell = r.getCell(1);
+  cell.value = title;
+  cell.fill = MB_SECTION_FILL;
+  cell.font = MB_SECTION_FONT;
+  cell.alignment = { horizontal: "left", vertical: "middle" };
+  for (let c = 2; c <= colSpan; c++) {
+    const fc = r.getCell(c);
+    fc.fill = MB_SECTION_FILL;
+    fc.border = MB_BORDER_THIN;
+  }
+  if (colSpan > 1) ws.mergeCells(row, 1, row, colSpan);
+  r.height = 26;
+}
+
+function mbAddSubsectionTitle(ws: ExcelJS.Worksheet, row: number, title: string, colSpan: number): void {
+  const r = ws.getRow(row);
+  const cell = r.getCell(1);
+  cell.value = title;
+  cell.fill = MB_SUBSECTION_FILL;
+  cell.font = MB_SUBSECTION_FONT;
+  cell.alignment = { horizontal: "left", vertical: "middle" };
+  for (let c = 2; c <= colSpan; c++) {
+    const fc = r.getCell(c);
+    fc.fill = MB_SUBSECTION_FILL;
+    fc.border = MB_BORDER_THIN;
+  }
+  if (colSpan > 1) ws.mergeCells(row, 1, row, colSpan);
+  r.height = 22;
+}
+
+function mbAddDataRow(ws: ExcelJS.Worksheet, row: number, values: (string | number | undefined)[], isAlt: boolean): void {
+  const r = ws.getRow(row);
+  values.forEach((v, i) => {
+    const cell = r.getCell(i + 1);
+    cell.value = v ?? "";
+    cell.border = MB_BORDER_THIN;
+    cell.alignment = { vertical: "middle", wrapText: true, horizontal: i === 0 ? "left" : "center" };
+    if (isAlt) cell.fill = MB_ALT_ROW_FILL;
+  });
+  r.height = 18;
+}
+
+function mbFormatValue(val: string | number | undefined): string | number {
+  if (val === undefined || val === null || val === "") return "";
+  if (typeof val === "number") return val;
+  const num = Number(val);
+  if (!isNaN(num) && val.toString().trim() !== "") return num;
+  return String(val);
+}
+
+function camelToTitle(key: string): string {
+  return key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim();
+}
+
+export async function exportMassBalanceExcel(
   results: MassBalanceResults,
   scenarioName: string,
   projectName: string,
-  projectType: string
-): Buffer {
-  const wb = XLSX.utils.book_new();
+  projectType: string,
+  upif?: UpifRecord | null
+): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Project Factory";
+  wb.created = new Date();
   const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
 
-  if (results.assumptions && results.assumptions.length > 0) {
-    const assData: string[][] = [
-      ["Design Assumptions"],
-      [],
-      ["Parameter", "Value", "Source"],
-      ...results.assumptions.map(a => [a.parameter, a.value, a.source]),
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(assData);
-    ws["!cols"] = [{ wch: 30 }, { wch: 25 }, { wch: 30 }];
-    XLSX.utils.book_append_sheet(wb, ws, "Assumptions");
+  // ==========================================
+  // TAB 1: Input Parameters
+  // ==========================================
+  const wsInput = wb.addWorksheet("Input Parameters", { properties: { tabColor: { argb: "FF2C5F8A" } } });
+  let ir = 1;
+
+  mbAddSectionTitle(wsInput, ir, "Input Parameters", 4);
+  ir++;
+  const infoHeaders = ["Field", "Value"];
+  mbApplyTableHeaders(wsInput, ir, ["Field", "", "Value", ""], [20, 15, 30, 30]);
+  ir++;
+  const infoRows: [string, string][] = [
+    ["Project", projectName],
+    ["Scenario", scenarioName],
+    ["Project Type", `${projectType} - ${typeLabels[projectType] || ""}`],
+    ["Date Generated", new Date().toLocaleDateString("en-US")],
+  ];
+  if (upif?.location) infoRows.push(["Location", upif.location]);
+  infoRows.forEach((row, idx) => {
+    const r = wsInput.getRow(ir);
+    r.getCell(1).value = row[0];
+    r.getCell(1).font = { bold: true, size: 10 };
+    r.getCell(1).border = MB_BORDER_THIN;
+    r.getCell(1).alignment = { vertical: "middle" };
+    wsInput.mergeCells(ir, 1, ir, 2);
+    r.getCell(3).value = row[1];
+    r.getCell(3).border = MB_BORDER_THIN;
+    r.getCell(3).alignment = { vertical: "middle", wrapText: true };
+    wsInput.mergeCells(ir, 3, ir, 4);
+    if (idx % 2 === 1) {
+      r.getCell(1).fill = MB_ALT_ROW_FILL;
+      r.getCell(3).fill = MB_ALT_ROW_FILL;
+    }
+    r.height = 18;
+    ir++;
+  });
+  ir++;
+
+  if (upif?.feedstocks && upif.feedstocks.length > 0) {
+    for (let fi = 0; fi < upif.feedstocks.length; fi++) {
+      const fs = upif.feedstocks[fi];
+      const fsLabel = upif.feedstocks.length > 1 ? `Feedstock ${fi + 1}: ${fs.feedstockType || "Unknown"}` : `Feedstock: ${fs.feedstockType || "Unknown"}`;
+      mbAddSubsectionTitle(wsInput, ir, fsLabel, 4);
+      ir++;
+
+      if (fs.feedstockVolume) {
+        const r = wsInput.getRow(ir);
+        r.getCell(1).value = "Volume";
+        r.getCell(1).font = { bold: true, size: 10 };
+        r.getCell(1).border = MB_BORDER_THIN;
+        wsInput.mergeCells(ir, 1, ir, 2);
+        r.getCell(3).value = `${fs.feedstockVolume} ${fs.feedstockUnit || ""}`.trim();
+        r.getCell(3).border = MB_BORDER_THIN;
+        wsInput.mergeCells(ir, 3, ir, 4);
+        r.height = 18;
+        ir++;
+      }
+
+      if (fs.feedstockSpecs && Object.keys(fs.feedstockSpecs).length > 0) {
+        mbApplyTableHeaders(wsInput, ir, ["Parameter", "Value", "Unit", "Source"], [25, 18, 15, 20]);
+        ir++;
+        const specEntries = Object.entries(fs.feedstockSpecs).sort((a, b) => (a[1].sortOrder || 0) - (b[1].sortOrder || 0));
+        let currentGroup = "";
+        specEntries.forEach(([key, spec], idx) => {
+          if (spec.group && spec.group !== currentGroup) {
+            currentGroup = spec.group;
+            mbAddSubsectionTitle(wsInput, ir, currentGroup.charAt(0).toUpperCase() + currentGroup.slice(1), 4);
+            ir++;
+          }
+          mbAddDataRow(wsInput, ir, [spec.displayName || key, mbFormatValue(spec.value), spec.unit || "", spec.source || ""], idx % 2 === 1);
+          ir++;
+        });
+      } else if (fs.feedstockParameters && Object.keys(fs.feedstockParameters).length > 0) {
+        mbApplyTableHeaders(wsInput, ir, ["Parameter", "Value", "Unit", ""], [25, 18, 15, 20]);
+        ir++;
+        Object.entries(fs.feedstockParameters).forEach(([key, val], idx) => {
+          mbAddDataRow(wsInput, ir, [key, mbFormatValue(val.value), val.unit || "", ""], idx % 2 === 1);
+          ir++;
+        });
+      }
+      ir++;
+    }
+  } else if (upif?.feedstockType) {
+    mbAddSubsectionTitle(wsInput, ir, `Feedstock: ${upif.feedstockType}`, 4);
+    ir++;
+    if (upif.feedstockVolume) {
+      const r = wsInput.getRow(ir);
+      r.getCell(1).value = "Volume";
+      r.getCell(1).font = { bold: true, size: 10 };
+      r.getCell(1).border = MB_BORDER_THIN;
+      wsInput.mergeCells(ir, 1, ir, 2);
+      r.getCell(3).value = `${upif.feedstockVolume} ${upif.feedstockUnit || ""}`.trim();
+      r.getCell(3).border = MB_BORDER_THIN;
+      wsInput.mergeCells(ir, 3, ir, 4);
+      r.height = 18;
+      ir++;
+    }
+    if (upif.feedstockSpecs && Object.keys(upif.feedstockSpecs).length > 0) {
+      mbApplyTableHeaders(wsInput, ir, ["Parameter", "Value", "Unit", "Source"], [25, 18, 15, 20]);
+      ir++;
+      const specEntries = Object.entries(upif.feedstockSpecs).sort((a, b) => (a[1].sortOrder || 0) - (b[1].sortOrder || 0));
+      specEntries.forEach(([key, spec], idx) => {
+        mbAddDataRow(wsInput, ir, [spec.displayName || key, mbFormatValue(spec.value), spec.unit || "", spec.source || ""], idx % 2 === 1);
+        ir++;
+      });
+    }
+    ir++;
   }
 
+  if (upif?.outputSpecs && Object.keys(upif.outputSpecs).length > 0) {
+    mbAddSubsectionTitle(wsInput, ir, "Output / Acceptance Criteria", 4);
+    ir++;
+    mbApplyTableHeaders(wsInput, ir, ["Parameter", "Value", "Unit", "Source"], [25, 18, 15, 20]);
+    ir++;
+    let oIdx = 0;
+    for (const [category, specs] of Object.entries(upif.outputSpecs)) {
+      if (!specs || typeof specs !== "object") continue;
+      mbAddSubsectionTitle(wsInput, ir, category.charAt(0).toUpperCase() + category.slice(1).replace(/_/g, " "), 4);
+      ir++;
+      const sortedSpecs = Object.entries(specs).sort((a, b) => (a[1]?.sortOrder || 0) - (b[1]?.sortOrder || 0));
+      for (const [key, spec] of sortedSpecs) {
+        if (!spec) continue;
+        mbAddDataRow(wsInput, ir, [spec.displayName || key, mbFormatValue(spec.value), spec.unit || "", spec.source || ""], oIdx % 2 === 1);
+        ir++;
+        oIdx++;
+      }
+    }
+    ir++;
+  }
+
+  if (upif?.constraints && upif.constraints.length > 0) {
+    mbAddSubsectionTitle(wsInput, ir, "Constraints", 4);
+    ir++;
+    upif.constraints.forEach((c, idx) => {
+      const r = wsInput.getRow(ir);
+      r.getCell(1).value = `${idx + 1}.`;
+      r.getCell(1).font = { bold: true, size: 10 };
+      r.getCell(1).border = MB_BORDER_THIN;
+      r.getCell(2).value = c;
+      r.getCell(2).border = MB_BORDER_THIN;
+      r.getCell(2).alignment = { wrapText: true };
+      wsInput.mergeCells(ir, 2, ir, 4);
+      if (idx % 2 === 1) {
+        r.getCell(1).fill = MB_ALT_ROW_FILL;
+        r.getCell(2).fill = MB_ALT_ROW_FILL;
+      }
+      r.height = 18;
+      ir++;
+    });
+  }
+
+  wsInput.getColumn(1).width = 20;
+  wsInput.getColumn(2).width = 15;
+  wsInput.getColumn(3).width = 30;
+  wsInput.getColumn(4).width = 22;
+
+  // ==========================================
+  // TAB 2: Mass Balance (separate tables per train)
+  // ==========================================
+  const wsMB = wb.addWorksheet("Mass Balance", { properties: { tabColor: { argb: "FF2E7D32" } } });
+  let mr = 1;
+
+  mbAddSectionTitle(wsMB, mr, `Mass Balance — ${projectName} / ${scenarioName}`, 6);
+  mr++;
+  const metaRow = wsMB.getRow(mr);
+  metaRow.getCell(1).value = `Type ${projectType}: ${typeLabels[projectType] || ""}`;
+  metaRow.getCell(1).font = { italic: true, size: 10, color: { argb: "FF555555" } };
+  metaRow.getCell(4).value = `Generated: ${new Date().toLocaleDateString("en-US")}`;
+  metaRow.getCell(4).font = { italic: true, size: 10, color: { argb: "FF555555" } };
+  mr += 2;
+
   if (results.summary && Object.keys(results.summary).length > 0) {
-    const summaryData = [
-      ["Mass Balance Summary"],
-      [`Project: ${projectName}`, `Scenario: ${scenarioName}`, `Type: ${projectType} - ${typeLabels[projectType] || ""}`],
-      [],
-      ["Parameter", "Value", "Unit"],
-      ...Object.entries(results.summary).map(([key, val]) => [
-        key.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim(),
-        val?.value ?? "-",
-        val?.unit ?? "",
-      ]),
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(summaryData);
-    ws["!cols"] = [{ wch: 30 }, { wch: 20 }, { wch: 20 }];
-    XLSX.utils.book_append_sheet(wb, ws, "Summary");
+    mbAddSubsectionTitle(wsMB, mr, "Summary", 6);
+    mr++;
+    mbApplyTableHeaders(wsMB, mr, ["Parameter", "Value", "Unit"], [35, 22, 18]);
+    mr++;
+    Object.entries(results.summary).forEach(([key, val], idx) => {
+      mbAddDataRow(wsMB, mr, [camelToTitle(key), mbFormatValue(val?.value), val?.unit ?? ""], idx % 2 === 1);
+      mr++;
+    });
+    mr += 2;
   }
 
   if (results.adStages && results.adStages.length > 0) {
-    const adData: (string | number)[][] = [["Process Stages"], []];
     for (const stage of results.adStages) {
-      adData.push([`${stage.name} (${stage.type})`]);
-      adData.push(["Parameter", "Input Value", "Input Unit", "Output Value", "Output Unit"]);
+      mbAddSubsectionTitle(wsMB, mr, `${stage.name} (${stage.type})`, 6);
+      mr++;
+      mbApplyTableHeaders(wsMB, mr, ["Parameter", "Input Value", "Input Unit", "Output Value", "Output Unit"], [30, 18, 15, 18, 15]);
+      mr++;
       const allKeys = new Set([
         ...Object.keys(stage.inputStream || {}),
         ...Object.keys(stage.outputStream || {}),
       ]);
+      let sIdx = 0;
       for (const key of allKeys) {
         const inp = stage.inputStream?.[key];
         const out = stage.outputStream?.[key];
-        adData.push([
-          key.replace(/([A-Z])/g, " $1").trim(),
-          inp?.value ?? "",
+        mbAddDataRow(wsMB, mr, [
+          camelToTitle(key),
+          inp?.value !== undefined ? mbFormatValue(inp.value) : "",
           inp?.unit ?? "",
-          out?.value ?? "",
+          out?.value !== undefined ? mbFormatValue(out.value) : "",
           out?.unit ?? "",
-        ]);
+        ], sIdx % 2 === 1);
+        mr++;
+        sIdx++;
       }
-      adData.push([]);
+      mr += 2;
     }
-    const ws = XLSX.utils.aoa_to_sheet(adData);
-    ws["!cols"] = [{ wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, ws, "Process");
-  }
-
-  if (results.equipment && results.equipment.length > 0) {
-    const eqData: (string | number)[][] = [
-      ["Equipment List"],
-      [],
-      ["Process", "Equipment Type", "Qty", "Description", "Design Basis", "Notes"],
-      ...results.equipment.map(eq => [
-        eq.process,
-        eq.equipmentType,
-        eq.quantity,
-        eq.description,
-        eq.designBasis,
-        eq.notes,
-      ]),
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(eqData);
-    ws["!cols"] = [{ wch: 20 }, { wch: 20 }, { wch: 6 }, { wch: 35 }, { wch: 30 }, { wch: 30 }];
-    XLSX.utils.book_append_sheet(wb, ws, "Equipment");
   }
 
   if (results.stages && results.stages.length > 0) {
-    const stageData: (string | number)[][] = [
-      ["Treatment Train - Stream Data"],
-      [`Convergence: ${results.convergenceAchieved ? "Yes" : "No"} (${results.convergenceIterations} iterations)`],
-      [],
-    ];
     for (const stage of results.stages) {
-      stageData.push([`${stage.name} (${stage.type})`]);
-      stageData.push(["Parameter", "Influent", "Effluent", "Removal %"]);
-      const params = ["flow", "bod", "cod", "tss", "tkn", "tp", "fog"] as const;
-      const paramLabels: Record<string, string> = { flow: "Flow (GPD)", bod: "BOD (mg/L)", cod: "COD (mg/L)", tss: "TSS (mg/L)", tkn: "TKN (mg/L)", tp: "TP (mg/L)", fog: "FOG (mg/L)" };
+      mbAddSubsectionTitle(wsMB, mr, `${stage.name} (${stage.type})`, 6);
+      mr++;
+      mbApplyTableHeaders(wsMB, mr, ["Parameter", "Influent", "Effluent", "Removal %"], [25, 18, 18, 15]);
+      mr++;
+      const params = ["flow", "bod", "cod", "tss", "tkn", "tp", "fog", "nh3", "no3"] as const;
+      const paramLabels: Record<string, string> = {
+        flow: "Flow (GPD)", bod: "BOD (mg/L)", cod: "COD (mg/L)", tss: "TSS (mg/L)",
+        tkn: "TKN (mg/L)", tp: "TP (mg/L)", fog: "FOG (mg/L)", nh3: "NH₃ (mg/L)", no3: "NO₃ (mg/L)",
+      };
+      let sIdx = 0;
       for (const p of params) {
-        stageData.push([
+        const infVal = stage.influent[p];
+        const effVal = stage.effluent[p];
+        if (infVal === undefined && effVal === undefined) continue;
+        const remVal = stage.removalEfficiencies[p];
+        mbAddDataRow(wsMB, mr, [
           paramLabels[p] || p.toUpperCase(),
-          stage.influent[p] ?? "",
-          stage.effluent[p] ?? "",
-          stage.removalEfficiencies[p] !== undefined ? stage.removalEfficiencies[p] : "",
-        ]);
+          infVal !== undefined ? mbFormatValue(infVal) : "",
+          effVal !== undefined ? mbFormatValue(effVal) : "",
+          remVal !== undefined ? `${typeof remVal === "number" ? remVal.toFixed(1) : remVal}%` : "",
+        ], sIdx % 2 === 1);
+        mr++;
+        sIdx++;
       }
-      stageData.push([]);
+
+      if (stage.designCriteria && Object.keys(stage.designCriteria).length > 0) {
+        mr++;
+        const dcRow = wsMB.getRow(mr);
+        dcRow.getCell(1).value = "Design Criteria";
+        dcRow.getCell(1).font = { bold: true, italic: true, size: 10, color: { argb: "FF1E3A5F" } };
+        mr++;
+        mbApplyTableHeaders(wsMB, mr, ["Criterion", "Value", "Unit", "Source"], [25, 18, 15, 20]);
+        mr++;
+        Object.entries(stage.designCriteria).forEach(([key, dc], idx) => {
+          mbAddDataRow(wsMB, mr, [camelToTitle(key), mbFormatValue(dc.value), dc.unit || "", dc.source || ""], idx % 2 === 1);
+          mr++;
+        });
+      }
+      mr += 2;
     }
-    const ws = XLSX.utils.aoa_to_sheet(stageData);
-    ws["!cols"] = [{ wch: 25 }, { wch: 18 }, { wch: 18 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, ws, "Treatment Train");
   }
 
-  return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+  if (results.recycleStreams && results.recycleStreams.length > 0) {
+    mbAddSubsectionTitle(wsMB, mr, "Recycle Streams", 6);
+    mr++;
+    mbApplyTableHeaders(wsMB, mr, ["Stream", "Source", "Destination", "Flow", "Loads"], [25, 20, 20, 15, 30]);
+    mr++;
+    results.recycleStreams.forEach((rs, idx) => {
+      const loadsStr = rs.loads ? Object.entries(rs.loads).map(([k, v]) => `${k}: ${v}`).join(", ") : "";
+      mbAddDataRow(wsMB, mr, [rs.name, rs.source, rs.destination, mbFormatValue(rs.flow), loadsStr], idx % 2 === 1);
+      mr++;
+    });
+    mr++;
+  }
+
+  wsMB.getColumn(1).width = 35;
+  wsMB.getColumn(2).width = 22;
+  wsMB.getColumn(3).width = 18;
+  wsMB.getColumn(4).width = 22;
+  wsMB.getColumn(5).width = 18;
+  wsMB.getColumn(6).width = 18;
+
+  // ==========================================
+  // TAB 3: Equipment List
+  // ==========================================
+  const wsEq = wb.addWorksheet("Equipment List", { properties: { tabColor: { argb: "FFE65100" } } });
+  let er = 1;
+
+  mbAddSectionTitle(wsEq, er, "Equipment List", 7);
+  er++;
+
+  if (results.equipment && results.equipment.length > 0) {
+    const eqHeaders = ["#", "Process", "Equipment Type", "Qty", "Description", "Design Basis", "Notes"];
+    const eqWidths = [5, 22, 22, 7, 38, 32, 32];
+    mbApplyTableHeaders(wsEq, er, eqHeaders, eqWidths);
+    er++;
+
+    results.equipment.forEach((eq, idx) => {
+      const r = wsEq.getRow(er);
+      const vals = [idx + 1, eq.process, eq.equipmentType, eq.quantity, eq.description, eq.designBasis, eq.notes];
+      vals.forEach((v, i) => {
+        const cell = r.getCell(i + 1);
+        cell.value = v ?? "";
+        cell.border = MB_BORDER_THIN;
+        cell.alignment = { vertical: "middle", wrapText: true, horizontal: i <= 3 ? "center" : "left" };
+        if (idx % 2 === 1) cell.fill = MB_ALT_ROW_FILL;
+      });
+      r.height = 22;
+      er++;
+    });
+
+    er += 2;
+    const totalRow = wsEq.getRow(er);
+    totalRow.getCell(1).value = `Total Equipment Items: ${results.equipment.length}`;
+    totalRow.getCell(1).font = { bold: true, size: 10 };
+    wsEq.mergeCells(er, 1, er, 3);
+  } else {
+    const r = wsEq.getRow(er);
+    r.getCell(1).value = "No equipment data available.";
+    r.getCell(1).font = { italic: true, color: { argb: "FF999999" } };
+  }
+
+  // ==========================================
+  // TAB 4: Assumptions & Calculations
+  // ==========================================
+  const wsCalc = wb.addWorksheet("Assumptions & Calculations", { properties: { tabColor: { argb: "FF6A1B9A" } } });
+  let cr = 1;
+
+  mbAddSectionTitle(wsCalc, cr, "Design Assumptions", 4);
+  cr++;
+
+  if (results.assumptions && results.assumptions.length > 0) {
+    mbApplyTableHeaders(wsCalc, cr, ["#", "Parameter", "Value", "Source"], [5, 35, 25, 30]);
+    cr++;
+    results.assumptions.forEach((a, idx) => {
+      const r = wsCalc.getRow(cr);
+      const vals = [idx + 1, a.parameter, a.value, a.source];
+      vals.forEach((v, i) => {
+        const cell = r.getCell(i + 1);
+        cell.value = v ?? "";
+        cell.border = MB_BORDER_THIN;
+        cell.alignment = { vertical: "middle", wrapText: true, horizontal: i === 0 ? "center" : "left" };
+        if (idx % 2 === 1) cell.fill = MB_ALT_ROW_FILL;
+      });
+      r.height = 18;
+      cr++;
+    });
+  } else {
+    const r = wsCalc.getRow(cr);
+    r.getCell(1).value = "No assumptions recorded.";
+    r.getCell(1).font = { italic: true, color: { argb: "FF999999" } };
+    cr++;
+  }
+
+  cr += 2;
+  mbAddSectionTitle(wsCalc, cr, "Convergence & Calculation Notes", 4);
+  cr++;
+  const convRow = wsCalc.getRow(cr);
+  convRow.getCell(1).value = "Convergence Achieved";
+  convRow.getCell(1).font = { bold: true, size: 10 };
+  convRow.getCell(1).border = MB_BORDER_THIN;
+  convRow.getCell(2).value = results.convergenceAchieved ? "Yes" : "No";
+  convRow.getCell(2).border = MB_BORDER_THIN;
+  convRow.getCell(2).font = { color: { argb: results.convergenceAchieved ? "FF2E7D32" : "FFCC0000" }, bold: true };
+  cr++;
+  const iterRow = wsCalc.getRow(cr);
+  iterRow.getCell(1).value = "Iterations";
+  iterRow.getCell(1).font = { bold: true, size: 10 };
+  iterRow.getCell(1).border = MB_BORDER_THIN;
+  iterRow.getCell(2).value = results.convergenceIterations ?? 0;
+  iterRow.getCell(2).border = MB_BORDER_THIN;
+  cr++;
+
+  if (results.warnings && results.warnings.length > 0) {
+    cr += 2;
+    mbAddSectionTitle(wsCalc, cr, "Warnings & Notes", 4);
+    cr++;
+    mbApplyTableHeaders(wsCalc, cr, ["Severity", "Field", "Message", ""], [12, 20, 50, 10]);
+    cr++;
+    results.warnings.forEach((w, idx) => {
+      const r = wsCalc.getRow(cr);
+      r.getCell(1).value = (w.severity || "info").toUpperCase();
+      r.getCell(1).border = MB_BORDER_THIN;
+      r.getCell(1).alignment = { horizontal: "center", vertical: "middle" };
+      r.getCell(1).font = {
+        bold: true,
+        color: { argb: w.severity === "error" ? "FFCC0000" : w.severity === "warning" ? "FFFF8800" : "FF2E7D32" },
+      };
+      r.getCell(2).value = w.field || "";
+      r.getCell(2).border = MB_BORDER_THIN;
+      r.getCell(3).value = w.message || "";
+      r.getCell(3).border = MB_BORDER_THIN;
+      r.getCell(3).alignment = { wrapText: true };
+      if (idx % 2 === 1) {
+        r.getCell(1).fill = MB_ALT_ROW_FILL;
+        r.getCell(2).fill = MB_ALT_ROW_FILL;
+        r.getCell(3).fill = MB_ALT_ROW_FILL;
+      }
+      r.height = 18;
+      cr++;
+    });
+  }
+
+  wsCalc.getColumn(1).width = 12;
+  wsCalc.getColumn(2).width = 35;
+  wsCalc.getColumn(3).width = 30;
+  wsCalc.getColumn(4).width = 30;
+
+  const buffer = await wb.xlsx.writeBuffer();
+  return Buffer.from(buffer);
 }
 
 export function exportCapexPDF(

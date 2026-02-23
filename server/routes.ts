@@ -3212,7 +3212,8 @@ export async function registerRoutes(
       if (!scenario) return res.status(404).json({ error: "Scenario not found" });
       const results = latestRun.results as MassBalanceResults;
       const projectType = results.projectType || (scenario as any).projectType || "B";
-      const xlsxBuffer = exportMassBalanceExcel(results, scenario.name, scenario.project?.name || "Project", projectType);
+      const upif = await storage.getUpifByScenario(scenarioId);
+      const xlsxBuffer = await exportMassBalanceExcel(results, scenario.name, scenario.project?.name || "Project", projectType, upif);
       const safeName = (scenario.name || "mass-balance").replace(/[^a-zA-Z0-9_-]/g, "_");
       res.set({
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
