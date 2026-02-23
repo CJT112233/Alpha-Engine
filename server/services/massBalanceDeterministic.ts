@@ -1419,7 +1419,7 @@ function generateTypeDMassBalance(upif: any): DeterministicMBResult {
   const CO2_PCT = 40;
   const M3_TO_SCF = 35.3147;
   const KG_TO_LB = 2.20462;
-  const VS_DESTRUCTION_PCT = 58;
+  const VS_DESTRUCTION_PCT = 90;
   const SLUDGE_BMP = 0.22;
 
   let coDigestionFeedstocks: ParsedFeedstock[] = [];
