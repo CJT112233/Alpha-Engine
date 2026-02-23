@@ -614,6 +614,15 @@ export type FinancialAssumptions = {
     interestRate: number;
     termYears: number;
   };
+  fortyFiveZ: {
+    enabled: boolean;
+    ciScore: number;
+    targetCI: number;
+    creditPricePerGal: number;
+    conversionGalPerMMBtu: number;
+    monetizationPct: number;
+    endYear: number;
+  };
 };
 
 export type ProFormaYear = {
@@ -624,6 +633,7 @@ export type ProFormaYear = {
   rinRevenue: number;
   rinBrokerage: number;
   natGasRevenue: number;
+  fortyFiveZRevenue: number;
   totalRevenue: number;
   utilityCost: number;
   feedstockCost: number;

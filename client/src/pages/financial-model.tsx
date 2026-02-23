@@ -213,9 +213,22 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
     },
   });
 
+  const defaultFortyFiveZ = {
+    enabled: true,
+    ciScore: 25,
+    targetCI: 50,
+    creditPricePerGal: 1.06,
+    conversionGalPerMMBtu: 8.614,
+    monetizationPct: 0.90,
+    endYear: 2029,
+  };
+
   const updateAssumption = (path: string, value: number) => {
     if (!assumptions) return;
-    const updated = { ...assumptions };
+    const updated = JSON.parse(JSON.stringify(assumptions));
+    if (path.startsWith("fortyFiveZ.") && !updated.fortyFiveZ) {
+      updated.fortyFiveZ = { ...defaultFortyFiveZ };
+    }
     const keys = path.split(".");
     let obj: any = updated;
     for (let i = 0; i < keys.length - 1; i++) {
@@ -507,6 +520,49 @@ function AssumptionsEditor({
 
         <Card>
           <CardHeader className="pb-2">
+            <CardTitle className="text-sm">45Z Clean Fuel Tax Credit</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="45z-enabled"
+                checked={assumptions.fortyFiveZ?.enabled ?? true}
+                onCheckedChange={(checked) => onUpdate("fortyFiveZ.enabled", checked ? 1 : 0)}
+                disabled={readOnly}
+                data-testid="checkbox-45z-enabled"
+              />
+              <Label htmlFor="45z-enabled" className="text-xs">45Z Credits Enabled</Label>
+            </div>
+            {assumptions.fortyFiveZ?.enabled && (
+              <>
+                <AssumptionField label="CI Score" unit="gCO₂e/MJ" value={assumptions.fortyFiveZ.ciScore} onChange={(v) => onUpdate("fortyFiveZ.ciScore", v)} readOnly={readOnly} step="1" testId="input-45z-ci-score" />
+                <AssumptionField label="Target CI" unit="gCO₂e/MJ" value={assumptions.fortyFiveZ.targetCI} onChange={(v) => onUpdate("fortyFiveZ.targetCI", v)} readOnly={readOnly} step="1" testId="input-45z-target-ci" />
+                <AssumptionField label="Credit Price" unit="$/gal" value={assumptions.fortyFiveZ.creditPricePerGal} onChange={(v) => onUpdate("fortyFiveZ.creditPricePerGal", v)} readOnly={readOnly} testId="input-45z-credit-price" />
+                <AssumptionField label="Conversion Factor" unit="gal/MMBtu" value={assumptions.fortyFiveZ.conversionGalPerMMBtu} onChange={(v) => onUpdate("fortyFiveZ.conversionGalPerMMBtu", v)} readOnly={readOnly} testId="input-45z-conversion" />
+                <AssumptionField label="Monetization" unit="%" value={assumptions.fortyFiveZ.monetizationPct} onChange={(v) => onUpdate("fortyFiveZ.monetizationPct", v)} readOnly={readOnly} testId="input-45z-monetization" />
+                <AssumptionField label="Credits End Year" unit="" value={assumptions.fortyFiveZ.endYear} onChange={(v) => onUpdate("fortyFiveZ.endYear", v)} readOnly={readOnly} step="1" testId="input-45z-end-year" />
+                {(() => {
+                  const z = assumptions.fortyFiveZ;
+                  const emFactor = Math.max(0, (z.targetCI - z.ciScore) / z.targetCI);
+                  const creditPerGal = emFactor * z.creditPricePerGal;
+                  const pricePerMMBtu = creditPerGal * z.conversionGalPerMMBtu;
+                  const netPrice = pricePerMMBtu * z.monetizationPct;
+                  return (
+                    <div className="mt-2 p-2 bg-muted rounded text-xs space-y-1" data-testid="text-45z-summary">
+                      <div className="flex justify-between"><span>Emission Factor:</span><span>{(emFactor * 100).toFixed(1)}%</span></div>
+                      <div className="flex justify-between"><span>Credit per gal equiv:</span><span>${creditPerGal.toFixed(3)}/gal</span></div>
+                      <div className="flex justify-between"><span>45Z Price:</span><span>${pricePerMMBtu.toFixed(2)}/MMBtu</span></div>
+                      <div className="flex justify-between font-semibold"><span>Net 45Z Price:</span><span>${netPrice.toFixed(2)}/MMBtu</span></div>
+                    </div>
+                  );
+                })()}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm">Debt Financing</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -630,6 +686,7 @@ function ProFormaTable({ proForma, results }: { proForma: ProFormaYear[]; result
             <DataRow label="RIN Revenue" values={proForma.map((yr) => yr.rinRevenue)} year0Value={0} />
             <DataRow label="(-) RIN Brokerage" values={proForma.map((yr) => -yr.rinBrokerage)} year0Value={0} />
             <DataRow label="(+) Natural Gas Revenue" values={proForma.map((yr) => yr.natGasRevenue)} year0Value={0} />
+            <DataRow label="(+) 45Z Tax Credits" values={proForma.map((yr) => yr.fortyFiveZRevenue || 0)} year0Value={0} />
             <DataRow label="= Total Revenue" values={proForma.map((yr) => yr.totalRevenue)} isBold year0Value={0} />
 
             <SectionHeaderRow label="Operating Expenses ($000)" colSpan={totalCols} />

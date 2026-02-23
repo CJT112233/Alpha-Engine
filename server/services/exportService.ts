@@ -1457,24 +1457,48 @@ export function exportProjectSummaryPDF(
         ["Discount Rate", `${fmtNum(assumptions.discountRate * 100)}%`],
         ["ITC Rate", `${fmtNum(assumptions.itcRate * 100)}%`],
       ];
+      if (assumptions.fortyFiveZ) {
+        assumpRows.push(["45Z Credits", assumptions.fortyFiveZ.enabled ? "Enabled" : "Disabled"]);
+        if (assumptions.fortyFiveZ.enabled) {
+          assumpRows.push(
+            ["45Z CI Score", `${fmtNum(assumptions.fortyFiveZ.ciScore)} gCO₂e/MJ`],
+            ["45Z Target CI", `${fmtNum(assumptions.fortyFiveZ.targetCI)} gCO₂e/MJ`],
+            ["45Z Credit Price", `${fmtCurrency(assumptions.fortyFiveZ.creditPricePerGal)}/gal`],
+            ["45Z Monetization", `${fmtNum(assumptions.fortyFiveZ.monetizationPct * 100)}%`],
+            ["45Z End Year", String(assumptions.fortyFiveZ.endYear)],
+          );
+        }
+      }
       y = drawTable(doc, ["Assumption", "Value"], assumpRows, leftMargin, y, [256, 256]);
       y += 15;
 
       if (financialResults.proForma && financialResults.proForma.length > 0) {
         if (y > 680) { doc.addPage(); y = 50; }
         y = addSectionHeader(doc, "Pro-Forma Projections ($000)", y, leftMargin, contentWidth);
-        const pfHeaders = ["Year", "Cal Year", "RNG (MMBtu)", "Revenue", "OpEx", "EBITDA", "Net CF", "Cumul CF"];
-        const pfRows = financialResults.proForma.map(pf => [
-          String(pf.year),
-          String(pf.calendarYear),
-          fmtNum(pf.rngProductionMMBtu, 0),
-          fmtNum(pf.totalRevenue / 1000, 0),
-          fmtNum(pf.totalOpex / 1000, 0),
-          fmtNum(pf.ebitda / 1000, 0),
-          fmtNum(pf.netCashFlow / 1000, 0),
-          fmtNum(pf.cumulativeCashFlow / 1000, 0),
-        ]);
-        y = drawTable(doc, pfHeaders, pfRows, leftMargin, y, [40, 55, 80, 72, 65, 65, 70, 65], { fontSize: 7 });
+        const has45Z = financialResults.proForma.some(pf => (pf.fortyFiveZRevenue || 0) > 0);
+        const pfHeaders = has45Z
+          ? ["Year", "Cal Year", "RNG (MMBtu)", "45Z Rev", "Revenue", "OpEx", "EBITDA", "Net CF", "Cumul CF"]
+          : ["Year", "Cal Year", "RNG (MMBtu)", "Revenue", "OpEx", "EBITDA", "Net CF", "Cumul CF"];
+        const pfRows = financialResults.proForma.map(pf => {
+          const base = [
+            String(pf.year),
+            String(pf.calendarYear),
+            fmtNum(pf.rngProductionMMBtu, 0),
+          ];
+          if (has45Z) base.push(fmtNum((pf.fortyFiveZRevenue || 0) / 1000, 0));
+          base.push(
+            fmtNum(pf.totalRevenue / 1000, 0),
+            fmtNum(pf.totalOpex / 1000, 0),
+            fmtNum(pf.ebitda / 1000, 0),
+            fmtNum(pf.netCashFlow / 1000, 0),
+            fmtNum(pf.cumulativeCashFlow / 1000, 0),
+          );
+          return base;
+        });
+        const pfColWidths = has45Z
+          ? [35, 50, 70, 55, 60, 55, 55, 60, 55]
+          : [40, 55, 80, 72, 65, 65, 70, 65];
+        y = drawTable(doc, pfHeaders, pfRows, leftMargin, y, pfColWidths, { fontSize: 7 });
       }
     }
 

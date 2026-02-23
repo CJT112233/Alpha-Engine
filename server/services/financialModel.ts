@@ -38,6 +38,15 @@ const DEFAULT_ASSUMPTIONS: FinancialAssumptions = {
     interestRate: 0.06,
     termYears: 10,
   },
+  fortyFiveZ: {
+    enabled: true,
+    ciScore: 25,
+    targetCI: 50,
+    creditPricePerGal: 1.06,
+    conversionGalPerMMBtu: 8.614,
+    monetizationPct: 0.90,
+    endYear: 2029,
+  },
 };
 
 function extractBiogasScfm(mbResults: MassBalanceResults): number {
@@ -184,12 +193,80 @@ function calculateNPV(cashFlows: number[], discountRate: number): number {
   return npv;
 }
 
+function estimateCIScore(feedstocks?: any[]): number {
+  if (!feedstocks || feedstocks.length === 0) return 25;
+
+  const ciByType: Record<string, number> = {
+    "dairy manure": 10,
+    "manure": 10,
+    "cow manure": 10,
+    "swine manure": 12,
+    "hog manure": 12,
+    "poultry litter": 15,
+    "food waste": 20,
+    "fats oils grease": 18,
+    "fog": 18,
+    "grease trap": 18,
+    "municipal wastewater": 30,
+    "wastewater sludge": 28,
+    "sewage sludge": 28,
+    "landfill gas": 40,
+    "crop residue": 35,
+    "energy crops": 40,
+    "corn silage": 38,
+    "grass silage": 35,
+    "potato waste": 22,
+    "brewery waste": 24,
+    "distillery waste": 22,
+    "fruit waste": 22,
+    "vegetable waste": 22,
+    "slaughterhouse waste": 18,
+    "rendering waste": 18,
+    "sugar beet pulp": 30,
+    "organic fraction msw": 35,
+    "source separated organics": 25,
+  };
+
+  let totalCI = 0;
+  let totalWeight = 0;
+
+  for (const f of feedstocks) {
+    const name = (f.feedstockType || f.name || "").toLowerCase().trim();
+    let ci = 25;
+    for (const [key, val] of Object.entries(ciByType)) {
+      if (name.includes(key) || key.includes(name)) {
+        ci = val;
+        break;
+      }
+    }
+    const vol = parseFloat(String(f.feedstockVolume || 1).replace(/,/g, "")) || 1;
+    totalCI += ci * vol;
+    totalWeight += vol;
+  }
+
+  return totalWeight > 0 ? Math.round(totalCI / totalWeight) : 25;
+}
+
+function calculate45ZRevenuePerMMBtu(fortyFiveZ: FinancialAssumptions["fortyFiveZ"]): number {
+  if (!fortyFiveZ.enabled) return 0;
+  const emissionFactor = Math.max(0, (fortyFiveZ.targetCI - fortyFiveZ.ciScore) / fortyFiveZ.targetCI);
+  const creditPerGalEquiv = emissionFactor * fortyFiveZ.creditPricePerGal;
+  const pricePerMMBtu = creditPerGalEquiv * fortyFiveZ.conversionGalPerMMBtu;
+  return pricePerMMBtu * fortyFiveZ.monetizationPct;
+}
+
 export function buildDefaultAssumptions(
   mbResults: MassBalanceResults,
   opexResults?: OpexResults,
   feedstocks?: any[],
 ): FinancialAssumptions {
-  const assumptions = { ...DEFAULT_ASSUMPTIONS };
+  const assumptions = {
+    ...DEFAULT_ASSUMPTIONS,
+    fortyFiveZ: { ...DEFAULT_ASSUMPTIONS.fortyFiveZ },
+  };
+
+  const estimatedCI = estimateCIScore(feedstocks);
+  assumptions.fortyFiveZ.ciScore = estimatedCI;
 
   if (feedstocks && feedstocks.length > 0) {
     assumptions.feedstockCosts = feedstocks.map((f: any) => {
@@ -237,6 +314,9 @@ export function calculateFinancialModel(
     warnings.push({ field: "capex", message: "CapEx total is zero or negative — financial metrics may be unreliable", severity: "warning" });
   }
 
+  const fortyFiveZ = assumptions.fortyFiveZ || DEFAULT_ASSUMPTIONS.fortyFiveZ;
+  const net45ZPricePerMMBtu = calculate45ZRevenuePerMMBtu(fortyFiveZ);
+
   const proForma: ProFormaYear[] = [];
   const cashFlows: number[] = [-capexTotal];
   let cumulativeCashFlow = -capexTotal;
@@ -260,7 +340,13 @@ export function calculateFinancialModel(
     const effectiveNatGasPrice = Math.max(0, natGasPrice - assumptions.wheelHubCostPerMMBtu);
     const natGasRevenue = rngProductionMMBtu * effectiveNatGasPrice;
 
-    const totalRevenue = rinRevenue - rinBrokerage + natGasRevenue;
+    const calendarYear = codYear + y - 1;
+    let fortyFiveZRevenue = 0;
+    if (fortyFiveZ.enabled && calendarYear <= fortyFiveZ.endYear) {
+      fortyFiveZRevenue = rngProductionMMBtu * net45ZPricePerMMBtu;
+    }
+
+    const totalRevenue = rinRevenue - rinBrokerage + natGasRevenue + fortyFiveZRevenue;
 
     const utilityCost = opexBreakdown.utilityCost * Math.pow(1 + assumptions.electricityEscalator, y - 1);
     const laborCost = opexBreakdown.laborCost * inflationFactor;
@@ -297,12 +383,13 @@ export function calculateFinancialModel(
 
     proForma.push({
       year: y,
-      calendarYear: codYear + y - 1,
+      calendarYear,
       biogasScfm: Math.round(biogasScfm),
       rngProductionMMBtu: Math.round(rngProductionMMBtu),
       rinRevenue: Math.round(rinRevenue),
       rinBrokerage: Math.round(rinBrokerage),
       natGasRevenue: Math.round(natGasRevenue),
+      fortyFiveZRevenue: Math.round(fortyFiveZRevenue),
       totalRevenue: Math.round(totalRevenue),
       utilityCost: Math.round(utilityCost),
       feedstockCost: Math.round(feedstockCost),
