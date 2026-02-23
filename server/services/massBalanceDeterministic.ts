@@ -92,9 +92,31 @@ function parseVolumeToTonsPerYear(volume: string, unit: string): number {
 function getSpecValue(specs: any, key: string): string | null {
   if (!specs || typeof specs !== "object") return null;
   const entry = specs[key];
-  if (!entry) return null;
-  if (typeof entry === "object" && entry.value !== undefined && entry.value !== null && entry.value !== "") {
+  if (entry && typeof entry === "object" && entry.value !== undefined && entry.value !== null && entry.value !== "") {
     return String(entry.value);
+  }
+  return null;
+}
+
+function getSpecValueWithUnit(specs: any, key: string): { value: string; unit: string } | null {
+  if (!specs || typeof specs !== "object") return null;
+  const entry = specs[key];
+  if (entry && typeof entry === "object" && entry.value !== undefined && entry.value !== null && entry.value !== "") {
+    return { value: String(entry.value), unit: String(entry.unit || "") };
+  }
+  return null;
+}
+
+function getSpecByDisplayName(specs: any, displayName: string): string | null {
+  if (!specs || typeof specs !== "object") return null;
+  for (const [, spec] of Object.entries(specs)) {
+    const s = spec as any;
+    if (s && typeof s === "object" && s.displayName) {
+      const dn = String(s.displayName).toLowerCase().trim();
+      if (dn === displayName.toLowerCase().trim() && s.value !== undefined && s.value !== null && s.value !== "") {
+        return String(s.value);
+      }
+    }
   }
   return null;
 }
@@ -117,15 +139,33 @@ function parseFeedstocks(upif: any): ParsedFeedstock[] {
     const libraryProfile = matchFeedstockLibrary(type);
     const libProps = libraryProfile?.properties || {};
 
-    const tsStr = getSpecValue(specs, "totalSolids") || libProps.totalSolids?.value || "15";
-    const vsStr = getSpecValue(specs, "volatileSolids") || libProps.volatileSolids?.value || "85";
+    const tsStr = getSpecValue(specs, "totalSolids")
+      || getSpecByDisplayName(specs, "Total Solids (TS)")
+      || getSpecByDisplayName(specs, "TS")
+      || getSpecByDisplayName(specs, "Total Solids")
+      || libProps.totalSolids?.value || "15";
+    const vsStr = getSpecValue(specs, "volatileSolids")
+      || getSpecValue(specs, "vsTs")
+      || getSpecByDisplayName(specs, "VS/TS Ratio")
+      || getSpecByDisplayName(specs, "VS/TS")
+      || getSpecByDisplayName(specs, "Volatile Solids (VS)")
+      || libProps.volatileSolids?.value || "85";
     const bioStr = getSpecValue(specs, "biodegradableFraction") || libProps.biodegradableFraction?.value || "70";
-    const bmpStr = getSpecValue(specs, "methanePotential") || libProps.methanePotential?.value || "0.30";
+    const bmpSpec = getSpecValueWithUnit(specs, "methanePotential");
+    const bmpStr = bmpSpec?.value || libProps.methanePotential?.value || "0.30";
+    const bmpUnit = bmpSpec?.unit || libProps.methanePotential?.unit || "";
     const inertStr = getSpecValue(specs, "inertFraction") || libProps.inertFraction?.value || "3";
     const tknStr = getSpecValue(specs, "tkn") || libProps.tkn?.value || "3.0";
 
+    let bmpM3 = parseMidpoint(bmpStr);
+    if (bmpM3 > 1.0 || /ml/i.test(bmpUnit)) {
+      bmpM3 = bmpM3 / 1000;
+    }
+
     const nameLower = type.toLowerCase();
     const isPackaged = nameLower.includes("packaged") || nameLower.includes("depack");
+
+    console.log(`Deterministic MB: Feedstock "${type}" → TPY=${tpy}, TS=${parseMidpoint(tsStr)}%, VS/TS=${parseMidpoint(vsStr)}%, BMP=${bmpM3} m³CH4/kgVS (raw="${bmpStr}" unit="${bmpUnit}")`);
 
     feedstocks.push({
       name: type,
@@ -133,7 +173,7 @@ function parseFeedstocks(upif: any): ParsedFeedstock[] {
       tsPct: parseMidpoint(tsStr),
       vsPctOfTs: parseMidpoint(vsStr),
       biodegradablePct: parseMidpoint(bioStr),
-      bmpM3CH4PerKgVS: parseMidpoint(bmpStr),
+      bmpM3CH4PerKgVS: bmpM3,
       inertPct: parseMidpoint(inertStr),
       tknGPerKgWet: parseMidpoint(tknStr),
       isPackaged,
