@@ -31,6 +31,13 @@ const DEFAULT_ASSUMPTIONS: FinancialAssumptions = {
   itcMonetizationPct: 0.88,
   maintenanceCapexPct: 0.015,
   discountRate: 0.10,
+  revenueMarket: "d3",
+  voluntaryPricing: {
+    gasPricePerMMBtu: 3.50,
+    gasPriceEscalator: 0.03,
+    voluntaryPremiumPerMMBtu: 16,
+    voluntaryPremiumEscalator: 0.02,
+  },
   feedstockCosts: [],
   debtFinancing: {
     enabled: false,
@@ -262,6 +269,7 @@ export function buildDefaultAssumptions(
 ): FinancialAssumptions {
   const assumptions = {
     ...DEFAULT_ASSUMPTIONS,
+    voluntaryPricing: { ...DEFAULT_ASSUMPTIONS.voluntaryPricing },
     fortyFiveZ: { ...DEFAULT_ASSUMPTIONS.fortyFiveZ },
   };
 
@@ -316,6 +324,8 @@ export function calculateFinancialModel(
 
   const fortyFiveZ = assumptions.fortyFiveZ || DEFAULT_ASSUMPTIONS.fortyFiveZ;
   const net45ZPricePerMMBtu = calculate45ZRevenuePerMMBtu(fortyFiveZ);
+  const isVoluntary = assumptions.revenueMarket === "voluntary";
+  const volPricing = assumptions.voluntaryPricing || DEFAULT_ASSUMPTIONS.voluntaryPricing;
 
   const proForma: ProFormaYear[] = [];
   const cashFlows: number[] = [-capexTotal];
@@ -331,14 +341,26 @@ export function calculateFinancialModel(
     const rngMMBtuPerDay = rngMMBtuPerDayBase * growthFactor;
     const rngProductionMMBtu = rngMMBtuPerDay * 365 * assumptions.uptimePct;
 
-    const rinPrice = assumptions.rinPricePerRIN * Math.pow(1 + assumptions.rinPriceEscalator, y - 1);
-    const rinsGenerated = rngProductionMMBtu * assumptions.rinPerMMBtu;
-    const rinRevenue = rinsGenerated * rinPrice;
-    const rinBrokerage = rinRevenue * assumptions.rinBrokeragePct;
+    let rinRevenue = 0;
+    let rinBrokerage = 0;
+    let natGasRevenue = 0;
+    let voluntaryRevenue = 0;
 
-    const natGasPrice = assumptions.natGasPricePerMMBtu * Math.pow(1 + assumptions.natGasPriceEscalator, y - 1);
-    const effectiveNatGasPrice = Math.max(0, natGasPrice - assumptions.wheelHubCostPerMMBtu);
-    const natGasRevenue = rngProductionMMBtu * effectiveNatGasPrice;
+    if (isVoluntary) {
+      const gasPrice = volPricing.gasPricePerMMBtu * Math.pow(1 + volPricing.gasPriceEscalator, y - 1);
+      const premium = volPricing.voluntaryPremiumPerMMBtu * Math.pow(1 + volPricing.voluntaryPremiumEscalator, y - 1);
+      const effectiveVolPrice = Math.max(0, gasPrice + premium - assumptions.wheelHubCostPerMMBtu);
+      voluntaryRevenue = rngProductionMMBtu * effectiveVolPrice;
+    } else {
+      const rinPrice = assumptions.rinPricePerRIN * Math.pow(1 + assumptions.rinPriceEscalator, y - 1);
+      const rinsGenerated = rngProductionMMBtu * assumptions.rinPerMMBtu;
+      rinRevenue = rinsGenerated * rinPrice;
+      rinBrokerage = rinRevenue * assumptions.rinBrokeragePct;
+
+      const natGasPrice = assumptions.natGasPricePerMMBtu * Math.pow(1 + assumptions.natGasPriceEscalator, y - 1);
+      const effectiveNatGasPrice = Math.max(0, natGasPrice - assumptions.wheelHubCostPerMMBtu);
+      natGasRevenue = rngProductionMMBtu * effectiveNatGasPrice;
+    }
 
     const calendarYear = codYear + y - 1;
     let fortyFiveZRevenue = 0;
@@ -346,7 +368,9 @@ export function calculateFinancialModel(
       fortyFiveZRevenue = rngProductionMMBtu * net45ZPricePerMMBtu;
     }
 
-    const totalRevenue = rinRevenue - rinBrokerage + natGasRevenue + fortyFiveZRevenue;
+    const totalRevenue = isVoluntary
+      ? voluntaryRevenue + fortyFiveZRevenue
+      : rinRevenue - rinBrokerage + natGasRevenue + fortyFiveZRevenue;
 
     const utilityCost = opexBreakdown.utilityCost * Math.pow(1 + assumptions.electricityEscalator, y - 1);
     const laborCost = opexBreakdown.laborCost * inflationFactor;
@@ -389,6 +413,7 @@ export function calculateFinancialModel(
       rinRevenue: Math.round(rinRevenue),
       rinBrokerage: Math.round(rinBrokerage),
       natGasRevenue: Math.round(natGasRevenue),
+      voluntaryRevenue: Math.round(voluntaryRevenue),
       fortyFiveZRevenue: Math.round(fortyFiveZRevenue),
       totalRevenue: Math.round(totalRevenue),
       utilityCost: Math.round(utilityCost),

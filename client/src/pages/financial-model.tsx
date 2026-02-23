@@ -223,11 +223,29 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
     endYear: 2029,
   };
 
-  const updateAssumption = (path: string, value: number) => {
+  const defaultVoluntaryPricing = {
+    gasPricePerMMBtu: 3.50,
+    gasPriceEscalator: 0.03,
+    voluntaryPremiumPerMMBtu: 16,
+    voluntaryPremiumEscalator: 0.02,
+  };
+
+  const updateAssumption = (path: string, value: number | string) => {
     if (!assumptions) return;
     const updated = JSON.parse(JSON.stringify(assumptions));
     if (path.startsWith("fortyFiveZ.") && !updated.fortyFiveZ) {
       updated.fortyFiveZ = { ...defaultFortyFiveZ };
+    }
+    if (path.startsWith("voluntaryPricing.") && !updated.voluntaryPricing) {
+      updated.voluntaryPricing = { ...defaultVoluntaryPricing };
+    }
+    if (path === "revenueMarket") {
+      updated.revenueMarket = value as string;
+      if (!updated.voluntaryPricing) {
+        updated.voluntaryPricing = { ...defaultVoluntaryPricing };
+      }
+      setLocalAssumptions(updated);
+      return;
     }
     const keys = path.split(".");
     let obj: any = updated;
@@ -439,7 +457,7 @@ function AssumptionsEditor({
 }: {
   assumptions: FinancialAssumptions;
   readOnly: boolean;
-  onUpdate: (path: string, value: number) => void;
+  onUpdate: (path: string, value: number | string) => void;
   onUpdateFeedstock: (index: number, field: string, value: number) => void;
 }) {
   return (
@@ -462,15 +480,52 @@ function AssumptionsEditor({
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Revenue</CardTitle>
+            <CardTitle className="text-sm">RNG Revenue Market</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <AssumptionField label="RIN Price" unit="$/RIN" value={assumptions.rinPricePerRIN} onChange={(v) => onUpdate("rinPricePerRIN", v)} readOnly={readOnly} testId="input-rin-price" />
-            <AssumptionField label="RIN Price Escalator" unit="%/yr" value={assumptions.rinPriceEscalator} onChange={(v) => onUpdate("rinPriceEscalator", v)} readOnly={readOnly} testId="input-rin-escalator" />
-            <AssumptionField label="RIN Brokerage" unit="%" value={assumptions.rinBrokeragePct} onChange={(v) => onUpdate("rinBrokeragePct", v)} readOnly={readOnly} testId="input-rin-brokerage" />
-            <AssumptionField label="RINs per MMBtu" unit="" value={assumptions.rinPerMMBtu} onChange={(v) => onUpdate("rinPerMMBtu", v)} readOnly={readOnly} testId="input-rin-per-mmbtu" />
-            <AssumptionField label="Natural Gas Price" unit="$/MMBtu" value={assumptions.natGasPricePerMMBtu} onChange={(v) => onUpdate("natGasPricePerMMBtu", v)} readOnly={readOnly} testId="input-natgas-price" />
-            <AssumptionField label="Nat Gas Escalator" unit="%/yr" value={assumptions.natGasPriceEscalator} onChange={(v) => onUpdate("natGasPriceEscalator", v)} readOnly={readOnly} testId="input-natgas-escalator" />
+            <div className="flex items-center gap-3">
+              <Label className="text-xs min-w-[70px]">Market</Label>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant={(assumptions.revenueMarket || "d3") === "d3" ? "default" : "outline"}
+                  className="text-xs h-7 px-3"
+                  onClick={() => onUpdate("revenueMarket", "d3")}
+                  disabled={readOnly}
+                  data-testid="button-market-d3"
+                >
+                  D3 RINs
+                </Button>
+                <Button
+                  size="sm"
+                  variant={assumptions.revenueMarket === "voluntary" ? "default" : "outline"}
+                  className="text-xs h-7 px-3"
+                  onClick={() => onUpdate("revenueMarket", "voluntary")}
+                  disabled={readOnly}
+                  data-testid="button-market-voluntary"
+                >
+                  Voluntary
+                </Button>
+              </div>
+            </div>
+
+            {(assumptions.revenueMarket || "d3") === "d3" ? (
+              <>
+                <AssumptionField label="RIN Price" unit="$/RIN" value={assumptions.rinPricePerRIN} onChange={(v) => onUpdate("rinPricePerRIN", v)} readOnly={readOnly} testId="input-rin-price" />
+                <AssumptionField label="RIN Price Escalator" unit="%/yr" value={assumptions.rinPriceEscalator} onChange={(v) => onUpdate("rinPriceEscalator", v)} readOnly={readOnly} testId="input-rin-escalator" />
+                <AssumptionField label="RIN Brokerage" unit="%" value={assumptions.rinBrokeragePct} onChange={(v) => onUpdate("rinBrokeragePct", v)} readOnly={readOnly} testId="input-rin-brokerage" />
+                <AssumptionField label="RINs per MMBtu" unit="" value={assumptions.rinPerMMBtu} onChange={(v) => onUpdate("rinPerMMBtu", v)} readOnly={readOnly} testId="input-rin-per-mmbtu" />
+                <AssumptionField label="Natural Gas Price" unit="$/MMBtu" value={assumptions.natGasPricePerMMBtu} onChange={(v) => onUpdate("natGasPricePerMMBtu", v)} readOnly={readOnly} testId="input-natgas-price" />
+                <AssumptionField label="Nat Gas Escalator" unit="%/yr" value={assumptions.natGasPriceEscalator} onChange={(v) => onUpdate("natGasPriceEscalator", v)} readOnly={readOnly} testId="input-natgas-escalator" />
+              </>
+            ) : (
+              <>
+                <AssumptionField label="Gas Price" unit="$/MMBtu" value={assumptions.voluntaryPricing?.gasPricePerMMBtu ?? 3.50} onChange={(v) => onUpdate("voluntaryPricing.gasPricePerMMBtu", v)} readOnly={readOnly} testId="input-vol-gas-price" />
+                <AssumptionField label="Gas Price Escalator" unit="%/yr" value={assumptions.voluntaryPricing?.gasPriceEscalator ?? 0.03} onChange={(v) => onUpdate("voluntaryPricing.gasPriceEscalator", v)} readOnly={readOnly} testId="input-vol-gas-escalator" />
+                <AssumptionField label="Voluntary Premium" unit="$/MMBtu" value={assumptions.voluntaryPricing?.voluntaryPremiumPerMMBtu ?? 16} onChange={(v) => onUpdate("voluntaryPricing.voluntaryPremiumPerMMBtu", v)} readOnly={readOnly} testId="input-vol-premium" />
+                <AssumptionField label="Premium Escalator" unit="%/yr" value={assumptions.voluntaryPricing?.voluntaryPremiumEscalator ?? 0.02} onChange={(v) => onUpdate("voluntaryPricing.voluntaryPremiumEscalator", v)} readOnly={readOnly} testId="input-vol-premium-escalator" />
+              </>
+            )}
             <AssumptionField label="Wheel/Hub Cost" unit="$/MMBtu" value={assumptions.wheelHubCostPerMMBtu} onChange={(v) => onUpdate("wheelHubCostPerMMBtu", v)} readOnly={readOnly} testId="input-wheel-hub" />
           </CardContent>
         </Card>
@@ -646,6 +701,7 @@ function ProFormaTable({ proForma, results }: { proForma: ProFormaYear[]; result
   const capexTotal = results.capexTotal || 0;
   const itcProceeds = results.metrics?.itcProceeds || 0;
   const year0CalendarYear = proForma.length > 0 ? proForma[0].calendarYear - 1 : new Date().getFullYear();
+  const isVoluntaryMarket = results.assumptions?.revenueMarket === "voluntary";
 
   return (
     <div className="space-y-2">
@@ -682,10 +738,16 @@ function ProFormaTable({ proForma, results }: { proForma: ProFormaYear[]; result
               year0Value={null}
             />
 
-            <SectionHeaderRow label="Revenue ($000)" colSpan={totalCols} />
-            <DataRow label="RIN Revenue" values={proForma.map((yr) => yr.rinRevenue)} year0Value={0} />
-            <DataRow label="(-) RIN Brokerage" values={proForma.map((yr) => -yr.rinBrokerage)} year0Value={0} />
-            <DataRow label="(+) Natural Gas Revenue" values={proForma.map((yr) => yr.natGasRevenue)} year0Value={0} />
+            <SectionHeaderRow label={`Revenue ($000) — ${isVoluntaryMarket ? "Voluntary Market" : "D3 RIN Market"}`} colSpan={totalCols} />
+            {isVoluntaryMarket ? (
+              <DataRow label="Voluntary Revenue" values={proForma.map((yr) => yr.voluntaryRevenue || 0)} year0Value={0} />
+            ) : (
+              <>
+                <DataRow label="RIN Revenue" values={proForma.map((yr) => yr.rinRevenue)} year0Value={0} />
+                <DataRow label="(-) RIN Brokerage" values={proForma.map((yr) => -yr.rinBrokerage)} year0Value={0} />
+                <DataRow label="(+) Natural Gas Revenue" values={proForma.map((yr) => yr.natGasRevenue)} year0Value={0} />
+              </>
+            )}
             <DataRow label="(+) 45Z Tax Credits" values={proForma.map((yr) => yr.fortyFiveZRevenue || 0)} year0Value={0} />
             <DataRow label="= Total Revenue" values={proForma.map((yr) => yr.totalRevenue)} isBold year0Value={0} />
 

@@ -1446,17 +1446,37 @@ export function exportProjectSummaryPDF(
       y += 25;
 
       const assumptions = financialResults.assumptions;
+      const isVolMarket = assumptions.revenueMarket === "voluntary";
       y = addSectionHeader(doc, "Financial Assumptions", y, leftMargin, contentWidth);
       const assumpRows: string[][] = [
         ["Inflation Rate", `${fmtNum(assumptions.inflationRate * 100)}%`],
         ["Project Life", `${assumptions.projectLifeYears} years`],
         ["Construction Period", `${assumptions.constructionMonths} months`],
         ["Uptime", `${fmtNum(assumptions.uptimePct * 100)}%`],
-        ["RNG Price", `${fmtCurrency(assumptions.rngPricePerMMBtu)}/MMBtu`],
-        ["RIN Price", `${fmtCurrency(assumptions.rinPricePerRIN)}/RIN`],
+        ["Revenue Market", isVolMarket ? "Voluntary" : "D3 RINs"],
+      ];
+      if (isVolMarket) {
+        const vp = assumptions.voluntaryPricing;
+        if (vp) {
+          assumpRows.push(
+            ["Gas Price", `${fmtCurrency(vp.gasPricePerMMBtu)}/MMBtu`],
+            ["Gas Price Escalator", `${fmtNum(vp.gasPriceEscalator * 100)}%/yr`],
+            ["Voluntary Premium", `${fmtCurrency(vp.voluntaryPremiumPerMMBtu)}/MMBtu`],
+            ["Premium Escalator", `${fmtNum(vp.voluntaryPremiumEscalator * 100)}%/yr`],
+          );
+        }
+      } else {
+        assumpRows.push(
+          ["RIN Price", `${fmtCurrency(assumptions.rinPricePerRIN)}/RIN`],
+          ["RIN Brokerage", `${fmtNum(assumptions.rinBrokeragePct * 100)}%`],
+          ["Natural Gas Price", `${fmtCurrency(assumptions.natGasPricePerMMBtu)}/MMBtu`],
+        );
+      }
+      assumpRows.push(
+        ["Wheel/Hub Cost", `${fmtCurrency(assumptions.wheelHubCostPerMMBtu)}/MMBtu`],
         ["Discount Rate", `${fmtNum(assumptions.discountRate * 100)}%`],
         ["ITC Rate", `${fmtNum(assumptions.itcRate * 100)}%`],
-      ];
+      );
       if (assumptions.fortyFiveZ) {
         assumpRows.push(["45Z Credits", assumptions.fortyFiveZ.enabled ? "Enabled" : "Disabled"]);
         if (assumptions.fortyFiveZ.enabled) {
@@ -1474,11 +1494,13 @@ export function exportProjectSummaryPDF(
 
       if (financialResults.proForma && financialResults.proForma.length > 0) {
         if (y > 680) { doc.addPage(); y = 50; }
-        y = addSectionHeader(doc, "Pro-Forma Projections ($000)", y, leftMargin, contentWidth);
+        const marketLabel = isVolMarket ? "Voluntary Market" : "D3 RIN Market";
+        y = addSectionHeader(doc, `Pro-Forma Projections ($000) — ${marketLabel}`, y, leftMargin, contentWidth);
         const has45Z = financialResults.proForma.some(pf => (pf.fortyFiveZRevenue || 0) > 0);
-        const pfHeaders = has45Z
-          ? ["Year", "Cal Year", "RNG (MMBtu)", "45Z Rev", "Revenue", "OpEx", "EBITDA", "Net CF", "Cumul CF"]
-          : ["Year", "Cal Year", "RNG (MMBtu)", "Revenue", "OpEx", "EBITDA", "Net CF", "Cumul CF"];
+        const pfHeaders: string[] = ["Year", "Cal Year", "RNG (MMBtu)"];
+        if (has45Z) pfHeaders.push("45Z Rev");
+        pfHeaders.push("Revenue", "OpEx", "EBITDA", "Net CF", "Cumul CF");
+
         const pfRows = financialResults.proForma.map(pf => {
           const base = [
             String(pf.year),

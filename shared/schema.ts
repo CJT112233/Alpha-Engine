@@ -602,6 +602,13 @@ export type FinancialAssumptions = {
   itcMonetizationPct: number;
   maintenanceCapexPct: number;
   discountRate: number;
+  revenueMarket: "d3" | "voluntary";
+  voluntaryPricing: {
+    gasPricePerMMBtu: number;
+    gasPriceEscalator: number;
+    voluntaryPremiumPerMMBtu: number;
+    voluntaryPremiumEscalator: number;
+  };
   feedstockCosts: Array<{
     feedstockName: string;
     costPerTon: number;
@@ -633,6 +640,7 @@ export type ProFormaYear = {
   rinRevenue: number;
   rinBrokerage: number;
   natGasRevenue: number;
+  voluntaryRevenue: number;
   fortyFiveZRevenue: number;
   totalRevenue: number;
   utilityCost: number;
