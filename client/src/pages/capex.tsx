@@ -52,6 +52,13 @@ function formatCurrency(val: number): string {
   return "$" + val.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
+function formatCurrencyK(val: number | undefined | null): string {
+  if (val === undefined || val === null || isNaN(val)) return "—";
+  const inK = Math.round(val / 1000);
+  if (inK < 0) return `($${Math.abs(inK).toLocaleString(undefined, { maximumFractionDigits: 0 })})K`;
+  return "$" + inK.toLocaleString(undefined, { maximumFractionDigits: 0 }) + "K";
+}
+
 function parseNumericValue(str: string): number {
   const cleaned = str.replace(/[$,%\s]/g, "").replace(/,/g, "");
   const val = parseFloat(cleaned);
@@ -584,7 +591,7 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
                       <div className="mt-1">
                         <EditableValue
                           fieldKey="summary.totalEquipmentCost"
-                          displayValue={formatCurrency(summary.totalEquipmentCost)}
+                          displayValue={formatCurrencyK(summary.totalEquipmentCost)}
                           isLocked={!!locks["summary.totalEquipmentCost"]}
                           isOverridden={!!overrides["summary.totalEquipmentCost"]}
                           onSaveOverride={handleSaveOverride}
@@ -600,7 +607,7 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
                       <div className="mt-1">
                         <EditableValue
                           fieldKey="summary.totalInstalledCost"
-                          displayValue={formatCurrency(summary.totalInstalledCost)}
+                          displayValue={formatCurrencyK(summary.totalInstalledCost)}
                           isLocked={!!locks["summary.totalInstalledCost"]}
                           isOverridden={!!overrides["summary.totalInstalledCost"]}
                           onSaveOverride={handleSaveOverride}
@@ -616,7 +623,7 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
                       <div className="mt-1">
                         <EditableValue
                           fieldKey="summary.totalDirectCost"
-                          displayValue={formatCurrency(summary.totalDirectCost)}
+                          displayValue={formatCurrencyK(summary.totalDirectCost)}
                           isLocked={!!locks["summary.totalDirectCost"]}
                           isOverridden={!!overrides["summary.totalDirectCost"]}
                           onSaveOverride={handleSaveOverride}
@@ -633,7 +640,7 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
                       <div className="mt-1">
                         <EditableValue
                           fieldKey="summary.totalProjectCost"
-                          displayValue={formatCurrency(summary.totalProjectCost)}
+                          displayValue={formatCurrencyK(summary.totalProjectCost)}
                           isLocked={!!locks["summary.totalProjectCost"]}
                           isOverridden={!!overrides["summary.totalProjectCost"]}
                           onSaveOverride={handleSaveOverride}
@@ -658,7 +665,7 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
                           compact
                         />
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{formatCurrency(summary.engineeringCost)}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{formatCurrencyK(summary.engineeringCost)}</div>
                     </CardContent>
                   </Card>
                   {summary.costPerUnit && (
@@ -756,7 +763,7 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
                                   <TableCell className="text-right">
                                     <EditableValue
                                       fieldKey={installedCostKey}
-                                      displayValue={formatCurrency(item.installedCost)}
+                                      displayValue={formatCurrencyK(item.installedCost)}
                                       isLocked={!!locks[installedCostKey]}
                                       isOverridden={!!overrides[installedCostKey]}
                                       onSaveOverride={handleSaveOverride}
@@ -778,7 +785,7 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
                                   <TableCell className="text-right">
                                     <EditableValue
                                       fieldKey={totalCostKey}
-                                      displayValue={formatCurrency(item.totalCost)}
+                                      displayValue={formatCurrencyK(item.totalCost)}
                                       isLocked={!!locks[totalCostKey]}
                                       isOverridden={!!overrides[totalCostKey]}
                                       onSaveOverride={handleSaveOverride}

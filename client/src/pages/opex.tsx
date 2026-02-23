@@ -55,6 +55,13 @@ function formatCurrency(val: number): string {
   return prefix + Math.abs(val).toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
+function formatCurrencyK(val: number | undefined | null): string {
+  if (val === undefined || val === null || isNaN(val)) return "—";
+  const inK = Math.round(val / 1000);
+  if (inK < 0) return `($${Math.abs(inK).toLocaleString(undefined, { maximumFractionDigits: 0 })})K`;
+  return "$" + inK.toLocaleString(undefined, { maximumFractionDigits: 0 }) + "K";
+}
+
 function parseNumericValue(str: string): number {
   const cleaned = str.replace(/[$,%\s]/g, "").replace(/,/g, "");
   const val = parseFloat(cleaned);
@@ -708,7 +715,7 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                       <div className="mt-1">
                         <EditableValue
                           fieldKey="summary.totalAnnualOpex"
-                          displayValue={formatCurrency(summary.totalAnnualOpex)}
+                          displayValue={formatCurrencyK(summary.totalAnnualOpex)}
                           isLocked={!!locks["summary.totalAnnualOpex"]}
                           isOverridden={!!overrides["summary.totalAnnualOpex"]}
                           onSaveOverride={handleSaveOverride}
@@ -728,7 +735,7 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                         <div className="mt-1">
                           <EditableValue
                             fieldKey="summary.revenueOffsets"
-                            displayValue={formatCurrency(summary.revenueOffsets)}
+                            displayValue={formatCurrencyK(summary.revenueOffsets)}
                             isLocked={!!locks["summary.revenueOffsets"]}
                             isOverridden={!!overrides["summary.revenueOffsets"]}
                             onSaveOverride={handleSaveOverride}
@@ -745,7 +752,7 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                       <div className="mt-1">
                         <EditableValue
                           fieldKey="summary.netAnnualOpex"
-                          displayValue={formatCurrency(summary.netAnnualOpex)}
+                          displayValue={formatCurrencyK(summary.netAnnualOpex)}
                           isLocked={!!locks["summary.netAnnualOpex"]}
                           isOverridden={!!overrides["summary.netAnnualOpex"]}
                           onSaveOverride={handleSaveOverride}
@@ -800,7 +807,7 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                     <Card key={item.key} className="border-dashed">
                       <CardContent className="p-3 text-center">
                         <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{item.label}</div>
-                        <div className="text-xs font-medium mt-1">{formatCurrency(item.value)}</div>
+                        <div className="text-xs font-medium mt-1">{formatCurrencyK(item.value)}</div>
                         {summary.totalAnnualOpex > 0 && (
                           <div className="text-[10px] text-muted-foreground">
                             {Math.round((item.value / summary.totalAnnualOpex) * 100)}%
@@ -834,7 +841,7 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                             <TableRow>
                               <TableHead className="min-w-[100px]">Category</TableHead>
                               <TableHead className="min-w-[200px]">Description</TableHead>
-                              <TableHead className="text-right min-w-[120px]">Annual Cost ($)</TableHead>
+                              <TableHead className="text-right min-w-[120px]">Annual Cost ($000s)</TableHead>
                               <TableHead className="text-right min-w-[100px]">Unit Cost</TableHead>
                               <TableHead className="min-w-[100px]">Unit Basis</TableHead>
                               <TableHead className="min-w-[120px]">Scaling Basis</TableHead>
@@ -858,7 +865,7 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                                   <TableCell className="text-right">
                                     <EditableValue
                                       fieldKey={annualCostKey}
-                                      displayValue={formatCurrency(item.annualCost)}
+                                      displayValue={formatCurrencyK(item.annualCost)}
                                       isLocked={!!locks[annualCostKey]}
                                       isOverridden={!!overrides[annualCostKey]}
                                       onSaveOverride={handleSaveOverride}

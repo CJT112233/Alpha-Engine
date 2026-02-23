@@ -24,6 +24,84 @@ function fmtCurrency(val: number): string {
   return "$" + val.toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
+function fmtCurrencyK(val: number): string {
+  if (val === undefined || val === null || isNaN(val)) return "$0K";
+  const inK = Math.round(val / 1000);
+  if (inK < 0) return `($${Math.abs(inK).toLocaleString("en-US")}K)`;
+  return "$" + inK.toLocaleString("en-US") + "K";
+}
+
+function buildExecutiveSummary(
+  projectName: string,
+  projectType: string,
+  upifData: any,
+  mbResults: MassBalanceResults,
+  capexResults: CapexResults,
+  opexResults: OpexResults,
+  financialResults: FinancialModelResults,
+): string {
+  const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
+  const typeLabel = typeLabels[projectType] || projectType;
+  const location = upifData?.location ? ` located in ${upifData.location}` : "";
+
+  const feedstocks = upifData?.feedstocks;
+  let feedstockDesc = "";
+  if (feedstocks && Array.isArray(feedstocks) && feedstocks.length > 0) {
+    const parts = feedstocks.map((fs: any) => {
+      const vol = fs.feedstockVolume ? Number(fs.feedstockVolume).toLocaleString("en-US") : "";
+      const unit = fs.feedstockUnit || "";
+      const type = fs.feedstockType || "feedstock";
+      return vol ? `${vol} ${unit} of ${type}` : type;
+    });
+    feedstockDesc = parts.length === 1 ? parts[0] : parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
+  }
+
+  const summary = mbResults?.summary || {} as any;
+  const rngScfm = summary.rngProduction?.value;
+  const rngAnnualMMBtu = summary.rngEnergyAnnual?.value;
+  const biogasScfm = summary.biogasProduction?.value;
+
+  const metrics = financialResults?.metrics || {} as any;
+  const totalCapex = metrics.totalCapex;
+  const irr = metrics.irr;
+  const payback = metrics.paybackYears;
+  const npv = metrics.npv10;
+  const annualOpex = opexResults?.summary?.totalAnnualOpex;
+
+  let text = `${projectName} is a Type ${projectType} (${typeLabel}) project${location}`;
+
+  if (feedstockDesc) {
+    text += ` processing ${feedstockDesc}`;
+  }
+  text += ".";
+
+  if (rngScfm || biogasScfm) {
+    text += " The facility is designed to produce";
+    if (rngScfm) {
+      text += ` ${fmtNum(Number(rngScfm), 0)} SCFM of RNG`;
+      if (rngAnnualMMBtu) text += ` (${fmtNum(Number(String(rngAnnualMMBtu).replace(/,/g, "")), 0)} MMBtu/year)`;
+    } else if (biogasScfm) {
+      text += ` ${fmtNum(Number(biogasScfm), 0)} SCFM of biogas`;
+    }
+    text += ".";
+  }
+
+  if (totalCapex && !isNaN(totalCapex) && totalCapex > 0) {
+    text += ` Total project cost is estimated at ${fmtCurrencyK(totalCapex)}`;
+    if (annualOpex && !isNaN(annualOpex) && annualOpex > 0) text += ` with annual operating expenses of ${fmtCurrencyK(annualOpex)}`;
+    text += ".";
+  }
+
+  if (irr !== null && irr !== undefined && !isNaN(irr)) {
+    text += ` The project yields an IRR of ${fmtNum(irr * 100)}%`;
+    if (payback !== null && payback !== undefined && !isNaN(payback)) text += `, a payback period of ${fmtNum(payback, 1)} years`;
+    if (npv !== null && npv !== undefined && !isNaN(npv)) text += `, and an NPV at 10% of ${fmtCurrencyK(npv)}`;
+    text += ".";
+  }
+
+  return text;
+}
+
 function drawTable(
   doc: InstanceType<typeof PDFDocument>,
   headers: string[],
@@ -1221,25 +1299,17 @@ export function exportProjectSummaryPDF(
     let y = 150;
 
     y = addSectionHeader(doc, "Project Overview", y, leftMargin, contentWidth);
-    const description = upifData?.projectDescription || upifData?.description || "";
-    if (description) {
-      doc.font("Helvetica").fontSize(9).fillColor("#44546A")
-        .text(sanitize(description), leftMargin, y, { width: contentWidth, lineGap: 2 });
-      y += doc.heightOfString(sanitize(description), { width: contentWidth }) + 8;
-    }
-    const location = upifData?.location || "";
-    if (location) {
-      doc.font("Helvetica").fontSize(9).fillColor("#44546A")
-        .text(`Location: ${sanitize(location)}`, leftMargin, y, { width: contentWidth });
-      y += 14;
-    }
+    const execSummary = buildExecutiveSummary(projectName, projectType, upifData, mbResults, capexResults, opexResults, financialResults);
+    doc.font("Helvetica").fontSize(9).fillColor("#44546A")
+      .text(sanitize(execSummary), leftMargin, y, { width: contentWidth, lineGap: 3 });
+    y += doc.heightOfString(sanitize(execSummary), { width: contentWidth, lineGap: 3 }) + 10;
 
     if (upifData?.feedstocks && Array.isArray(upifData.feedstocks) && upifData.feedstocks.length > 0) {
       y += 4;
       const fsHeaders = ["Feedstock Type", "Volume", "Unit"];
       const fsRows = upifData.feedstocks.map((fs: any) => [
         sanitize(fs.feedstockType || ""),
-        sanitize(fs.feedstockVolume || "-"),
+        fs.feedstockVolume ? Number(fs.feedstockVolume).toLocaleString("en-US") : "-",
         sanitize(fs.feedstockUnit || ""),
       ]);
       y = drawTable(doc, fsHeaders, fsRows, leftMargin, y, [220, 146, 146]);
@@ -1249,40 +1319,39 @@ export function exportProjectSummaryPDF(
     }
 
     const metrics = financialResults.metrics || {} as any;
-    y = addSectionHeader(doc, "Financial Returns (Key Metrics)", y, leftMargin, contentWidth);
+    y = addSectionHeader(doc, "Financial Returns (Key Metrics) — amounts in $000s", y, leftMargin, contentWidth);
     const metricsHeaders = ["Metric", "Value", "Metric", "Value"];
     const metricsRows = [
       [
         "IRR",
         metrics.irr !== null && metrics.irr !== undefined ? `${fmtNum(metrics.irr * 100)}%` : "N/A",
         "Total CapEx",
-        fmtCurrency(metrics.totalCapex),
+        fmtCurrencyK(metrics.totalCapex),
       ],
       [
         "NPV @ 10%",
-        fmtCurrency(metrics.npv10),
+        fmtCurrencyK(metrics.npv10),
         "ITC Proceeds",
-        fmtCurrency(metrics.itcProceeds),
+        fmtCurrencyK(metrics.itcProceeds),
       ],
       [
         "MOIC",
         `${fmtNum(metrics.moic, 1)}x`,
-        "Total 10-Year Revenue",
-        fmtCurrency(metrics.totalRevenue),
+        "Total 20-Year Revenue",
+        fmtCurrencyK(metrics.totalRevenue),
       ],
       [
         "Payback Period",
         metrics.paybackYears !== null && metrics.paybackYears !== undefined ? `${fmtNum(metrics.paybackYears, 1)} years` : "N/A",
         "Avg Annual EBITDA",
-        fmtCurrency(metrics.averageAnnualEbitda),
+        fmtCurrencyK(metrics.averageAnnualEbitda),
       ],
     ];
     y = drawTable(doc, metricsHeaders, metricsRows, leftMargin, y, [100, 156, 120, 136], { headerBg: "#00B050" });
     y += 15;
 
     addPageFooter();
-    doc.addPage();
-    y = 50;
+    if (y > 580) { doc.addPage(); y = 50; } else { y += 10; }
 
     y = addSectionHeader(doc, "Equipment Summary", y, leftMargin, contentWidth);
     if (mbResults.equipment && mbResults.equipment.length > 0) {
@@ -1310,31 +1379,31 @@ export function exportProjectSummaryPDF(
     }
 
     if (y > 680) { doc.addPage(); y = 50; }
-    y = addSectionHeader(doc, "CapEx Summary", y, leftMargin, contentWidth);
+    y = addSectionHeader(doc, "CapEx Summary ($000s)", y, leftMargin, contentWidth);
     const capSummary = capexResults.summary;
     const capexSumRows: string[][] = [
-      ["Equipment Cost", fmtCurrency(capSummary.totalEquipmentCost)],
-      ["Installation Cost", fmtCurrency(capSummary.totalInstalledCost)],
-      ["Contingency", fmtCurrency(capSummary.totalContingency)],
-      ["Total Direct Cost", fmtCurrency(capSummary.totalDirectCost)],
-      [`Engineering (${capSummary.engineeringPct}%)`, fmtCurrency(capSummary.engineeringCost)],
-      ["Total Project Cost", fmtCurrency(capSummary.totalProjectCost)],
+      ["Equipment Cost", fmtCurrencyK(capSummary.totalEquipmentCost)],
+      ["Installation Cost", fmtCurrencyK(capSummary.totalInstalledCost)],
+      ["Contingency", fmtCurrencyK(capSummary.totalContingency)],
+      ["Total Direct Cost", fmtCurrencyK(capSummary.totalDirectCost)],
+      [`Engineering (${capSummary.engineeringPct}%)`, fmtCurrencyK(capSummary.engineeringCost)],
+      ["Total Project Cost", fmtCurrencyK(capSummary.totalProjectCost)],
     ];
     y = drawTable(doc, ["Item", "Amount"], capexSumRows, leftMargin, y, [300, 212], { headerBg: "#323F4F" });
     y += 15;
 
     if (y > 680) { doc.addPage(); y = 50; }
-    y = addSectionHeader(doc, "OpEx Summary", y, leftMargin, contentWidth);
+    y = addSectionHeader(doc, "OpEx Summary ($000s)", y, leftMargin, contentWidth);
     const opSummary = opexResults.summary;
     const opexSumRows: string[][] = [
-      ["Total Annual OpEx", fmtCurrency(opSummary.totalAnnualOpex)],
-      ["Labor", fmtCurrency(opSummary.totalLaborCost)],
-      ["Energy", fmtCurrency(opSummary.totalEnergyCost)],
-      ["Chemicals", fmtCurrency(opSummary.totalChemicalCost)],
-      ["Maintenance", fmtCurrency(opSummary.totalMaintenanceCost)],
-      ["Disposal", fmtCurrency(opSummary.totalDisposalCost)],
-      ["Other", fmtCurrency(opSummary.totalOtherCost)],
-      ["Net Annual OpEx", fmtCurrency(opSummary.netAnnualOpex)],
+      ["Total Annual OpEx", fmtCurrencyK(opSummary.totalAnnualOpex)],
+      ["Labor", fmtCurrencyK(opSummary.totalLaborCost)],
+      ["Energy", fmtCurrencyK(opSummary.totalEnergyCost)],
+      ["Chemicals", fmtCurrencyK(opSummary.totalChemicalCost)],
+      ["Maintenance", fmtCurrencyK(opSummary.totalMaintenanceCost)],
+      ["Disposal", fmtCurrencyK(opSummary.totalDisposalCost)],
+      ["Other", fmtCurrencyK(opSummary.totalOtherCost)],
+      ["Net Annual OpEx", fmtCurrencyK(opSummary.netAnnualOpex)],
     ];
     y = drawTable(doc, ["Item", "Amount"], opexSumRows, leftMargin, y, [300, 212], { headerBg: "#323F4F" });
     y += 15;
@@ -1407,14 +1476,14 @@ export function exportProjectSummaryPDF(
       y += 25;
 
       if (capexResults.lineItems && capexResults.lineItems.length > 0) {
-        y = addSectionHeader(doc, "CapEx Line Items", y, leftMargin, contentWidth);
+        y = addSectionHeader(doc, "CapEx Line Items ($000s)", y, leftMargin, contentWidth);
         const capLiHeaders = ["Category", "Description", "Qty", "Unit Cost", "Total Cost"];
         const capLiRows = capexResults.lineItems.map(li => [
           sanitize(li.process),
           sanitize(li.equipmentType),
           String(li.quantity),
-          fmtCurrency(li.baseCostPerUnit),
-          fmtCurrency(li.totalCost),
+          fmtCurrencyK(li.baseCostPerUnit),
+          fmtCurrencyK(li.totalCost),
         ]);
         y = drawTable(doc, capLiHeaders, capLiRows, leftMargin, y, [90, 140, 40, 116, 126], { fontSize: 7 });
         y += 15;
@@ -1427,12 +1496,12 @@ export function exportProjectSummaryPDF(
       y += 25;
 
       if (opexResults.lineItems && opexResults.lineItems.length > 0) {
-        y = addSectionHeader(doc, "OpEx Line Items", y, leftMargin, contentWidth);
+        y = addSectionHeader(doc, "OpEx Line Items ($000s)", y, leftMargin, contentWidth);
         const opLiHeaders = ["Category", "Description", "Annual Cost", "Notes"];
         const opLiRows = opexResults.lineItems.map(li => [
           sanitize(li.category),
           sanitize(li.description),
-          fmtCurrency(li.annualCost),
+          fmtCurrencyK(li.annualCost),
           sanitize(li.notes || ""),
         ]);
         y = drawTable(doc, opLiHeaders, opLiRows, leftMargin, y, [100, 170, 100, 142], { fontSize: 7 });
