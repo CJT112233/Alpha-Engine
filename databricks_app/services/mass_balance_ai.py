@@ -86,7 +86,7 @@ async def get_prompt_template(key: str, storage=None) -> str:
                 return db_template.get("template", "")
         except Exception:
             pass
-    from databricks_app.knowledge_base.default_prompts import DEFAULT_PROMPTS
+    from knowledge_base.default_prompts import DEFAULT_PROMPTS
     prompt_def = DEFAULT_PROMPTS.get(key)
     if prompt_def:
         return prompt_def.get("template", "")

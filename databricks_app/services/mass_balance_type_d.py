@@ -1,7 +1,7 @@
 import math
 import re
 
-from databricks_app.services.mass_balance_type_a import calculate_mass_balance_type_a
+from .mass_balance_type_a import calculate_mass_balance_type_a
 
 
 AD_DEFAULTS = {

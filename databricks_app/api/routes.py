@@ -721,10 +721,26 @@ async def delete_project(project_id: str):
 # ---------------------------------------------------------------------------
 
 
+def _nest_project(scenario: dict) -> dict:
+    """Add nested project object expected by frontend (scenario.project.id / .name)."""
+    if scenario and "project_id" in scenario:
+        scenario["project"] = {
+            "id": scenario["project_id"],
+            "name": scenario.get("project_name", ""),
+        }
+    return scenario
+
+
 @api_router.get("/projects/{project_id}/scenarios")
 async def list_scenarios(project_id: str):
     try:
-        return storage.get_scenarios(project_id)
+        project = storage.get_project(project_id)
+        project_name = project["name"] if project else ""
+        scenarios = storage.get_scenarios(project_id)
+        for s in scenarios:
+            s["project_name"] = project_name
+            _nest_project(s)
+        return scenarios
     except Exception as e:
         logger.error("Error fetching scenarios: %s", str(e))
         raise HTTPException(status_code=500, detail="Failed to fetch scenarios")
@@ -733,7 +749,7 @@ async def list_scenarios(project_id: str):
 @api_router.get("/scenarios/recent")
 async def get_recent_scenarios():
     try:
-        return storage.get_recent_scenarios()
+        return [_nest_project(s) for s in storage.get_recent_scenarios()]
     except Exception as e:
         logger.error("Error fetching recent scenarios: %s", str(e))
         raise HTTPException(status_code=500, detail="Failed to fetch recent scenarios")
@@ -745,7 +761,7 @@ async def get_scenario(scenario_id: str):
         scenario = storage.get_scenario(scenario_id)
         if not scenario:
             raise HTTPException(status_code=404, detail="Scenario not found")
-        return scenario
+        return _nest_project(scenario)
     except HTTPException:
         raise
     except Exception as e:
@@ -1113,8 +1129,6 @@ async def extract_parameters(scenario_id: str):
 
         extracted_params = await extract_parameters_with_ai(all_entries, extract_model, clarifying_answers, extraction_prompt_key)
 
-        storage.delete_parameters(scenario_id)
-
         valid_params = [p for p in extracted_params if p.get("name") and p.get("category")]
         if len(valid_params) < len(extracted_params):
             logger.info("AI extraction: Filtered out %d parameters with missing name/category", len(extracted_params) - len(valid_params))
@@ -1141,16 +1155,7 @@ async def extract_parameters(scenario_id: str):
                     "sortOrder": 999,
                 }
 
-        for param in valid_params:
-            storage.create_parameter(
-                scenario_id=scenario_id,
-                category=param["category"],
-                name=param["name"],
-                value=param.get("value"),
-                unit=param.get("unit"),
-                source=param.get("source", "ai_extraction"),
-                confidence=param.get("confidence"),
-            )
+        storage.delete_and_insert_parameters(scenario_id, valid_params)
 
         existing_upif = storage.get_upif(scenario_id)
 
@@ -1254,6 +1259,10 @@ async def extract_parameters(scenario_id: str):
         for param in output_params:
             user_output_criteria[param["name"]] = {"value": param.get("value", ""), "unit": param.get("unit")}
 
+        rng_profile = "Renewable Natural Gas (RNG) - Pipeline Injection"
+        digestate_profile = "Solid Digestate - Land Application"
+        effluent_profile = "Liquid Effluent - Discharge to WWTP"
+
         for param in output_params:
             output_desc = f"{param['name']} {param.get('value', '')}".lower()
             matched = match_output_type(output_desc)
@@ -1277,10 +1286,6 @@ async def extract_parameters(scenario_id: str):
             if is_type_a
             else ["effluent", "wwtp", "discharge", "sewer", "wastewater", "liquid effluent", "centrate", "filtrate", "liquid digestate", "treatment plant"]
         )
-
-        rng_profile = "Renewable Natural Gas (RNG) - Pipeline Injection"
-        digestate_profile = "Solid Digestate - Land Application"
-        effluent_profile = "Liquid Effluent - Discharge to WWTP"
 
         if rng_profile not in output_specs and any(k in search_text for k in rng_keywords):
             enriched = enrich_output_specs(rng_profile, user_output_criteria, location or None)
@@ -1458,6 +1463,33 @@ async def get_upif(scenario_id: str):
     except Exception as e:
         logger.error("Error fetching UPIF: %s", str(e))
         raise HTTPException(status_code=500, detail="Failed to fetch UPIF")
+
+
+@api_router.get("/scenarios/{scenario_id}/sibling-upifs")
+async def get_sibling_upifs(scenario_id: str):
+    """Get UPIFs from sibling scenarios in the same project (for comparison)."""
+    try:
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+        project_id = scenario["project_id"]
+        siblings = storage.get_scenarios(project_id)
+        result = []
+        for s in siblings:
+            if s["id"] != scenario_id:
+                upif = storage.get_upif(s["id"])
+                if upif:
+                    result.append({
+                        "scenario_id": s["id"],
+                        "scenario_name": s["name"],
+                        "upif": upif,
+                    })
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error fetching sibling UPIFs: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch sibling UPIFs")
 
 
 @api_router.patch("/scenarios/{scenario_id}/upif")
@@ -2209,7 +2241,7 @@ def _wrap_text(text: str, max_width: float, font_name: str, font_size: int) -> l
 # =========================================================================
 
 
-@router.get("/scenarios/{scenario_id}/mass-balance")
+@api_router.get("/scenarios/{scenario_id}/mass-balance")
 async def get_mass_balance_runs(scenario_id: str):
     try:
         runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
@@ -2219,7 +2251,7 @@ async def get_mass_balance_runs(scenario_id: str):
         raise HTTPException(status_code=500, detail="Failed to fetch mass balance runs")
 
 
-@router.get("/mass-balance/{run_id}")
+@api_router.get("/mass-balance/{run_id}")
 async def get_mass_balance_run(run_id: str):
     try:
         run = storage.get_mass_balance_run(run_id)
@@ -2257,13 +2289,17 @@ class MassBalanceGenerateRequest(BaseModel):
     preferred_model: Optional[str] = None
 
 
-@router.post("/scenarios/{scenario_id}/mass-balance/generate")
+@api_router.post("/scenarios/{scenario_id}/mass-balance/generate")
 async def generate_mass_balance(scenario_id: str, body: Optional[MassBalanceGenerateRequest] = None):
     import time
     start_time = time.time()
     model_used = "deterministic"
     try:
-        scenario = storage.get_scenario(scenario_id)
+        # --- 1 connection: batch-read scenario + UPIF ---
+        ctx = storage.get_mass_balance_generation_context(scenario_id)
+        scenario = ctx["scenario"]
+        upif = ctx["upif"]
+
         if not scenario:
             raise HTTPException(status_code=404, detail="Scenario not found")
 
@@ -2273,7 +2309,6 @@ async def generate_mass_balance(scenario_id: str, body: Optional[MassBalanceGene
                 detail="Scenario must be confirmed before generating a mass balance. Confirm the UPIF first.",
             )
 
-        upif = storage.get_upif_by_scenario(scenario_id)
         if not upif:
             raise HTTPException(
                 status_code=400,
@@ -2287,12 +2322,13 @@ async def generate_mass_balance(scenario_id: str, body: Optional[MassBalanceGene
             scenario_id, project_type, preferred_model,
         )
 
+        # --- LLM call with deterministic fallback (unchanged, ~30-40s) ---
         results = None
         try:
             from services.mass_balance_ai import generate_mass_balance_with_ai
-            ai_result = generate_mass_balance_with_ai(upif, project_type, preferred_model, storage)
+            ai_result = await generate_mass_balance_with_ai(upif, project_type, preferred_model, storage)
             results = ai_result["results"]
-            model_used = ai_result["provider_label"]
+            model_used = ai_result["providerLabel"]
             logger.info("Mass Balance: AI generation succeeded using %s", model_used)
         except Exception as ai_error:
             logger.warning("Mass Balance: AI generation failed, falling back to deterministic: %s", str(ai_error))
@@ -2300,12 +2336,11 @@ async def generate_mass_balance(scenario_id: str, body: Optional[MassBalanceGene
             calculator = _get_deterministic_calculator(project_type)
             results = calculator(upif)
 
-        existing_runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
-        next_version = str(len(existing_runs) + 1)
+        duration_ms = int((time.time() - start_time) * 1000)
 
-        run = storage.create_mass_balance_run(
+        # --- 1 connection: batch count + insert run + read back + insert log ---
+        run = storage.save_mass_balance_run_with_log(
             scenario_id=scenario_id,
-            version=next_version,
             status="draft",
             input_snapshot={
                 "upifId": upif.get("id"),
@@ -2316,23 +2351,14 @@ async def generate_mass_balance(scenario_id: str, body: Optional[MassBalanceGene
             results=results,
             overrides={},
             locks={},
+            document_type="Mass Balance",
+            model_used=model_used,
+            duration_ms=duration_ms,
+            project_id=scenario.get("project_id"),
+            project_name=scenario.get("project_name"),
+            scenario_name=scenario.get("name"),
+            log_status="success",
         )
-
-        duration_ms = int((time.time() - start_time) * 1000)
-        try:
-            project = storage.get_project(scenario.get("project_id", ""))
-            storage.create_generation_log(
-                document_type="Mass Balance",
-                model_used=model_used,
-                project_id=scenario.get("project_id"),
-                project_name=project.get("name") if project else None,
-                scenario_id=scenario_id,
-                scenario_name=scenario.get("name"),
-                duration_ms=duration_ms,
-                status="success",
-            )
-        except Exception as log_err:
-            logger.error("Failed to log generation: %s", str(log_err))
 
         return run
     except HTTPException:
@@ -2405,7 +2431,7 @@ class StatusUpdate(BaseModel):
     status: str
 
 
-@router.patch("/mass-balance/{run_id}/overrides")
+@api_router.patch("/mass-balance/{run_id}/overrides")
 async def update_mass_balance_overrides(run_id: str, body: OverridesUpdate):
     try:
         run = storage.get_mass_balance_run(run_id)
@@ -2422,7 +2448,7 @@ async def update_mass_balance_overrides(run_id: str, body: OverridesUpdate):
         raise HTTPException(status_code=500, detail="Failed to update overrides")
 
 
-@router.patch("/mass-balance/{run_id}/locks")
+@api_router.patch("/mass-balance/{run_id}/locks")
 async def update_mass_balance_locks(run_id: str, body: LocksUpdate):
     try:
         run = storage.get_mass_balance_run(run_id)
@@ -2439,14 +2465,14 @@ async def update_mass_balance_locks(run_id: str, body: LocksUpdate):
         raise HTTPException(status_code=500, detail="Failed to update locks")
 
 
-@router.post("/mass-balance/{run_id}/recompute")
+@api_router.post("/mass-balance/{run_id}/recompute")
 async def recompute_mass_balance(run_id: str):
     try:
         run = storage.get_mass_balance_run(run_id)
         if not run:
             raise HTTPException(status_code=404, detail="Mass balance run not found")
 
-        upif = storage.get_upif_by_scenario(run["scenario_id"])
+        upif = storage.get_upif(run["scenario_id"])
         if not upif:
             raise HTTPException(status_code=400, detail="Source UPIF no longer exists")
 
@@ -2457,9 +2483,9 @@ async def recompute_mass_balance(run_id: str):
         results = None
         try:
             from services.mass_balance_ai import generate_mass_balance_with_ai
-            ai_result = generate_mass_balance_with_ai(upif, project_type, preferred_model, storage)
+            ai_result = await generate_mass_balance_with_ai(upif, project_type, preferred_model, storage)
             results = ai_result["results"]
-            logger.info("Mass Balance Recompute: AI succeeded using %s", ai_result["provider_label"])
+            logger.info("Mass Balance Recompute: AI succeeded using %s", ai_result["providerLabel"])
         except Exception as ai_error:
             logger.warning("Mass Balance Recompute: AI failed, falling back to deterministic: %s", str(ai_error))
             calculator = _get_deterministic_calculator(project_type)
@@ -2484,7 +2510,7 @@ async def recompute_mass_balance(run_id: str):
         raise HTTPException(status_code=500, detail="Failed to recompute mass balance")
 
 
-@router.patch("/mass-balance/{run_id}/status")
+@api_router.patch("/mass-balance/{run_id}/status")
 async def update_mass_balance_status(run_id: str, body: StatusUpdate):
     try:
         run = storage.get_mass_balance_run(run_id)
@@ -2512,7 +2538,7 @@ async def update_mass_balance_status(run_id: str, body: StatusUpdate):
 # =========================================================================
 
 
-@router.get("/scenarios/{scenario_id}/mass-balance/export-pdf")
+@api_router.get("/scenarios/{scenario_id}/mass-balance/export-pdf")
 async def export_mass_balance_pdf_route(scenario_id: str):
     try:
         runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
@@ -2549,7 +2575,7 @@ async def export_mass_balance_pdf_route(scenario_id: str):
         raise HTTPException(status_code=500, detail="Failed to export mass balance PDF")
 
 
-@router.get("/scenarios/{scenario_id}/mass-balance/export-excel")
+@api_router.get("/scenarios/{scenario_id}/mass-balance/export-excel")
 async def export_mass_balance_excel_route(scenario_id: str):
     try:
         runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
@@ -2587,142 +2613,11 @@ async def export_mass_balance_excel_route(scenario_id: str):
 
 
 # =========================================================================
-# Recommended Vendor List
-# =========================================================================
-
-
-@router.get("/scenarios/{scenario_id}/vendor-list")
-async def get_vendor_list(scenario_id: str):
-    try:
-        runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
-        latest = runs[0] if runs else None
-        if not latest:
-            raise HTTPException(status_code=404, detail="No mass balance run found")
-        return {"vendorList": latest.get("vendor_list"), "runId": latest["id"]}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error fetching vendor list: %s", str(e))
-        raise HTTPException(status_code=500, detail="Failed to fetch vendor list")
-
-
-@router.post("/scenarios/{scenario_id}/vendor-list/generate")
-async def generate_vendor_list(scenario_id: str):
-    import time as _time
-    start_time = _time.time()
-    model_used = "unknown"
-    try:
-        runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
-        latest = runs[0] if runs else None
-        if not latest or not latest.get("results"):
-            raise HTTPException(status_code=400, detail="No mass balance results found. Generate a mass balance first.")
-        results = latest["results"]
-        equipment = results.get("equipment", [])
-        if not equipment:
-            raise HTTPException(status_code=400, detail="No equipment found in mass balance results.")
-
-        scenario = storage.get_scenario(scenario_id)
-        if not scenario:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-
-        project_type = results.get("projectType") or scenario.get("project_type") or "B"
-        preferred_model = scenario.get("preferred_model") or "databricks-gpt-5-2-codex"
-
-        from services.vendor_list_ai import generate_vendor_list_with_ai
-        ai_result = await generate_vendor_list_with_ai(equipment, project_type, preferred_model, storage)
-        model_used = ai_result["provider_label"]
-
-        storage.update_mass_balance_run(latest["id"], {"vendor_list": ai_result["vendor_list"]})
-
-        elapsed_ms = int((_time.time() - start_time) * 1000)
-        try:
-            project = storage.get_project(scenario.get("project_id", ""))
-            storage.create_generation_log(
-                document_type="Vendor List",
-                model_used=model_used,
-                project_id=scenario.get("project_id"),
-                project_name=project.get("name") if project else None,
-                scenario_id=scenario_id,
-                scenario_name=scenario.get("name"),
-                duration_ms=elapsed_ms,
-                status="success",
-            )
-        except Exception:
-            pass
-
-        return {"vendorList": ai_result["vendor_list"], "runId": latest["id"]}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        elapsed_ms = int((_time.time() - start_time) * 1000)
-        logger.error("Error generating vendor list: %s", str(e))
-        try:
-            scenario = storage.get_scenario(scenario_id)
-            if scenario:
-                project = storage.get_project(scenario.get("project_id", ""))
-                storage.create_generation_log(
-                    document_type="Vendor List",
-                    model_used=model_used,
-                    project_id=scenario.get("project_id"),
-                    project_name=project.get("name") if project else None,
-                    scenario_id=scenario_id,
-                    scenario_name=scenario.get("name"),
-                    duration_ms=elapsed_ms,
-                    status="error",
-                    error_message=str(e),
-                )
-        except Exception:
-            pass
-        raise HTTPException(status_code=500, detail=f"Failed to generate vendor list: {str(e)}")
-
-
-@router.get("/scenarios/{scenario_id}/vendor-list/export-pdf")
-async def export_vendor_list_pdf_route(scenario_id: str):
-    try:
-        runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
-        latest = runs[0] if runs else None
-        if not latest or not latest.get("vendor_list"):
-            raise HTTPException(status_code=404, detail="No vendor list found. Generate a vendor list first.")
-
-        scenario = storage.get_scenario(scenario_id)
-        if not scenario:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-
-        results = latest.get("results", {})
-        project_type = results.get("projectType") or scenario.get("project_type") or "B"
-        project = storage.get_project(scenario.get("project_id", ""))
-
-        from services.export_service import export_vendor_list_pdf
-        pdf_bytes = export_vendor_list_pdf(
-            latest["vendor_list"],
-            scenario.get("name", ""),
-            project.get("name", "Project") if project else "Project",
-            project_type,
-        )
-
-        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", scenario.get("name", "vendor-list"))
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'attachment; filename="VendorList-{safe_name}.pdf"',
-                "Content-Length": str(len(pdf_bytes)),
-            },
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error exporting vendor list PDF: %s", str(e))
-        raise HTTPException(status_code=500, detail="Failed to export vendor list PDF")
-
-
-# =========================================================================
 # CapEx Estimates
 # =========================================================================
 
 
-@router.get("/scenarios/{scenario_id}/capex")
+@api_router.get("/scenarios/{scenario_id}/capex")
 async def get_capex_estimates(scenario_id: str):
     try:
         estimates = storage.get_capex_estimates_by_scenario(scenario_id)
@@ -2736,19 +2631,21 @@ class CapexGenerateRequest(BaseModel):
     preferred_model: Optional[str] = None
 
 
-@router.post("/scenarios/{scenario_id}/capex/generate")
+@api_router.post("/scenarios/{scenario_id}/capex/generate")
 async def generate_capex(scenario_id: str, body: Optional[CapexGenerateRequest] = None):
     import time
     start_time = time.time()
     model_used = "unknown"
 
     try:
-        scenario = storage.get_scenario(scenario_id)
+        # --- 1 connection: batch-read scenario + mass balance runs + UPIF ---
+        ctx = storage.get_capex_generation_context(scenario_id)
+        scenario = ctx["scenario"]
+        latest_mb = ctx["latest_mb"]
+        upif = ctx["upif"]
+
         if not scenario:
             raise HTTPException(status_code=404, detail="Scenario not found")
-
-        mb_runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
-        latest_mb = mb_runs[0] if mb_runs else None
         if not latest_mb:
             raise HTTPException(
                 status_code=400,
@@ -2768,7 +2665,6 @@ async def generate_capex(scenario_id: str, body: Optional[CapexGenerateRequest] 
                 detail="Mass balance has no equipment list. Cannot generate CapEx.",
             )
 
-        upif = storage.get_upif_by_scenario(scenario_id)
         upif_data = {}
         if upif:
             upif_data = {
@@ -2782,17 +2678,17 @@ async def generate_capex(scenario_id: str, body: Optional[CapexGenerateRequest] 
         project_type = mb_results.get("projectType") or upif_data.get("projectType") or scenario.get("project_type") or "A"
         preferred_model = (body.preferred_model if body else None) or scenario.get("preferred_model") or "gpt5"
 
+        # --- LLM call (unchanged, ~30-40s) ---
         from services.capex_ai import generate_capex_with_ai
-        ai_result = generate_capex_with_ai(upif_data, mb_results, project_type, preferred_model, storage)
-        model_used = ai_result["provider_label"]
+        ai_result = await generate_capex_with_ai(upif_data, mb_results, project_type, preferred_model, storage)
+        model_used = ai_result["providerLabel"]
 
-        existing_estimates = storage.get_capex_estimates_by_scenario(scenario_id)
-        version = str(len(existing_estimates) + 1)
+        duration_ms = int((time.time() - start_time) * 1000)
 
-        estimate = storage.create_capex_estimate(
+        # --- 1 connection: batch count + insert estimate + read back + insert log ---
+        estimate = storage.save_capex_estimate_with_log(
             scenario_id=scenario_id,
             mass_balance_run_id=latest_mb["id"],
-            version=version,
             status="draft",
             input_snapshot={
                 "massBalanceId": latest_mb["id"],
@@ -2804,23 +2700,14 @@ async def generate_capex(scenario_id: str, body: Optional[CapexGenerateRequest] 
             results=ai_result["results"],
             overrides={},
             locks={},
+            document_type="CapEx",
+            model_used=model_used,
+            duration_ms=duration_ms,
+            project_id=scenario.get("project_id"),
+            project_name=scenario.get("project_name"),
+            scenario_name=scenario.get("name"),
+            log_status="success",
         )
-
-        duration_ms = int((time.time() - start_time) * 1000)
-        try:
-            project = storage.get_project(scenario.get("project_id", ""))
-            storage.create_generation_log(
-                document_type="CapEx",
-                model_used=model_used,
-                project_id=scenario.get("project_id"),
-                project_name=project.get("name") if project else None,
-                scenario_id=scenario_id,
-                scenario_name=scenario.get("name"),
-                duration_ms=duration_ms,
-                status="success",
-            )
-        except Exception as log_err:
-            logger.error("Failed to log generation: %s", str(log_err))
 
         return estimate
     except HTTPException:
@@ -2841,7 +2728,7 @@ async def generate_capex(scenario_id: str, body: Optional[CapexGenerateRequest] 
         raise HTTPException(status_code=500, detail=f"Failed to generate CapEx estimate: {str(error)}")
 
 
-@router.post("/capex/{estimate_id}/recompute")
+@api_router.post("/capex/{estimate_id}/recompute")
 async def recompute_capex(estimate_id: str):
     import time
     start_time = time.time()
@@ -2861,7 +2748,7 @@ async def recompute_capex(estimate_id: str):
             raise HTTPException(status_code=400, detail="Associated mass balance run not found")
 
         mb_results = mb_run.get("results") or {}
-        upif = storage.get_upif_by_scenario(existing["scenario_id"])
+        upif = storage.get_upif(existing["scenario_id"])
         upif_data = {}
         if upif:
             upif_data = {
@@ -2876,8 +2763,8 @@ async def recompute_capex(estimate_id: str):
         preferred_model = scenario.get("preferred_model") or "gpt5"
 
         from services.capex_ai import generate_capex_with_ai
-        ai_result = generate_capex_with_ai(upif_data, mb_results, project_type, preferred_model, storage)
-        model_used = ai_result["provider_label"]
+        ai_result = await generate_capex_with_ai(upif_data, mb_results, project_type, preferred_model, storage)
+        model_used = ai_result["providerLabel"]
 
         old_locks = existing.get("locks") or {}
         old_overrides = existing.get("overrides") or {}
@@ -2968,7 +2855,7 @@ class CapexUpdate(BaseModel):
     status: Optional[str] = None
 
 
-@router.patch("/capex/{estimate_id}")
+@api_router.patch("/capex/{estimate_id}")
 async def update_capex(estimate_id: str, body: CapexUpdate):
     try:
         existing = storage.get_capex_estimate(estimate_id)
@@ -3005,7 +2892,7 @@ async def update_capex(estimate_id: str, body: CapexUpdate):
 # =========================================================================
 
 
-@router.get("/scenarios/{scenario_id}/capex/export-pdf")
+@api_router.get("/scenarios/{scenario_id}/capex/export-pdf")
 async def export_capex_pdf_route(scenario_id: str):
     try:
         estimates = storage.get_capex_estimates_by_scenario(scenario_id)
@@ -3042,7 +2929,7 @@ async def export_capex_pdf_route(scenario_id: str):
         raise HTTPException(status_code=500, detail="Failed to export CapEx PDF")
 
 
-@router.get("/scenarios/{scenario_id}/capex/export-excel")
+@api_router.get("/scenarios/{scenario_id}/capex/export-excel")
 async def export_capex_excel_route(scenario_id: str):
     try:
         estimates = storage.get_capex_estimates_by_scenario(scenario_id)
@@ -3080,218 +2967,11 @@ async def export_capex_excel_route(scenario_id: str):
 
 
 # =========================================================================
-# OpEx Estimates
-# =========================================================================
-
-
-@router.get("/scenarios/{scenario_id}/opex")
-async def get_opex_estimates(scenario_id: str):
-    try:
-        estimates = storage.get_opex_estimates_by_scenario(scenario_id)
-        return estimates
-    except Exception as e:
-        logger.error("Error fetching OpEx estimates: %s", str(e))
-        raise HTTPException(status_code=500, detail="Failed to fetch OpEx estimates")
-
-
-@router.post("/scenarios/{scenario_id}/opex/generate")
-async def generate_opex(scenario_id: str):
-    import time as _time
-    start_time = _time.time()
-    model_used = "unknown"
-
-    try:
-        scenario = storage.get_scenario(scenario_id)
-        if not scenario:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-
-        mb_runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
-        latest_mb = mb_runs[0] if mb_runs else None
-        if not latest_mb:
-            raise HTTPException(status_code=400, detail="No mass balance found. Generate and finalize a mass balance first.")
-        if latest_mb.get("status") != "finalized":
-            raise HTTPException(status_code=400, detail="Mass balance must be finalized before generating OpEx.")
-
-        mb_results = latest_mb.get("results") or {}
-        equipment = mb_results.get("equipment") or []
-        if not equipment:
-            raise HTTPException(status_code=400, detail="Mass balance has no equipment list. Cannot generate OpEx.")
-
-        capex_estimates = storage.get_capex_estimates_by_scenario(scenario_id)
-        latest_capex = capex_estimates[0] if capex_estimates else None
-        capex_results = latest_capex.get("results") if latest_capex else None
-
-        upif = storage.get_upif_by_scenario(scenario_id)
-        upif_data = {}
-        if upif:
-            upif_data = {
-                "projectType": upif.get("project_type") or upif.get("projectType"),
-                "location": upif.get("location"),
-                "feedstocks": upif.get("feedstocks"),
-                "outputRequirements": upif.get("output_requirements") or upif.get("outputRequirements"),
-                "constraints": upif.get("constraints"),
-            }
-
-        project_type = mb_results.get("projectType") or upif_data.get("projectType") or scenario.get("project_type") or "A"
-        preferred_model = scenario.get("preferred_model") or "gpt5"
-
-        from services.opex_ai import generate_opex_with_ai
-        ai_result = await generate_opex_with_ai(upif_data, mb_results, capex_results, project_type, preferred_model, storage)
-        model_used = ai_result.get("provider_label", "unknown")
-
-        existing_estimates = storage.get_opex_estimates_by_scenario(scenario_id)
-        version = str(len(existing_estimates) + 1)
-
-        estimate = storage.create_opex_estimate(
-            scenario_id=scenario_id,
-            mass_balance_run_id=latest_mb["id"],
-            capex_estimate_id=latest_capex["id"] if latest_capex else None,
-            version=version,
-            status="draft",
-            input_snapshot={
-                "massBalanceId": latest_mb["id"],
-                "massBalanceVersion": latest_mb.get("version"),
-                "capexEstimateId": latest_capex["id"] if latest_capex else None,
-                "projectType": project_type,
-                "equipmentCount": len(equipment),
-                "model": model_used,
-            },
-            results=ai_result["results"],
-            overrides={},
-            locks={},
-        )
-
-        duration_ms = int((_time.time() - start_time) * 1000)
-        project = storage.get_project(scenario.get("project_id", ""))
-        try:
-            storage.create_generation_log(
-                document_type="OpEx",
-                model_used=model_used,
-                duration_ms=duration_ms,
-                status="success",
-                project_id=scenario.get("project_id"),
-                project_name=project.get("name") if project else None,
-                scenario_id=scenario_id,
-                scenario_name=scenario.get("name"),
-            )
-        except Exception:
-            pass
-
-        return estimate
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        duration_ms = int((_time.time() - start_time) * 1000)
-        try:
-            storage.create_generation_log(
-                document_type="OpEx",
-                model_used=model_used,
-                duration_ms=duration_ms,
-                status="error",
-                error_message=str(e),
-            )
-        except Exception:
-            pass
-        logger.error("Error generating OpEx: %s", str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to generate OpEx estimate: {str(e)}")
-
-
-@router.patch("/opex/{estimate_id}")
-async def update_opex_estimate(estimate_id: str, request: Request):
-    try:
-        body = await request.json()
-        updated = storage.update_opex_estimate(estimate_id, body)
-        if not updated:
-            raise HTTPException(status_code=404, detail="OpEx estimate not found")
-        return updated
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error updating OpEx estimate: %s", str(e))
-        raise HTTPException(status_code=500, detail="Failed to update OpEx estimate")
-
-
-@router.get("/scenarios/{scenario_id}/opex/export-pdf")
-async def export_opex_pdf_route(scenario_id: str):
-    try:
-        estimates = storage.get_opex_estimates_by_scenario(scenario_id)
-        latest = estimates[0] if estimates else None
-        if not latest or not latest.get("results"):
-            raise HTTPException(status_code=404, detail="No OpEx data found")
-
-        scenario = storage.get_scenario(scenario_id)
-        if not scenario:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-
-        results = latest["results"]
-        project_type = results.get("projectType") or scenario.get("project_type") or "B"
-        project = storage.get_project(scenario.get("project_id", ""))
-
-        from services.export_service import export_opex_pdf
-        pdf_bytes = export_opex_pdf(
-            results, scenario.get("name", ""), project.get("name", "Project") if project else "Project", project_type,
-        )
-
-        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", scenario.get("name", "opex"))
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'attachment; filename="OpEx-{safe_name}.pdf"',
-                "Content-Length": str(len(pdf_bytes)),
-            },
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error exporting OpEx PDF: %s", str(e))
-        raise HTTPException(status_code=500, detail="Failed to export OpEx PDF")
-
-
-@router.get("/scenarios/{scenario_id}/opex/export-excel")
-async def export_opex_excel_route(scenario_id: str):
-    try:
-        estimates = storage.get_opex_estimates_by_scenario(scenario_id)
-        latest = estimates[0] if estimates else None
-        if not latest or not latest.get("results"):
-            raise HTTPException(status_code=404, detail="No OpEx data found")
-
-        scenario = storage.get_scenario(scenario_id)
-        if not scenario:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-
-        results = latest["results"]
-        project_type = results.get("projectType") or scenario.get("project_type") or "B"
-        project = storage.get_project(scenario.get("project_id", ""))
-
-        from services.export_service import export_opex_excel
-        xlsx_bytes = export_opex_excel(
-            results, scenario.get("name", ""), project.get("name", "Project") if project else "Project", project_type,
-        )
-
-        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", scenario.get("name", "opex"))
-        return Response(
-            content=xlsx_bytes,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": f'attachment; filename="OpEx-{safe_name}.xlsx"',
-                "Content-Length": str(len(xlsx_bytes)),
-            },
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Error exporting OpEx Excel: %s", str(e))
-        raise HTTPException(status_code=500, detail="Failed to export OpEx Excel")
-
-
-# =========================================================================
 # Generation Stats
 # =========================================================================
 
 
-@router.get("/generation-stats")
+@api_router.get("/generation-stats")
 async def get_generation_stats():
     try:
         logs = storage.get_all_generation_logs()
@@ -3308,25 +2988,25 @@ async def get_generation_stats():
 
 CALCULATOR_FILES = {
     "A": {
-        "file": "databricks_app/services/mass_balance_type_a.py",
+        "file": "services/mass_balance_type_a.py",
         "label": "Type A: Wastewater Treatment",
         "type": "A",
         "description": "High-strength industrial wastewater from food processing (dairy, meat, potato, beverage, produce, etc.). Treats influent to meet effluent discharge standards. RNG may be a byproduct when organic loading justifies it.",
     },
     "B": {
-        "file": "databricks_app/services/mass_balance_type_b.py",
+        "file": "services/mass_balance_type_b.py",
         "label": "Type B: RNG Greenfield",
         "type": "B",
         "description": "Full anaerobic digestion pipeline from feedstock receiving through RNG production. Handles solid and semi-solid organic feedstocks (food waste, crop residuals). Complete process train: receiving, pretreatment, digestion, gas conditioning, upgrading.",
     },
     "C": {
-        "file": "databricks_app/services/mass_balance_type_c.py",
+        "file": "services/mass_balance_type_c.py",
         "label": "Type C: RNG Bolt-On",
         "type": "C",
         "description": "Biogas-only inputs. An existing facility already produces biogas; this project adds gas conditioning and upgrading equipment to convert raw biogas to pipeline-quality RNG. No digester sizing needed.",
     },
     "D": {
-        "file": "databricks_app/services/mass_balance_type_d.py",
+        "file": "services/mass_balance_type_d.py",
         "label": "Type D: Hybrid",
         "type": "D",
         "description": "Combines wastewater treatment (Type A) with co-digestion from trucked organic feedstocks for additional gas production and RNG production. Wastewater is treated, biogas is upgraded to RNG.",
@@ -3334,12 +3014,12 @@ CALCULATOR_FILES = {
 }
 
 
-@router.get("/calculators")
+@api_router.get("/calculators")
 async def get_calculators():
     return [{"key": key, **val} for key, val in CALCULATOR_FILES.items()]
 
 
-@router.get("/calculators/{calc_type}")
+@api_router.get("/calculators/{calc_type}")
 async def get_calculator(calc_type: str):
     calc = CALCULATOR_FILES.get(calc_type.upper())
     if not calc:

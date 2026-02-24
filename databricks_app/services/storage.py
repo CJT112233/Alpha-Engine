@@ -129,10 +129,6 @@ class DatabricksStorage:
         return self._t("project_intakes", "capex_estimates")
 
     @property
-    def _opex_estimates(self):
-        return self._t("project_intakes", "opex_estimates")
-
-    @property
     def _generation_logs(self):
         return self._t("project_intakes", "generation_logs")
 
@@ -517,6 +513,38 @@ class DatabricksStorage:
                     (scenario_id,),
                 )
 
+    def delete_and_insert_parameters(self, scenario_id: str, params: list) -> list:
+        """Delete existing params and insert new ones in a single connection."""
+        now = datetime.utcnow()
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"DELETE FROM {self._extracted_parameters} WHERE scenario_id = ?",
+                    (scenario_id,),
+                )
+                inserted_ids = []
+                for p in params:
+                    param_id = str(uuid.uuid4())
+                    inserted_ids.append(param_id)
+                    cur.execute(
+                        f"INSERT INTO {self._extracted_parameters} "
+                        "(id, scenario_id, category, name, value, unit, source, confidence, is_confirmed, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (param_id, scenario_id, p["category"], p["name"],
+                         p.get("value"), p.get("unit"),
+                         p.get("source", "ai_extraction"),
+                         p.get("confidence"), False, now),
+                    )
+                if inserted_ids:
+                    placeholders = ",".join("?" for _ in inserted_ids)
+                    cur.execute(
+                        f"SELECT * FROM {self._extracted_parameters} WHERE id IN ({placeholders})",
+                        inserted_ids,
+                    )
+                    rows = cur.fetchall()
+                    return _rows_to_dicts(cur, rows)
+                return []
+
     # ========================================================================
     # UPIF RECORDS
     # ========================================================================
@@ -768,7 +796,7 @@ class DatabricksStorage:
     # MASS BALANCE RUNS
     # ========================================================================
 
-    JSON_FIELDS_MB = ["input_snapshot", "results", "overrides", "locks", "vendor_list"]
+    JSON_FIELDS_MB = ["input_snapshot", "results", "overrides", "locks"]
 
     def get_mass_balance_runs_by_scenario(self, scenario_id: str) -> list:
         with get_connection() as conn:
@@ -805,7 +833,6 @@ class DatabricksStorage:
         results=None,
         overrides=None,
         locks=None,
-        vendor_list=None,
     ) -> dict:
         run_id = str(uuid.uuid4())
         now = datetime.utcnow()
@@ -814,15 +841,14 @@ class DatabricksStorage:
                 cur.execute(
                     f"INSERT INTO {self._mass_balance_runs} "
                     "(id, scenario_id, version, status, input_snapshot, results, "
-                    "overrides, locks, vendor_list, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "overrides, locks, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         run_id, scenario_id, version, status,
                         _serialize_json(input_snapshot),
                         _serialize_json(results),
                         _serialize_json(overrides),
                         _serialize_json(locks),
-                        _serialize_json(vendor_list),
                         now, now,
                     ),
                 )
@@ -842,7 +868,7 @@ class DatabricksStorage:
             if key in updates:
                 set_parts.append(f"{key} = ?")
                 values.append(updates[key])
-        for key in ["input_snapshot", "results", "overrides", "locks", "vendor_list"]:
+        for key in ["input_snapshot", "results", "overrides", "locks"]:
             if key in updates:
                 set_parts.append(f"{key} = ?")
                 values.append(_serialize_json(updates[key]))
@@ -969,60 +995,101 @@ class DatabricksStorage:
                 return _deserialize_fields(_row_to_dict(cur, row), self.JSON_FIELDS_CAPEX)
 
     # ========================================================================
-    # OPEX ESTIMATES
+    # BATCH METHODS — CapEx & Mass Balance generation context
+    # Reduces DB connections from 8→2 (CapEx) and 7→2 (Mass Balance)
+    # to stay safely under the 60-second Databricks Apps gateway timeout.
     # ========================================================================
 
-    JSON_FIELDS_OPEX = ["input_snapshot", "results", "overrides", "locks"]
-
-    def get_opex_estimates_by_scenario(self, scenario_id: str) -> list:
+    def get_capex_generation_context(self, scenario_id: str) -> dict:
+        """Batch-read scenario, mass balance runs, and UPIF in a single connection."""
         with get_connection() as conn:
             with conn.cursor() as cur:
+                # 1. Scenario (with project_name via JOIN)
                 cur.execute(
-                    f"SELECT * FROM {self._opex_estimates} "
+                    f"SELECT s.*, p.name AS project_name "
+                    f"FROM {self._scenarios} s "
+                    f"LEFT JOIN {self._projects} p ON s.project_id = p.id "
+                    "WHERE s.id = ?",
+                    (scenario_id,),
+                )
+                row = cur.fetchone()
+                scenario = (
+                    _deserialize_fields(_row_to_dict(cur, row), JSON_FIELDS_SCENARIO)
+                    if row else None
+                )
+
+                # 2. Mass balance runs (most recent first)
+                cur.execute(
+                    f"SELECT * FROM {self._mass_balance_runs} "
                     "WHERE scenario_id = ? ORDER BY created_at DESC",
                     (scenario_id,),
                 )
-                rows = cur.fetchall()
-                return [
-                    _deserialize_fields(_row_to_dict(cur, r), self.JSON_FIELDS_OPEX)
-                    for r in rows
+                mb_rows = cur.fetchall()
+                mb_runs = [
+                    _deserialize_fields(_row_to_dict(cur, r), self.JSON_FIELDS_MB)
+                    for r in mb_rows
                 ]
 
-    def get_opex_estimate(self, estimate_id: str) -> Optional[dict]:
-        with get_connection() as conn:
-            with conn.cursor() as cur:
+                # 3. UPIF
                 cur.execute(
-                    f"SELECT * FROM {self._opex_estimates} WHERE id = ?",
-                    (estimate_id,),
+                    f"SELECT * FROM {self._upif_records} WHERE scenario_id = ?",
+                    (scenario_id,),
                 )
-                row = cur.fetchone()
-                if not row:
-                    return None
-                return _deserialize_fields(_row_to_dict(cur, row), self.JSON_FIELDS_OPEX)
+                upif_row = cur.fetchone()
+                upif = (
+                    _deserialize_fields(_row_to_dict(cur, upif_row), JSON_FIELDS_UPIF)
+                    if upif_row else None
+                )
 
-    def create_opex_estimate(
+        return {
+            "scenario": scenario,
+            "mb_runs": mb_runs,
+            "latest_mb": mb_runs[0] if mb_runs else None,
+            "upif": upif,
+        }
+
+    def save_capex_estimate_with_log(
         self,
         scenario_id: str,
         mass_balance_run_id: str,
-        capex_estimate_id: str = None,
-        version: str = "1",
-        status: str = "draft",
-        input_snapshot=None,
-        results=None,
-        overrides=None,
-        locks=None,
+        status: str,
+        input_snapshot,
+        results,
+        overrides,
+        locks,
+        # generation log fields
+        document_type: str,
+        model_used: str,
+        duration_ms: int,
+        project_id: Optional[str] = None,
+        project_name: Optional[str] = None,
+        scenario_name: Optional[str] = None,
+        log_status: str = "success",
+        error_message: Optional[str] = None,
     ) -> dict:
+        """Batch: count versions + insert estimate + read back + insert log in one connection."""
         estimate_id = str(uuid.uuid4())
+        log_id = str(uuid.uuid4())
         now = datetime.utcnow()
+
         with get_connection() as conn:
             with conn.cursor() as cur:
+                # 1. Count existing versions (cheaper than fetching all rows)
                 cur.execute(
-                    f"INSERT INTO {self._opex_estimates} "
-                    "(id, scenario_id, mass_balance_run_id, capex_estimate_id, version, status, "
+                    f"SELECT COUNT(*) FROM {self._capex_estimates} WHERE scenario_id = ?",
+                    (scenario_id,),
+                )
+                count_row = cur.fetchone()
+                version = str((count_row[0] if count_row else 0) + 1)
+
+                # 2. Insert the estimate
+                cur.execute(
+                    f"INSERT INTO {self._capex_estimates} "
+                    "(id, scenario_id, mass_balance_run_id, version, status, "
                     "input_snapshot, results, overrides, locks, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
-                        estimate_id, scenario_id, mass_balance_run_id, capex_estimate_id,
+                        estimate_id, scenario_id, mass_balance_run_id,
                         version, status,
                         _serialize_json(input_snapshot),
                         _serialize_json(results),
@@ -1031,45 +1098,138 @@ class DatabricksStorage:
                         now, now,
                     ),
                 )
+
+                # 3. Read back the inserted estimate
                 cur.execute(
-                    f"SELECT * FROM {self._opex_estimates} WHERE id = ?",
+                    f"SELECT * FROM {self._capex_estimates} WHERE id = ?",
                     (estimate_id,),
                 )
-                row = cur.fetchone()
-                return _deserialize_fields(_row_to_dict(cur, row), self.JSON_FIELDS_OPEX)
+                est_row = cur.fetchone()
+                estimate = _deserialize_fields(
+                    _row_to_dict(cur, est_row), self.JSON_FIELDS_CAPEX
+                )
 
-    def update_opex_estimate(self, estimate_id: str, updates: dict) -> Optional[dict]:
-        if not updates:
-            return self.get_opex_estimate(estimate_id)
-        set_parts = []
-        values = []
-        for key in ["status", "version", "capex_estimate_id"]:
-            if key in updates:
-                set_parts.append(f"{key} = ?")
-                values.append(updates[key])
-        for key in ["input_snapshot", "results", "overrides", "locks"]:
-            if key in updates:
-                set_parts.append(f"{key} = ?")
-                values.append(_serialize_json(updates[key]))
-        set_parts.append("updated_at = ?")
-        values.append(datetime.utcnow())
-        values.append(estimate_id)
+                # 4. Insert generation log
+                cur.execute(
+                    f"INSERT INTO {self._generation_logs} "
+                    "(id, document_type, model_used, project_id, project_name, "
+                    "scenario_id, scenario_name, duration_ms, status, error_message, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        log_id, document_type, model_used,
+                        project_id, project_name,
+                        scenario_id, scenario_name,
+                        duration_ms, log_status, error_message, now,
+                    ),
+                )
+
+        return estimate
+
+    def get_mass_balance_generation_context(self, scenario_id: str) -> dict:
+        """Batch-read scenario and UPIF in a single connection."""
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                # 1. Scenario (with project_name via JOIN)
+                cur.execute(
+                    f"SELECT s.*, p.name AS project_name "
+                    f"FROM {self._scenarios} s "
+                    f"LEFT JOIN {self._projects} p ON s.project_id = p.id "
+                    "WHERE s.id = ?",
+                    (scenario_id,),
+                )
+                row = cur.fetchone()
+                scenario = (
+                    _deserialize_fields(_row_to_dict(cur, row), JSON_FIELDS_SCENARIO)
+                    if row else None
+                )
+
+                # 2. UPIF
+                cur.execute(
+                    f"SELECT * FROM {self._upif_records} WHERE scenario_id = ?",
+                    (scenario_id,),
+                )
+                upif_row = cur.fetchone()
+                upif = (
+                    _deserialize_fields(_row_to_dict(cur, upif_row), JSON_FIELDS_UPIF)
+                    if upif_row else None
+                )
+
+        return {"scenario": scenario, "upif": upif}
+
+    def save_mass_balance_run_with_log(
+        self,
+        scenario_id: str,
+        status: str,
+        input_snapshot,
+        results,
+        overrides,
+        locks,
+        # generation log fields
+        document_type: str,
+        model_used: str,
+        duration_ms: int,
+        project_id: Optional[str] = None,
+        project_name: Optional[str] = None,
+        scenario_name: Optional[str] = None,
+        log_status: str = "success",
+        error_message: Optional[str] = None,
+    ) -> dict:
+        """Batch: count versions + insert run + read back + insert log in one connection."""
+        run_id = str(uuid.uuid4())
+        log_id = str(uuid.uuid4())
+        now = datetime.utcnow()
 
         with get_connection() as conn:
             with conn.cursor() as cur:
+                # 1. Count existing versions
                 cur.execute(
-                    f"UPDATE {self._opex_estimates} "
-                    f"SET {', '.join(set_parts)} WHERE id = ?",
-                    tuple(values),
+                    f"SELECT COUNT(*) FROM {self._mass_balance_runs} WHERE scenario_id = ?",
+                    (scenario_id,),
                 )
+                count_row = cur.fetchone()
+                version = str((count_row[0] if count_row else 0) + 1)
+
+                # 2. Insert the run
                 cur.execute(
-                    f"SELECT * FROM {self._opex_estimates} WHERE id = ?",
-                    (estimate_id,),
+                    f"INSERT INTO {self._mass_balance_runs} "
+                    "(id, scenario_id, version, status, input_snapshot, results, "
+                    "overrides, locks, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        run_id, scenario_id, version, status,
+                        _serialize_json(input_snapshot),
+                        _serialize_json(results),
+                        _serialize_json(overrides),
+                        _serialize_json(locks),
+                        now, now,
+                    ),
                 )
-                row = cur.fetchone()
-                if not row:
-                    return None
-                return _deserialize_fields(_row_to_dict(cur, row), self.JSON_FIELDS_OPEX)
+
+                # 3. Read back the inserted run
+                cur.execute(
+                    f"SELECT * FROM {self._mass_balance_runs} WHERE id = ?",
+                    (run_id,),
+                )
+                run_row = cur.fetchone()
+                run = _deserialize_fields(
+                    _row_to_dict(cur, run_row), self.JSON_FIELDS_MB
+                )
+
+                # 4. Insert generation log
+                cur.execute(
+                    f"INSERT INTO {self._generation_logs} "
+                    "(id, document_type, model_used, project_id, project_name, "
+                    "scenario_id, scenario_name, duration_ms, status, error_message, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        log_id, document_type, model_used,
+                        project_id, project_name,
+                        scenario_id, scenario_name,
+                        duration_ms, log_status, error_message, now,
+                    ),
+                )
+
+        return run
 
     # ========================================================================
     # GENERATION LOGS
