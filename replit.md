@@ -81,3 +81,18 @@ Unit conventions (US-based):
 - Databricks Model Serving
 - ReportLab (for PDF generation)
 - openpyxl (for Excel generation)
+
+## Databricks App Port Status (Python/FastAPI)
+Ported services in `databricks_app/services/`:
+- `capex_pricing_library.py` - Burnham CapEx Model V5.1 with Prodeval pricing at 400/800/1200 SCFM tiers
+- `capex_deterministic.py` - Deterministic CapEx generation (hybrid AI+deterministic for RNG types)
+- `opex_recompute.py` - OpEx deterministic recalculation with editable assumptions and unit costs
+- `design_overrides.py` - Dynamic mass balance recalculation when design parameters change
+- `financial_model.py` - 20-year pro-forma with IRR/NPV/MOIC/payback, 45Z tax credits, feedstock economics
+- `export_service.py` - Project Summary PDF export combining UPIF + MB + CapEx + OpEx + Financial Model
+- `storage.py` - Delta table CRUD for opex_estimates and financial_models
+
+API routes added to `databricks_app/api/routes.py`:
+- OpEx CRUD + recompute, CapEx deterministic, design overrides/recalculate
+- Financial model CRUD + recalculate, Project Summary PDF export
+- All routes use camelCase JSON keys for React frontend compatibility

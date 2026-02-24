@@ -185,6 +185,39 @@ CREATE TABLE IF NOT EXISTS burnham_rng.project_intakes.generation_logs (
 USING DELTA
 COMMENT 'Tracks timing and metadata for AI-generated documents (UPIF, Mass Balance, CapEx). Records model used, generation time, and success/error status.';
 
+CREATE TABLE IF NOT EXISTS burnham_rng.project_intakes.opex_estimates (
+  id STRING NOT NULL,
+  scenario_id STRING NOT NULL,
+  capex_estimate_id STRING NOT NULL,
+  mass_balance_run_id STRING NOT NULL,
+  version STRING NOT NULL,
+  status STRING NOT NULL,
+  input_snapshot STRING,
+  results STRING,
+  overrides STRING,
+  locks STRING,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL
+)
+USING DELTA
+COMMENT 'Versioned operating cost estimates. scenario_id references scenarios.id, capex_estimate_id references capex_estimates.id, mass_balance_run_id references mass_balance_runs.id. JSON fields stored as STRING.';
+
+CREATE TABLE IF NOT EXISTS burnham_rng.project_intakes.financial_models (
+  id STRING NOT NULL,
+  scenario_id STRING NOT NULL,
+  mass_balance_run_id STRING NOT NULL,
+  capex_estimate_id STRING NOT NULL,
+  opex_estimate_id STRING NOT NULL,
+  version STRING NOT NULL,
+  status STRING NOT NULL,
+  assumptions STRING,
+  results STRING,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL
+)
+USING DELTA
+COMMENT 'Versioned 20-year pro-forma financial models. All ID fields reference their respective tables. assumptions and results stored as JSON STRING.';
+
 -- ============================================================================
 -- OPTIMIZATION NOTES
 -- ============================================================================
@@ -199,3 +232,5 @@ COMMENT 'Tracks timing and metadata for AI-generated documents (UPIF, Mass Balan
 -- OPTIMIZE burnham_rng.project_intakes.mass_balance_runs ZORDER BY (scenario_id);
 -- OPTIMIZE burnham_rng.project_intakes.capex_estimates ZORDER BY (scenario_id);
 -- OPTIMIZE burnham_rng.project_intakes.generation_logs ZORDER BY (scenario_id, document_type);
+-- OPTIMIZE burnham_rng.project_intakes.opex_estimates ZORDER BY (scenario_id);
+-- OPTIMIZE burnham_rng.project_intakes.financial_models ZORDER BY (scenario_id);

@@ -50,6 +50,18 @@ from models.schemas import (
     FeedstockEntry,
     PromptTemplateUpdate,
 )
+from services.opex_recompute import (
+    get_default_opex_assumptions,
+    calculate_all_deterministic_line_items,
+    recompute_opex_from_assumptions,
+)
+from services.capex_deterministic import generate_capex_deterministic
+from services.design_overrides import extract_design_overrides, is_recalculable_field
+from services.financial_model import (
+    build_default_assumptions,
+    calculate_financial_model,
+    estimate_ci_score,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -3031,3 +3043,600 @@ async def get_calculator(calc_type: str):
     except Exception as e:
         logger.error("Error reading calculator file %s: %s", calc["file"], str(e))
         raise HTTPException(status_code=500, detail="Failed to read calculator source")
+
+
+# =========================================================================
+# OpEx Estimates CRUD
+# =========================================================================
+
+
+@api_router.get("/scenarios/{scenario_id}/opex")
+async def get_opex_estimates(scenario_id: str):
+    try:
+        estimates = storage.get_opex_estimates_by_scenario(scenario_id)
+        return estimates
+    except Exception as e:
+        logger.error("Error fetching opex estimates: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch opex estimates")
+
+
+@api_router.get("/opex/{estimate_id}")
+async def get_opex_estimate(estimate_id: str):
+    try:
+        estimate = storage.get_opex_estimate(estimate_id)
+        if not estimate:
+            raise HTTPException(status_code=404, detail="OpEx estimate not found")
+        return estimate
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error fetching opex estimate: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch opex estimate")
+
+
+class OpexGenerateRequest(BaseModel):
+    preferred_model: Optional[str] = None
+
+
+@api_router.post("/scenarios/{scenario_id}/opex/generate")
+async def generate_opex(scenario_id: str, body: Optional[OpexGenerateRequest] = None):
+    import time
+    start_time = time.time()
+    model_used = "unknown"
+
+    try:
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        mb_runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        latest_mb = mb_runs[0] if mb_runs else None
+        if not latest_mb:
+            raise HTTPException(
+                status_code=400,
+                detail="No mass balance found. Generate a mass balance first.",
+            )
+
+        capex_estimates = storage.get_capex_estimates_by_scenario(scenario_id)
+        latest_capex = capex_estimates[0] if capex_estimates else None
+        if not latest_capex:
+            raise HTTPException(
+                status_code=400,
+                detail="No CapEx estimate found. Generate a CapEx estimate first.",
+            )
+
+        mb_results = latest_mb.get("results") or {}
+        capex_results = latest_capex.get("results") or {}
+
+        upif = storage.get_upif(scenario_id)
+        upif_data = {}
+        if upif:
+            upif_data = {
+                "projectType": upif.get("project_type"),
+                "location": upif.get("location"),
+                "feedstocks": upif.get("feedstocks"),
+                "outputRequirements": upif.get("output_requirements"),
+                "constraints": upif.get("constraints"),
+            }
+
+        project_type = mb_results.get("projectType") or upif_data.get("projectType") or scenario.get("project_type") or "A"
+        preferred_model = (body.preferred_model if body else None) or scenario.get("preferred_model") or "gpt5"
+
+        from services.opex_ai import generate_opex_with_ai
+        ai_result = await generate_opex_with_ai(upif_data, mb_results, capex_results, project_type, preferred_model, storage)
+        model_used = ai_result.get("providerLabel", model_used)
+
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        existing_count = len(storage.get_opex_estimates_by_scenario(scenario_id))
+        version = str(existing_count + 1)
+
+        estimate = storage.create_opex_estimate(
+            scenario_id=scenario_id,
+            capex_estimate_id=latest_capex["id"],
+            mass_balance_run_id=latest_mb["id"],
+            version=version,
+            status="draft",
+            input_snapshot={
+                "massBalanceId": latest_mb["id"],
+                "capexEstimateId": latest_capex["id"],
+                "projectType": project_type,
+                "model": model_used,
+            },
+            results=ai_result["results"],
+        )
+
+        try:
+            project = storage.get_project(scenario.get("project_id", ""))
+            storage.create_generation_log(
+                document_type="OpEx",
+                model_used=model_used,
+                project_id=scenario.get("project_id"),
+                project_name=project.get("name") if project else None,
+                scenario_id=scenario_id,
+                scenario_name=scenario.get("name"),
+                duration_ms=duration_ms,
+                status="success",
+            )
+        except Exception as log_err:
+            logger.error("Failed to log generation: %s", str(log_err))
+
+        return estimate
+    except HTTPException:
+        raise
+    except Exception as error:
+        duration_ms = int((time.time() - start_time) * 1000)
+        try:
+            storage.create_generation_log(
+                document_type="OpEx",
+                model_used=model_used,
+                duration_ms=duration_ms,
+                status="error",
+                error_message=str(error),
+            )
+        except Exception:
+            pass
+        logger.error("Error generating opex: %s", str(error))
+        raise HTTPException(status_code=500, detail=f"Failed to generate OpEx estimate: {str(error)}")
+
+
+class OpexRecomputeRequest(BaseModel):
+    editableAssumptions: list[dict]
+
+
+@api_router.post("/opex/{estimate_id}/recompute")
+async def recompute_opex(estimate_id: str, body: OpexRecomputeRequest):
+    try:
+        estimate = storage.get_opex_estimate(estimate_id)
+        if not estimate:
+            raise HTTPException(status_code=404, detail="OpEx estimate not found")
+
+        mb_run = storage.get_mass_balance_run(estimate["mass_balance_run_id"])
+        if not mb_run:
+            raise HTTPException(status_code=400, detail="Associated mass balance run not found")
+
+        capex_estimate = storage.get_capex_estimate(estimate["capex_estimate_id"])
+
+        mb_results = mb_run.get("results") or {}
+        capex_results = capex_estimate.get("results") if capex_estimate else None
+
+        scenario = storage.get_scenario(estimate["scenario_id"])
+        project_type = mb_results.get("projectType") or (scenario or {}).get("project_type") or "A"
+
+        existing_results = estimate.get("results") or {}
+
+        updated_results = recompute_opex_from_assumptions(
+            editable_assumptions=body.editableAssumptions,
+            mass_balance_results=mb_results,
+            capex_results=capex_results,
+            project_type=project_type,
+            existing_results=existing_results,
+        )
+
+        updated = storage.update_opex_estimate(estimate_id, {"results": updated_results})
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error recomputing opex: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to recompute OpEx: {str(e)}")
+
+
+class OpexUpdate(BaseModel):
+    results: Optional[dict] = None
+    overrides: Optional[dict] = None
+    locks: Optional[dict] = None
+    status: Optional[str] = None
+
+
+@api_router.patch("/opex/{estimate_id}")
+async def update_opex(estimate_id: str, body: OpexUpdate):
+    try:
+        existing = storage.get_opex_estimate(estimate_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="OpEx estimate not found")
+
+        updates: dict[str, Any] = {}
+        if body.results is not None:
+            updates["results"] = body.results
+        if body.overrides is not None:
+            updates["overrides"] = body.overrides
+        if body.locks is not None:
+            updates["locks"] = body.locks
+        if body.status is not None:
+            valid_statuses = ["draft", "reviewed", "finalized"]
+            if body.status not in valid_statuses:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid status. Must be: {', '.join(valid_statuses)}",
+                )
+            updates["status"] = body.status
+
+        updated = storage.update_opex_estimate(estimate_id, updates)
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating opex: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to update OpEx estimate")
+
+
+@api_router.get("/opex/{estimate_id}/default-assumptions")
+async def get_opex_default_assumptions(estimate_id: str):
+    try:
+        estimate = storage.get_opex_estimate(estimate_id)
+        if not estimate:
+            raise HTTPException(status_code=404, detail="OpEx estimate not found")
+
+        mb_run = storage.get_mass_balance_run(estimate["mass_balance_run_id"])
+        capex_estimate = storage.get_capex_estimate(estimate["capex_estimate_id"])
+
+        mb_results = mb_run.get("results") if mb_run else None
+        capex_results = capex_estimate.get("results") if capex_estimate else None
+
+        scenario = storage.get_scenario(estimate["scenario_id"])
+        project_type = (mb_results or {}).get("projectType") or (scenario or {}).get("project_type") or "A"
+
+        assumptions = get_default_opex_assumptions(project_type, mb_results, capex_results)
+        return {"assumptions": assumptions, "projectType": project_type}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error getting default opex assumptions: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to get default assumptions")
+
+
+# =========================================================================
+# CapEx Deterministic Generation
+# =========================================================================
+
+
+@api_router.post("/scenarios/{scenario_id}/capex/generate-deterministic")
+async def generate_capex_deterministic_route(scenario_id: str):
+    import time
+    start_time = time.time()
+
+    try:
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        mb_runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        latest_mb = mb_runs[0] if mb_runs else None
+        if not latest_mb:
+            raise HTTPException(
+                status_code=400,
+                detail="No mass balance found. Generate a mass balance first.",
+            )
+
+        mb_results = latest_mb.get("results") or {}
+        project_type = mb_results.get("projectType") or scenario.get("project_type") or "B"
+
+        try:
+            results = generate_capex_deterministic(mb_results, project_type)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        estimate = storage.save_capex_estimate_with_log(
+            scenario_id=scenario_id,
+            mass_balance_run_id=latest_mb["id"],
+            status="draft",
+            input_snapshot={
+                "massBalanceId": latest_mb["id"],
+                "projectType": project_type,
+                "model": "deterministic",
+            },
+            results=results,
+            overrides={},
+            locks={},
+            document_type="CapEx",
+            model_used="deterministic",
+            duration_ms=duration_ms,
+            project_id=scenario.get("project_id"),
+            project_name=scenario.get("project_name"),
+            scenario_name=scenario.get("name"),
+            log_status="success",
+        )
+
+        return estimate
+    except HTTPException:
+        raise
+    except Exception as error:
+        duration_ms = int((time.time() - start_time) * 1000)
+        try:
+            storage.create_generation_log(
+                document_type="CapEx",
+                model_used="deterministic",
+                duration_ms=duration_ms,
+                status="error",
+                error_message=str(error),
+            )
+        except Exception:
+            pass
+        logger.error("Error generating deterministic capex: %s", str(error))
+        raise HTTPException(status_code=500, detail=f"Failed to generate deterministic CapEx: {str(error)}")
+
+
+# =========================================================================
+# Design Overrides (Mass Balance Recalculation)
+# =========================================================================
+
+
+@api_router.post("/mass-balance/{run_id}/recalculate")
+async def recalculate_mass_balance(run_id: str):
+    try:
+        run = storage.get_mass_balance_run(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Mass balance run not found")
+
+        overrides = run.get("overrides") or {}
+        locks = run.get("locks") or {}
+        design_overrides = extract_design_overrides(overrides, locks)
+
+        upif = storage.get_upif(run["scenario_id"])
+        if not upif:
+            raise HTTPException(status_code=400, detail="Source UPIF no longer exists")
+
+        scenario = storage.get_scenario(run["scenario_id"])
+        project_type = _determine_project_type(scenario or {}, upif)
+
+        from services.mass_balance_type_a import calculate_mass_balance_type_a
+        from services.mass_balance_type_b import calculate_mass_balance_type_b
+        from services.mass_balance_type_c import calculate_mass_balance_type_c
+        from services.mass_balance_type_d import calculate_mass_balance_type_d
+
+        upif_with_overrides = {**upif}
+        if design_overrides:
+            upif_with_overrides["design_overrides"] = design_overrides
+
+        pt = project_type.lower().strip()
+        if pt == "b" or "type b" in pt or "greenfield" in pt:
+            results = calculate_mass_balance_type_b(upif_with_overrides)
+        elif pt == "c" or "type c" in pt or "bolt-on" in pt or "bolt on" in pt:
+            results = calculate_mass_balance_type_c(upif_with_overrides)
+        elif pt == "d" or "type d" in pt or "hybrid" in pt:
+            results = calculate_mass_balance_type_d(upif_with_overrides)
+        else:
+            results = calculate_mass_balance_type_a(upif_with_overrides)
+
+        updated = storage.update_mass_balance_run(run_id, {"results": results, "status": "draft"})
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error recalculating mass balance: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to recalculate mass balance: {str(e)}")
+
+
+# =========================================================================
+# Financial Model CRUD
+# =========================================================================
+
+
+@api_router.get("/scenarios/{scenario_id}/financial-models")
+async def get_financial_models(scenario_id: str):
+    try:
+        models = storage.get_financial_models_by_scenario(scenario_id)
+        return models
+    except Exception as e:
+        logger.error("Error fetching financial models: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch financial models")
+
+
+@api_router.get("/financial-models/{model_id}")
+async def get_financial_model(model_id: str):
+    try:
+        model = storage.get_financial_model(model_id)
+        if not model:
+            raise HTTPException(status_code=404, detail="Financial model not found")
+        return model
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error fetching financial model: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch financial model")
+
+
+@api_router.post("/scenarios/{scenario_id}/financial-models/generate")
+async def generate_financial_model_route(scenario_id: str):
+    try:
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        mb_runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        latest_mb = mb_runs[0] if mb_runs else None
+        if not latest_mb:
+            raise HTTPException(
+                status_code=400,
+                detail="No mass balance found. Generate a mass balance first.",
+            )
+
+        capex_estimates = storage.get_capex_estimates_by_scenario(scenario_id)
+        latest_capex = capex_estimates[0] if capex_estimates else None
+        if not latest_capex:
+            raise HTTPException(
+                status_code=400,
+                detail="No CapEx estimate found. Generate a CapEx estimate first.",
+            )
+
+        opex_estimates = storage.get_opex_estimates_by_scenario(scenario_id)
+        latest_opex = opex_estimates[0] if opex_estimates else None
+        if not latest_opex:
+            raise HTTPException(
+                status_code=400,
+                detail="No OpEx estimate found. Generate an OpEx estimate first.",
+            )
+
+        mb_results = latest_mb.get("results") or {}
+        capex_results = latest_capex.get("results") or {}
+        opex_results = latest_opex.get("results") or {}
+
+        upif = storage.get_upif(scenario_id)
+        feedstocks = (upif.get("feedstocks") or []) if upif else []
+
+        assumptions = build_default_assumptions(mb_results, opex_results, feedstocks)
+        fm_results = calculate_financial_model(assumptions, mb_results, capex_results, opex_results)
+
+        existing_count = len(storage.get_financial_models_by_scenario(scenario_id))
+        version = str(existing_count + 1)
+
+        model = storage.create_financial_model(
+            scenario_id=scenario_id,
+            mass_balance_run_id=latest_mb["id"],
+            capex_estimate_id=latest_capex["id"],
+            opex_estimate_id=latest_opex["id"],
+            version=version,
+            status="draft",
+            assumptions=assumptions,
+            results=fm_results,
+        )
+
+        return model
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error generating financial model: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to generate financial model: {str(e)}")
+
+
+class FinancialModelRecalculateRequest(BaseModel):
+    assumptions: dict
+
+
+@api_router.post("/financial-models/{model_id}/recalculate")
+async def recalculate_financial_model(model_id: str, body: FinancialModelRecalculateRequest):
+    try:
+        model = storage.get_financial_model(model_id)
+        if not model:
+            raise HTTPException(status_code=404, detail="Financial model not found")
+
+        mb_run = storage.get_mass_balance_run(model["mass_balance_run_id"])
+        if not mb_run:
+            raise HTTPException(status_code=400, detail="Associated mass balance run not found")
+
+        capex_estimate = storage.get_capex_estimate(model["capex_estimate_id"])
+        if not capex_estimate:
+            raise HTTPException(status_code=400, detail="Associated CapEx estimate not found")
+
+        opex_estimate = storage.get_opex_estimate(model["opex_estimate_id"])
+        if not opex_estimate:
+            raise HTTPException(status_code=400, detail="Associated OpEx estimate not found")
+
+        mb_results = mb_run.get("results") or {}
+        capex_results = capex_estimate.get("results") or {}
+        opex_results = opex_estimate.get("results") or {}
+
+        fm_results = calculate_financial_model(body.assumptions, mb_results, capex_results, opex_results)
+
+        updated = storage.update_financial_model(model_id, {
+            "assumptions": body.assumptions,
+            "results": fm_results,
+        })
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error recalculating financial model: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to recalculate financial model: {str(e)}")
+
+
+class FinancialModelUpdate(BaseModel):
+    assumptions: Optional[dict] = None
+    results: Optional[dict] = None
+    status: Optional[str] = None
+
+
+@api_router.patch("/financial-models/{model_id}")
+async def update_financial_model(model_id: str, body: FinancialModelUpdate):
+    try:
+        existing = storage.get_financial_model(model_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Financial model not found")
+
+        updates: dict[str, Any] = {}
+        if body.assumptions is not None:
+            updates["assumptions"] = body.assumptions
+        if body.results is not None:
+            updates["results"] = body.results
+        if body.status is not None:
+            valid_statuses = ["draft", "reviewed", "finalized"]
+            if body.status not in valid_statuses:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid status. Must be: {', '.join(valid_statuses)}",
+                )
+            updates["status"] = body.status
+
+        updated = storage.update_financial_model(model_id, updates)
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating financial model: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to update financial model")
+
+
+# =========================================================================
+# Project Summary PDF Export
+# =========================================================================
+
+
+@api_router.get("/scenarios/{scenario_id}/export/project-summary-pdf")
+async def export_project_summary_pdf(scenario_id: str):
+    try:
+        scenario = storage.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+
+        project = storage.get_project(scenario.get("project_id", ""))
+        project_name = project.get("name", "Project") if project else "Project"
+        scenario_name = scenario.get("name", "Scenario")
+        project_type = scenario.get("project_type") or "B"
+
+        upif = storage.get_upif(scenario_id)
+
+        mb_runs = storage.get_mass_balance_runs_by_scenario(scenario_id)
+        latest_mb = mb_runs[0] if mb_runs else None
+        mb_results = latest_mb.get("results") if latest_mb else None
+
+        capex_estimates = storage.get_capex_estimates_by_scenario(scenario_id)
+        latest_capex = capex_estimates[0] if capex_estimates else None
+        capex_results = latest_capex.get("results") if latest_capex else None
+
+        opex_estimates = storage.get_opex_estimates_by_scenario(scenario_id)
+        latest_opex = opex_estimates[0] if opex_estimates else None
+        opex_results = latest_opex.get("results") if latest_opex else None
+
+        financial_models = storage.get_financial_models_by_scenario(scenario_id)
+        latest_fm = financial_models[0] if financial_models else None
+        financial_results = latest_fm.get("results") if latest_fm else None
+
+        from services.export_service import generate_project_summary_pdf
+        pdf_bytes = generate_project_summary_pdf(
+            project_name=project_name,
+            scenario_name=scenario_name,
+            project_type=project_type,
+            upif=upif,
+            mb_results=mb_results,
+            capex_results=capex_results,
+            opex_results=opex_results,
+            financial_results=financial_results,
+        )
+
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", scenario_name)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="ProjectSummary-{safe_name}.pdf"',
+                "Content-Length": str(len(pdf_bytes)),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error exporting project summary PDF: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to export project summary PDF")

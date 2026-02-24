@@ -565,3 +565,281 @@ def export_capex_excel(results: dict, scenario_name: str, project_name: str, pro
     wb.save(output)
     output.seek(0)
     return output.read()
+
+
+def generate_project_summary_pdf(
+    project_name: str,
+    scenario_name: str,
+    project_type: str,
+    upif: dict = None,
+    mb_results: dict = None,
+    capex_results: dict = None,
+    opex_results: dict = None,
+    financial_results: dict = None,
+) -> bytes:
+    from reportlab.lib.pagesizes import LETTER
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.colors import HexColor
+
+    page_width, page_height = LETTER
+    left_margin = 50
+    content_width = page_width - 100
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=LETTER)
+
+    c.setFont("Helvetica-Bold", 22)
+    c.setFillColor(HexColor("#1E3A5F"))
+    c.drawCentredString(page_width / 2, page_height - 50, "PROJECT SUMMARY")
+
+    c.setFont("Helvetica", 11)
+    c.setFillColor(HexColor("#666666"))
+    c.drawCentredString(page_width / 2, page_height - 78, f"Project: {_sanitize(project_name)}")
+    c.drawCentredString(page_width / 2, page_height - 93, f"Scenario: {_sanitize(scenario_name)}")
+    type_label = TYPE_LABELS.get(project_type, project_type)
+    c.drawCentredString(page_width / 2, page_height - 108, f"Type {project_type}: {type_label}")
+    c.drawCentredString(page_width / 2, page_height - 123, f"Generated: {datetime.now().strftime('%m/%d/%Y')}")
+
+    c.setStrokeColor(HexColor("#2563EB"))
+    c.setLineWidth(2)
+    c.line(left_margin, page_height - 135, left_margin + content_width, page_height - 135)
+
+    y = page_height - 160
+
+    if upif and isinstance(upif, dict):
+        y = _add_section_header(c, "Project Overview", y, left_margin, content_width, page_height)
+        overview_rows = []
+        feedstock_type = upif.get("feedstockType") or upif.get("feedstock_type") or ""
+        if feedstock_type:
+            overview_rows.append(["Feedstock Type", _sanitize(str(feedstock_type))])
+        volume = upif.get("volume") or upif.get("feedstockVolume") or ""
+        unit = upif.get("unit") or upif.get("feedstockUnit") or ""
+        if volume:
+            vol_str = f"{_fmt_num(volume)} {_sanitize(str(unit))}" if unit else _fmt_num(volume)
+            overview_rows.append(["Volume", vol_str])
+        location = upif.get("location") or ""
+        if location:
+            overview_rows.append(["Location", _sanitize(str(location))])
+        output_req = upif.get("outputRequirements") or upif.get("output_requirements") or ""
+        if output_req:
+            if isinstance(output_req, list):
+                overview_rows.append(["Output Requirements", ", ".join([_sanitize(str(r)) for r in output_req])])
+            else:
+                overview_rows.append(["Output Requirements", _sanitize(str(output_req))])
+
+        if overview_rows:
+            y = _draw_table(c, ["Parameter", "Value"], overview_rows, left_margin, y,
+                            [200, 312], header_bg="#2563EB", page_height=page_height, page_width=page_width)
+            y -= 10
+
+        feedstocks = upif.get("feedstocks") or []
+        if isinstance(feedstocks, list) and len(feedstocks) > 0:
+            if y < 100:
+                c.showPage()
+                y = page_height - 50
+            c.setFont("Helvetica-Bold", 10)
+            c.setFillColor(HexColor("#333333"))
+            c.drawString(left_margin, y, "Feedstock Breakdown:")
+            y -= 14
+            fs_rows = []
+            for fs in feedstocks:
+                if isinstance(fs, dict):
+                    fs_name = _sanitize(str(fs.get("name", fs.get("type", ""))))
+                    fs_vol = _fmt_num(fs.get("volume", fs.get("quantity", "")))
+                    fs_rows.append([fs_name, fs_vol])
+                else:
+                    fs_rows.append([_sanitize(str(fs)), ""])
+            y = _draw_table(c, ["Feedstock", "Volume"], fs_rows, left_margin, y,
+                            [300, 212], header_bg="#2563EB", page_height=page_height, page_width=page_width)
+            y -= 10
+        y -= 5
+
+    if mb_results and isinstance(mb_results, dict):
+        y = _add_section_header(c, "Mass Balance Summary", y, left_margin, content_width, page_height)
+        summary = mb_results.get("summary") or {}
+        if isinstance(summary, dict) and len(summary) > 0:
+            mb_rows = []
+            for key, val in summary.items():
+                if isinstance(val, dict):
+                    mb_rows.append([_camel_to_title(key), f"{_fmt_num(val.get('value', '-'))} {val.get('unit', '')}"])
+                else:
+                    mb_rows.append([_camel_to_title(key), str(val)])
+            y = _draw_table(c, ["Parameter", "Value"], mb_rows, left_margin, y,
+                            [250, 262], header_bg="#2563EB", page_height=page_height, page_width=page_width)
+            y -= 10
+
+        stages = mb_results.get("stages") or []
+        equipment = mb_results.get("equipment") or []
+        notes = []
+        if isinstance(stages, list) and len(stages) > 0:
+            notes.append(f"Treatment stages: {len(stages)}")
+        if isinstance(equipment, list) and len(equipment) > 0:
+            notes.append(f"Equipment items: {len(equipment)}")
+        if notes:
+            c.setFont("Helvetica", 9)
+            c.setFillColor(HexColor("#666666"))
+            c.drawString(left_margin, y, " | ".join(notes))
+            y -= 14
+        y -= 5
+
+    if capex_results and isinstance(capex_results, dict):
+        y = _add_section_header(c, "Capital Cost Summary", y, left_margin, content_width, page_height)
+        cap_summary = capex_results.get("summary") or {}
+        cap_rows = []
+        if isinstance(cap_summary, dict):
+            tec = cap_summary.get("totalEquipmentCost")
+            if tec is not None:
+                cap_rows.append(["Total Equipment Cost", _fmt_currency(tec)])
+            tic = cap_summary.get("totalInstalledCost")
+            if tic is not None:
+                cap_rows.append(["Total Installed Cost", _fmt_currency(tic)])
+            tpc = cap_summary.get("totalProjectCost")
+            if tpc is not None:
+                cap_rows.append(["Total Project Cost", _fmt_currency(tpc)])
+            cpu = cap_summary.get("costPerUnit")
+            if isinstance(cpu, dict):
+                cap_rows.append([f"Cost per Unit ({cpu.get('basis', '')})",
+                                 f"{_fmt_currency(cpu.get('value', 0))} / {cpu.get('unit', '')}"])
+        if cap_rows:
+            y = _draw_table(c, ["Item", "Amount"], cap_rows, left_margin, y,
+                            [300, 212], header_bg="#2563EB", page_height=page_height, page_width=page_width)
+            y -= 10
+
+        methodology = capex_results.get("methodology")
+        if methodology:
+            if y < 80:
+                c.showPage()
+                y = page_height - 50
+            c.setFont("Helvetica-Oblique", 8)
+            c.setFillColor(HexColor("#666666"))
+            c.drawString(left_margin, y, f"Methodology: {_sanitize(str(methodology)[:120])}")
+            y -= 14
+        y -= 5
+
+    if opex_results and isinstance(opex_results, dict):
+        y = _add_section_header(c, "Operating Cost Summary", y, left_margin, content_width, page_height)
+        opex_summary = opex_results.get("summary") or opex_results
+        opex_rows = []
+
+        total_opex = opex_summary.get("totalAnnualOpex") or opex_summary.get("totalOpex")
+        if total_opex is not None:
+            opex_rows.append(["Total Annual OpEx", _fmt_currency(total_opex)])
+
+        categories = opex_summary.get("categories") or opex_summary.get("breakdown") or {}
+        if isinstance(categories, dict):
+            for cat_key, cat_val in categories.items():
+                if isinstance(cat_val, dict):
+                    opex_rows.append([_camel_to_title(cat_key), _fmt_currency(cat_val.get("annual", cat_val.get("total", 0)))])
+                else:
+                    opex_rows.append([_camel_to_title(cat_key), _fmt_currency(cat_val)])
+        elif isinstance(categories, list):
+            for cat in categories:
+                if isinstance(cat, dict):
+                    opex_rows.append([_sanitize(cat.get("name", cat.get("category", ""))),
+                                     _fmt_currency(cat.get("annual", cat.get("total", cat.get("cost", 0))))])
+
+        labor = opex_summary.get("laborCost") or opex_summary.get("labor")
+        if labor is not None and not isinstance(categories, (dict, list)):
+            opex_rows.append(["Labor", _fmt_currency(labor)])
+        energy = opex_summary.get("energyCost") or opex_summary.get("energy")
+        if energy is not None and not isinstance(categories, (dict, list)):
+            opex_rows.append(["Energy", _fmt_currency(energy)])
+        maintenance = opex_summary.get("maintenanceCost") or opex_summary.get("maintenance")
+        if maintenance is not None and not isinstance(categories, (dict, list)):
+            opex_rows.append(["Maintenance", _fmt_currency(maintenance)])
+
+        net_opex = opex_summary.get("netAnnualOpex") or opex_summary.get("netOpex")
+        if net_opex is not None:
+            opex_rows.append(["Net Annual OpEx", _fmt_currency(net_opex)])
+
+        if opex_rows:
+            y = _draw_table(c, ["Category", "Annual Cost"], opex_rows, left_margin, y,
+                            [300, 212], header_bg="#2563EB", page_height=page_height, page_width=page_width)
+            y -= 10
+        y -= 5
+
+    if financial_results and isinstance(financial_results, dict):
+        y = _add_section_header(c, "Financial Model Summary", y, left_margin, content_width, page_height)
+
+        fin_rows = []
+        irr = financial_results.get("irr") or financial_results.get("IRR")
+        if irr is not None:
+            fin_rows.append(["IRR", f"{_fmt_num(irr, 1)}%"])
+        npv = financial_results.get("npv10") or financial_results.get("npv") or financial_results.get("NPV")
+        if npv is not None:
+            fin_rows.append(["NPV @10%", _fmt_currency(npv)])
+        moic = financial_results.get("moic") or financial_results.get("MOIC")
+        if moic is not None:
+            fin_rows.append(["MOIC", f"{_fmt_num(moic, 2)}x"])
+        payback = financial_results.get("paybackYears") or financial_results.get("payback")
+        if payback is not None:
+            fin_rows.append(["Payback Years", _fmt_num(payback, 1)])
+
+        revenue_market = financial_results.get("revenueMarket") or financial_results.get("market")
+        if revenue_market is not None:
+            fin_rows.append(["Revenue Market", _sanitize(str(revenue_market))])
+
+        biogas_scfm = financial_results.get("biogasFlowSCFM") or financial_results.get("biogasScfm")
+        if biogas_scfm is not None:
+            fin_rows.append(["Biogas Flow", f"{_fmt_num(biogas_scfm)} SCFM"])
+        rng_prod = financial_results.get("rngProductionMMBTU") or financial_results.get("rngMmbtuDay")
+        if rng_prod is not None:
+            fin_rows.append(["RNG Production", f"{_fmt_num(rng_prod)} MMBTU/day"])
+
+        credits_45z = financial_results.get("credits45Z") or financial_results.get("enable45Z")
+        if credits_45z:
+            if isinstance(credits_45z, dict):
+                enabled = credits_45z.get("enabled", False)
+                annual = credits_45z.get("annualCredit") or credits_45z.get("annual")
+                label = "45Z Credits"
+                val = _fmt_currency(annual) if annual else ("Enabled" if enabled else "Disabled")
+                fin_rows.append([label, val])
+            elif isinstance(credits_45z, bool):
+                fin_rows.append(["45Z Credits", "Enabled" if credits_45z else "Disabled"])
+            else:
+                fin_rows.append(["45Z Credits", _sanitize(str(credits_45z))])
+
+        if fin_rows:
+            y = _draw_table(c, ["Metric", "Value"], fin_rows, left_margin, y,
+                            [300, 212], header_bg="#2563EB", page_height=page_height, page_width=page_width)
+            y -= 10
+
+        pro_forma = financial_results.get("proForma") or financial_results.get("proforma") or []
+        if isinstance(pro_forma, list) and len(pro_forma) > 0:
+            if y < 100:
+                c.showPage()
+                y = page_height - 50
+            c.setFont("Helvetica-Bold", 10)
+            c.setFillColor(HexColor("#333333"))
+            c.drawString(left_margin, y, "Pro Forma Highlights:")
+            y -= 14
+
+            pf_rows = []
+            year1 = pro_forma[0] if len(pro_forma) > 0 else None
+            year10 = pro_forma[9] if len(pro_forma) > 9 else (pro_forma[-1] if len(pro_forma) > 1 else None)
+
+            if year1 and isinstance(year1, dict):
+                yr_label = year1.get("year", 1)
+                rev = year1.get("revenue") or year1.get("totalRevenue")
+                ebitda = year1.get("ebitda") or year1.get("EBITDA")
+                if rev is not None:
+                    pf_rows.append([f"Year {yr_label} Revenue", _fmt_currency(rev)])
+                if ebitda is not None:
+                    pf_rows.append([f"Year {yr_label} EBITDA", _fmt_currency(ebitda)])
+
+            if year10 and isinstance(year10, dict) and year10 is not year1:
+                yr_label = year10.get("year", 10)
+                rev = year10.get("revenue") or year10.get("totalRevenue")
+                ebitda = year10.get("ebitda") or year10.get("EBITDA")
+                if rev is not None:
+                    pf_rows.append([f"Year {yr_label} Revenue", _fmt_currency(rev)])
+                if ebitda is not None:
+                    pf_rows.append([f"Year {yr_label} EBITDA", _fmt_currency(ebitda)])
+
+            if pf_rows:
+                y = _draw_table(c, ["Period", "Amount"], pf_rows, left_margin, y,
+                                [300, 212], header_bg="#2563EB", page_height=page_height, page_width=page_width)
+
+    c.save()
+    buf.seek(0)
+    return buf.read()
