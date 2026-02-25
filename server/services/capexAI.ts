@@ -94,7 +94,7 @@ async function getPromptTemplate(key: PromptKey, storage?: any): Promise<string>
   return DEFAULT_PROMPTS[key].template;
 }
 
-function validateCapexResults(parsed: any): CapexResults {
+function validateCapexResults(parsed: any, projectType?: string): CapexResults {
   const lineItems: CapexLineItem[] = Array.isArray(parsed.lineItems)
     ? parsed.lineItems.map((item: any, idx: number) => ({
         id: item.id || `capex-${idx}-${Math.random().toString(36).substring(2, 8)}`,
@@ -144,7 +144,9 @@ function validateCapexResults(parsed: any): CapexResults {
     totalProjectCost: Math.round(totalDirectCost * 1.07),
   };
 
-  const summary = parsed.summary && typeof parsed.summary === "object"
+  const isRngType = projectType && ["B", "C", "D"].includes(projectType.toUpperCase());
+
+  let summary = parsed.summary && typeof parsed.summary === "object"
     ? {
         totalEquipmentCost: typeof parsed.summary.totalEquipmentCost === "number" ? parsed.summary.totalEquipmentCost : defaultSummary.totalEquipmentCost,
         totalInstalledCost: typeof parsed.summary.totalInstalledCost === "number" ? parsed.summary.totalInstalledCost : defaultSummary.totalInstalledCost,
@@ -156,6 +158,13 @@ function validateCapexResults(parsed: any): CapexResults {
         costPerUnit: parsed.summary.costPerUnit || undefined,
       }
     : defaultSummary;
+
+  if (isRngType && summary.engineeringPct !== 7) {
+    console.log(`CapEx Validate: Enforcing 7% engineering for RNG type ${projectType} (AI returned ${summary.engineeringPct}%)`);
+    summary.engineeringPct = 7;
+    summary.engineeringCost = Math.round(totalDirectCost * 0.07);
+    summary.totalProjectCost = totalDirectCost + summary.engineeringCost;
+  }
 
   return {
     projectType: parsed.projectType || "A",
@@ -428,6 +437,7 @@ function parseAndRepairCapexJSON(rawContent: string, label: string): any {
 async function generateCapexParallel(
   systemPrompt: string,
   model: LLMProvider,
+  projectType?: string,
 ): Promise<CapexResults> {
   const call1Instruction = `Generate capital cost estimates for ONLY the major process equipment and civil/structural items. Include: digesters, tanks, pumps, heat exchangers, blowers, screens, dewatering, gas conditioning/upgrading equipment, earthworks, concrete, structural steel.
 Return valid JSON:
@@ -502,7 +512,7 @@ Do NOT include major process equipment, digesters, tanks, or civil/structural. R
     methodology: parsed1.methodology || "AACE Class 4/5 factored estimate",
   };
 
-  return validateCapexResults(merged);
+  return validateCapexResults(merged, projectType || merged.projectType);
 }
 
 export async function generateCapexWithAI(
@@ -537,7 +547,7 @@ export async function generateCapexWithAI(
   console.log(`CapEx AI: Equipment data length: ${equipmentDataString.length} chars, UPIF context: ${upifContextString.length} chars`);
 
   try {
-    const results = await generateCapexParallel(systemPrompt, model);
+    const results = await generateCapexParallel(systemPrompt, model, normalizedType.toUpperCase());
     console.log(`CapEx AI: Parallel generation succeeded — ${results.lineItems.length} line items`);
     return {
       results,
@@ -564,7 +574,7 @@ export async function generateCapexWithAI(
   console.log(`CapEx AI: Fallback response received from ${response.provider}, ${response.content.length} chars, stop_reason=${response.stopReason || "unknown"}`);
 
   const parsed = parseAndRepairCapexJSON(response.content, "CapEx-Fallback");
-  const results = validateCapexResults(parsed);
+  const results = validateCapexResults(parsed, normalizedType.toUpperCase());
 
   return {
     results,

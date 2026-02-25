@@ -81,7 +81,7 @@ function recalculateSummary(lineItems: CapexLineItem[], summary: CapexSummary): 
     .filter(li => directProcesses.includes(li.process))
     .reduce((sum, li) => sum + li.totalCost, 0);
   const subtotalInternalCosts = lineItems
-    .filter(li => li.process === "Burnham Internal Costs")
+    .filter(li => !directProcesses.includes(li.process))
     .reduce((sum, li) => sum + li.totalCost, 0);
   const totalInstalledCost = lineItems.reduce((sum, li) => sum + li.installedCost, 0);
   const totalContingency = lineItems.reduce((sum, li) => sum + li.contingencyCost, 0);
@@ -868,6 +868,20 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
                                   </TableRow>
                                 );
                               });
+
+                              if (!directsDone && directSubtotal > 0) {
+                                rows.push(
+                                  <TableRow key="subtotal-directs" className="bg-blue-50 dark:bg-blue-950/30 border-t-2 border-b-2 border-blue-200 dark:border-blue-800" data-testid="row-subtotal-directs">
+                                    <TableCell colSpan={8} className="font-bold text-sm text-blue-700 dark:text-blue-400">
+                                      Subtotal Direct Costs (EPC)
+                                    </TableCell>
+                                    <TableCell className="text-right font-bold text-sm text-blue-700 dark:text-blue-400">
+                                      {formatCurrency(directSubtotal)}
+                                    </TableCell>
+                                    <TableCell />
+                                  </TableRow>
+                                );
+                              }
 
                               const totalAll = items.reduce((s, i) => s + i.totalCost, 0);
                               rows.push(

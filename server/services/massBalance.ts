@@ -182,9 +182,9 @@ function determineTreatmentTrain(upif: UpifRecord): string[] {
   const stages: string[] = ["preliminary", "equalization", "primary"];
 
   // Parse influent values to drive pollutant-aware process selection
-  const influentCod = parseAnalyte(upif, "COD") ?? 8000;
-  const influentFog = parseAnalyte(upif, "FOG") ?? 500;
-  const influentBod = parseAnalyte(upif, "BOD") ?? 4000;
+  const influentCod = parseAnalyte(upif, "COD", 8000);
+  const influentFog = parseAnalyte(upif, "FOG", 500);
+  const influentBod = parseAnalyte(upif, "BOD", 4000);
 
   // Industrial pretreatment process selection — based on pollutant loads, NOT municipal defaults
   if (allText.includes("mbr") || allText.includes("membrane")) {
