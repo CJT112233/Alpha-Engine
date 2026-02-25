@@ -26,7 +26,7 @@ DEFAULT_ASSUMPTIONS = {
     "itcMonetizationPct": 0.88,
     "maintenanceCapexPct": 0.015,
     "discountRate": 0.10,
-    "revenueMarket": "d3",
+    "revenueMarket": "voluntary",
     "voluntaryPricing": {
         "gasPricePerMMBtu": 3.50,
         "gasPriceEscalator": 0.03,

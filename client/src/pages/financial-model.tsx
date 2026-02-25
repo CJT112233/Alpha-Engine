@@ -245,6 +245,9 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
         updated.voluntaryPricing = { ...defaultVoluntaryPricing };
       }
       setLocalAssumptions(updated);
+      if (latestModel && latestModel.status !== "finalized") {
+        updateAssumptionsMutation.mutate(updated);
+      }
       return;
     }
     const keys = path.split(".");
@@ -488,7 +491,7 @@ function AssumptionsEditor({
               <div className="flex gap-1">
                 <Button
                   size="sm"
-                  variant={(assumptions.revenueMarket || "d3") === "d3" ? "default" : "outline"}
+                  variant={assumptions.revenueMarket === "d3" ? "default" : "outline"}
                   className="text-xs h-7 px-3"
                   onClick={() => onUpdate("revenueMarket", "d3")}
                   disabled={readOnly}
@@ -498,7 +501,7 @@ function AssumptionsEditor({
                 </Button>
                 <Button
                   size="sm"
-                  variant={assumptions.revenueMarket === "voluntary" ? "default" : "outline"}
+                  variant={(assumptions.revenueMarket || "voluntary") === "voluntary" ? "default" : "outline"}
                   className="text-xs h-7 px-3"
                   onClick={() => onUpdate("revenueMarket", "voluntary")}
                   disabled={readOnly}
@@ -509,7 +512,7 @@ function AssumptionsEditor({
               </div>
             </div>
 
-            {(assumptions.revenueMarket || "d3") === "d3" ? (
+            {assumptions.revenueMarket === "d3" ? (
               <>
                 <AssumptionField label="RIN Price" unit="$/RIN" value={assumptions.rinPricePerRIN} onChange={(v) => onUpdate("rinPricePerRIN", v)} readOnly={readOnly} testId="input-rin-price" />
                 <AssumptionField label="RIN Price Escalator" unit="%/yr" value={assumptions.rinPriceEscalator} onChange={(v) => onUpdate("rinPriceEscalator", v)} readOnly={readOnly} testId="input-rin-escalator" />
