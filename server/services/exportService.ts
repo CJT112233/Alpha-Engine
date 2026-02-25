@@ -2099,6 +2099,28 @@ export async function exportProjectSummaryExcel(
     sr++;
   }
 
+  if (upifData?.outputRequirements) {
+    const outReq = upifData.outputRequirements;
+    const r = wsSummary.getRow(sr);
+    r.getCell(1).value = "Output Requirements";
+    r.getCell(1).font = { bold: true, size: 10, color: { argb: "FF323F4F" } };
+    r.getCell(1).border = MB_BORDER_THIN;
+    wsSummary.mergeCells(sr, 1, sr, 2);
+    if (typeof outReq === "string") {
+      r.getCell(3).value = outReq;
+    } else if (Array.isArray(outReq)) {
+      r.getCell(3).value = outReq.map((item: any) => typeof item === "string" ? item : (item.label || item.name || JSON.stringify(item))).join(", ");
+    } else if (typeof outReq === "object") {
+      r.getCell(3).value = Object.entries(outReq).map(([k, v]: [string, any]) => v?.label || v?.value || k).join(", ");
+    }
+    r.getCell(3).border = MB_BORDER_THIN;
+    r.getCell(3).alignment = { wrapText: true };
+    wsSummary.mergeCells(sr, 3, sr, 4);
+    r.height = 18;
+    sr++;
+    sr++;
+  }
+
   const metrics = financialResults?.metrics || {} as any;
   mbAddSubsectionTitle(wsSummary, sr, "Key Financial Metrics ($000s)", 4);
   sr++;
