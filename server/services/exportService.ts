@@ -2317,7 +2317,7 @@ export async function exportProjectSummaryExcel(
       mbApplyTableHeaders(wsMB, mr, ["Process", "Equipment", "Qty", "Description", "Design Basis", "Notes"], [18, 22, 6, 30, 25, 20]);
       mr++;
       mbResults.equipment.forEach((eq, idx) => {
-        mbAddDataRow(wsMB, mr, [eq.process, eq.equipmentType, eq.quantity, eq.description, eq.designBasis, eq.notes?.join("; ") || ""], idx % 2 === 1);
+        mbAddDataRow(wsMB, mr, [eq.process, eq.equipmentType, eq.quantity, eq.description, eq.designBasis, Array.isArray(eq.notes) ? eq.notes.join("; ") : (eq.notes || "")], idx % 2 === 1);
         mr++;
       });
       mr++;

@@ -4124,7 +4124,7 @@ export async function registerRoutes(
       res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
       res.send(excelBuffer);
     } catch (error) {
-      console.error("Error exporting project summary Excel:", error);
+      console.error("Error exporting project summary Excel:", error instanceof Error ? error.stack : error);
       res.status(500).json({ error: "Failed to export project summary Excel" });
     }
   });
