@@ -607,20 +607,25 @@ def generate_project_summary_pdf(
     c = canvas.Canvas(buf, pagesize=LETTER)
 
     c.setFont("Helvetica-Bold", 22)
-    c.setFillColor(HexColor("#1E3A5F"))
-    c.drawCentredString(page_width / 2, page_height - 50, "PROJECT SUMMARY")
+    c.setFillColor(HexColor("#323F4F"))
+    c.drawCentredString(page_width / 2, page_height - 50, _sanitize(project_name))
 
     c.setFont("Helvetica", 11)
-    c.setFillColor(HexColor("#666666"))
-    c.drawCentredString(page_width / 2, page_height - 78, f"Project: {_sanitize(project_name)}")
-    c.drawCentredString(page_width / 2, page_height - 93, f"Scenario: {_sanitize(scenario_name)}")
+    c.setFillColor(HexColor("#8496B0"))
+    c.drawCentredString(page_width / 2, page_height - 72, f"Scenario: {_sanitize(scenario_name)}")
+
+    c.setFont("Helvetica-Bold", 14)
+    c.setFillColor(HexColor("#44546A"))
+    c.drawCentredString(page_width / 2, page_height - 92, "Project Summary")
+
     type_label = TYPE_LABELS.get(project_type, project_type)
-    c.drawCentredString(page_width / 2, page_height - 108, f"Type {project_type}: {type_label}")
-    c.drawCentredString(page_width / 2, page_height - 123, f"Generated: {datetime.now().strftime('%m/%d/%Y')}")
+    c.setFont("Helvetica", 10)
+    c.setFillColor(HexColor("#8496B0"))
+    c.drawCentredString(page_width / 2, page_height - 110, f"Type {project_type}: {type_label}  |  Generated: {datetime.now().strftime('%m/%d/%Y')}")
 
     c.setStrokeColor(HexColor("#2563EB"))
     c.setLineWidth(2)
-    c.line(left_margin, page_height - 135, left_margin + content_width, page_height - 135)
+    c.line(left_margin, page_height - 125, left_margin + content_width, page_height - 125)
 
     y = page_height - 160
 

@@ -1576,15 +1576,16 @@ export function exportProjectSummaryPDF(
     const contentWidth = 512;
     const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
 
-    doc.font("Helvetica-Bold").fontSize(20).fillColor("#323F4F")
-      .text("Project Summary", leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica-Bold").fontSize(22).fillColor("#323F4F")
+      .text(sanitize(projectName), leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica").fontSize(11).fillColor("#8496B0")
+      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 80, { align: "center", width: contentWidth });
+    doc.font("Helvetica-Bold").fontSize(14).fillColor("#44546A")
+      .text("Project Summary", leftMargin, 100, { align: "center", width: contentWidth });
     doc.font("Helvetica").fontSize(10).fillColor("#8496B0")
-      .text(`Project: ${sanitize(projectName)}`, leftMargin, 80, { align: "center", width: contentWidth })
-      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 95, { align: "center", width: contentWidth })
-      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 110, { align: "center", width: contentWidth })
-      .text(`Generated: ${new Date().toLocaleDateString("en-US")}`, leftMargin, 125, { align: "center", width: contentWidth });
+      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}  |  Generated: ${new Date().toLocaleDateString("en-US")}`, leftMargin, 122, { align: "center", width: contentWidth });
 
-    let y = 150;
+    let y = 145;
 
     y = addSectionHeader(doc, "Project Overview", y, leftMargin, contentWidth);
     const execSummary = buildExecutiveSummary(projectName, projectType, upifData, mbResults, capexResults, opexResults, financialResults);
