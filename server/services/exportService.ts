@@ -1656,13 +1656,26 @@ export function exportProjectSummaryPDF(
     if (y > 680) { doc.addPage(); y = 50; }
     y = addSectionHeader(doc, "CapEx Summary ($000s)", y, leftMargin, contentWidth);
     const capSummary = capexResults.summary;
+    const equipmentCost = capSummary.totalEquipmentCost || 0;
+    const isDeterministic = capSummary.subtotalDirectCosts != null;
+    const totalDirectCosts = isDeterministic
+      ? (capSummary.subtotalDirectCosts || 0)
+      : (capSummary.totalInstalledCost || 0);
+    const installationCost = totalDirectCosts - equipmentCost;
+    const engCost = capSummary.engineeringCost || 0;
+    const contingencyAmt = isDeterministic
+      ? (capSummary.contingency || capSummary.totalContingency || 0)
+      : (capSummary.totalContingency || 0);
+    const totalCapitalCosts = capSummary.totalProjectCost || 0;
+    const otherIndirect = totalCapitalCosts - totalDirectCosts - engCost - contingencyAmt;
     const capexSumRows: string[][] = [
-      ["Equipment Cost", fmtCurrencyK(capSummary.totalEquipmentCost)],
-      ["Installation Cost", fmtCurrencyK(capSummary.totalInstalledCost)],
-      ["Contingency", fmtCurrencyK(capSummary.totalContingency)],
-      ["Total Direct Cost", fmtCurrencyK(capSummary.totalDirectCost)],
-      [`Engineering (${capSummary.engineeringPct}%)`, fmtCurrencyK(capSummary.engineeringCost)],
-      ["Total Project Cost", fmtCurrencyK(capSummary.totalProjectCost)],
+      ["Equipment", fmtCurrencyK(equipmentCost)],
+      ["Installation", fmtCurrencyK(installationCost)],
+      ["Total Direct Costs", fmtCurrencyK(totalDirectCosts)],
+      [`Engineering (${capSummary.engineeringPct || 7}%)`, fmtCurrencyK(engCost)],
+      ["Other Indirect Costs", fmtCurrencyK(otherIndirect > 0 ? otherIndirect : 0)],
+      ["Contingency (7.5%)", fmtCurrencyK(contingencyAmt)],
+      ["Total Capital Costs", fmtCurrencyK(totalCapitalCosts)],
     ];
     y = drawTable(doc, ["Item", "Amount"], capexSumRows, leftMargin, y, [300, 212], { headerBg: "#323F4F" });
     y += 15;

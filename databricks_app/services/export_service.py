@@ -431,13 +431,22 @@ def export_capex_pdf(results: dict, scenario_name: str, project_name: str, proje
     summary = results.get("summary") or {}
     if isinstance(summary, dict) and len(summary) > 0:
         y = _add_section_header(c, "Cost Summary", y, left_margin, content_width, page_height)
+        equipment_cost = summary.get("totalEquipmentCost", 0)
+        is_deterministic = "subtotalDirectCosts" in summary
+        total_direct = summary.get("subtotalDirectCosts", 0) if is_deterministic else summary.get("totalInstalledCost", 0)
+        installation_cost = total_direct - equipment_cost
+        eng_cost = summary.get("engineeringCost", 0)
+        contingency_amt = summary.get("contingency", summary.get("totalContingency", 0))
+        total_capital = summary.get("totalProjectCost", 0)
+        other_indirect = total_capital - total_direct - eng_cost - contingency_amt
         sum_rows = [
-            ["Total Equipment Cost", _fmt_currency(summary.get("totalEquipmentCost", 0))],
-            ["Total Installed Cost", _fmt_currency(summary.get("totalInstalledCost", 0))],
-            ["Total Contingency", _fmt_currency(summary.get("totalContingency", 0))],
-            ["Total Direct Cost", _fmt_currency(summary.get("totalDirectCost", 0))],
-            [f"Engineering ({summary.get('engineeringPct', 15)}%)", _fmt_currency(summary.get("engineeringCost", 0))],
-            ["Total Project Cost", _fmt_currency(summary.get("totalProjectCost", 0))],
+            ["Equipment", _fmt_currency(equipment_cost)],
+            ["Installation", _fmt_currency(installation_cost)],
+            ["Total Direct Costs", _fmt_currency(total_direct)],
+            [f"Engineering ({summary.get('engineeringPct', 7)}%)", _fmt_currency(eng_cost)],
+            ["Other Indirect Costs", _fmt_currency(max(other_indirect, 0))],
+            ["Contingency (7.5%)", _fmt_currency(contingency_amt)],
+            ["Total Capital Costs", _fmt_currency(total_capital)],
         ]
         cpu = summary.get("costPerUnit")
         if isinstance(cpu, dict):
@@ -504,12 +513,21 @@ def export_capex_excel(results: dict, scenario_name: str, project_name: str, pro
         ws.append([f"Cost Year: {cost_year}", f"Currency: {currency}"])
         ws.append([])
         ws.append(["Item", "Amount ($)"])
-        ws.append(["Total Equipment Cost", summary.get("totalEquipmentCost", 0)])
-        ws.append(["Total Installed Cost", summary.get("totalInstalledCost", 0)])
-        ws.append(["Total Contingency", summary.get("totalContingency", 0)])
-        ws.append(["Total Direct Cost", summary.get("totalDirectCost", 0)])
-        ws.append([f"Engineering ({summary.get('engineeringPct', 15)}%)", summary.get("engineeringCost", 0)])
-        ws.append(["Total Project Cost", summary.get("totalProjectCost", 0)])
+        eq_cost = summary.get("totalEquipmentCost", 0)
+        is_det = "subtotalDirectCosts" in summary
+        td_cost = summary.get("subtotalDirectCosts", 0) if is_det else summary.get("totalInstalledCost", 0)
+        inst_cost = td_cost - eq_cost
+        eng_c = summary.get("engineeringCost", 0)
+        cont_c = summary.get("contingency", summary.get("totalContingency", 0))
+        tc_cost = summary.get("totalProjectCost", 0)
+        oi_cost = tc_cost - td_cost - eng_c - cont_c
+        ws.append(["Equipment", eq_cost])
+        ws.append(["Installation", inst_cost])
+        ws.append(["Total Direct Costs", td_cost])
+        ws.append([f"Engineering ({summary.get('engineeringPct', 7)}%)", eng_c])
+        ws.append(["Other Indirect Costs", max(oi_cost, 0)])
+        ws.append(["Contingency (7.5%)", cont_c])
+        ws.append(["Total Capital Costs", tc_cost])
         cpu = summary.get("costPerUnit")
         if isinstance(cpu, dict):
             ws.append([f"Cost per Unit ({cpu.get('basis', '')} - {cpu.get('unit', '')})", cpu.get("value", 0)])
@@ -687,15 +705,21 @@ def generate_project_summary_pdf(
         cap_summary = capex_results.get("summary") or {}
         cap_rows = []
         if isinstance(cap_summary, dict):
-            tec = cap_summary.get("totalEquipmentCost")
-            if tec is not None:
-                cap_rows.append(["Total Equipment Cost", _fmt_currency(tec)])
-            tic = cap_summary.get("totalInstalledCost")
-            if tic is not None:
-                cap_rows.append(["Total Installed Cost", _fmt_currency(tic)])
-            tpc = cap_summary.get("totalProjectCost")
-            if tpc is not None:
-                cap_rows.append(["Total Project Cost", _fmt_currency(tpc)])
+            eq = cap_summary.get("totalEquipmentCost", 0)
+            is_det = "subtotalDirectCosts" in cap_summary
+            td = cap_summary.get("subtotalDirectCosts", 0) if is_det else cap_summary.get("totalInstalledCost", 0)
+            inst = td - eq
+            ec = cap_summary.get("engineeringCost", 0)
+            cont = cap_summary.get("contingency", cap_summary.get("totalContingency", 0))
+            tc = cap_summary.get("totalProjectCost", 0)
+            oi = tc - td - ec - cont
+            cap_rows.append(["Equipment", _fmt_currency(eq)])
+            cap_rows.append(["Installation", _fmt_currency(inst)])
+            cap_rows.append(["Total Direct Costs", _fmt_currency(td)])
+            cap_rows.append([f"Engineering ({cap_summary.get('engineeringPct', 7)}%)", _fmt_currency(ec)])
+            cap_rows.append(["Other Indirect Costs", _fmt_currency(max(oi, 0))])
+            cap_rows.append(["Contingency (7.5%)", _fmt_currency(cont)])
+            cap_rows.append(["Total Capital Costs", _fmt_currency(tc)])
             cpu = cap_summary.get("costPerUnit")
             if isinstance(cpu, dict):
                 cap_rows.append([f"Cost per Unit ({cpu.get('basis', '')})",
