@@ -1107,15 +1107,29 @@ export async function generateOpexWithAI(
   const opexMaxTokens = isOpus ? 12288 : 16384;
   const opexUserMsg = `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep descriptions and notes concise (1 sentence max). Combine similar items where possible.${skipNote}`;
 
-  const response = await llmComplete({
-    model,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: opexUserMsg },
-    ],
-    maxTokens: opexMaxTokens,
-    jsonMode: true,
-  });
+  const AI_TIMEOUT_MS = 240_000;
+
+  let response: Awaited<ReturnType<typeof llmComplete>>;
+  try {
+    response = await Promise.race([
+      llmComplete({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: opexUserMsg },
+        ],
+        maxTokens: opexMaxTokens,
+        jsonMode: true,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("OPEX_AI_TIMEOUT")), AI_TIMEOUT_MS)
+      ),
+    ]);
+  } catch (timeoutOrLlmError) {
+    const isTimeout = (timeoutOrLlmError as Error).message === "OPEX_AI_TIMEOUT";
+    console.warn(`OpEx AI: ${isTimeout ? `LLM timed out after ${AI_TIMEOUT_MS / 1000}s` : `LLM call failed: ${(timeoutOrLlmError as Error).message}`} — using deterministic fallback`);
+    return buildDeterministicFallback(projectType, massBalanceResults, capexResults);
+  }
 
   console.log(`OpEx AI: Response received from ${response.provider}, ${response.content.length} chars, stop_reason=${response.stopReason || "unknown"}`);
 
@@ -1131,8 +1145,8 @@ export async function generateOpexWithAI(
       parsed = repairTruncatedJSON(rawContent);
       console.log("OpEx AI: Successfully repaired truncated JSON");
     } catch (repairError) {
-      console.error("OpEx AI: Failed to parse or repair JSON response:", rawContent.substring(0, 500));
-      throw new Error(`AI returned invalid JSON. Parse error: ${(parseError as Error).message}`);
+      console.warn("OpEx AI: Failed to parse or repair JSON — using deterministic fallback");
+      return buildDeterministicFallback(projectType, massBalanceResults, capexResults);
     }
   }
 
@@ -1172,5 +1186,46 @@ export async function generateOpexWithAI(
     results,
     provider: response.provider as LLMProvider,
     providerLabel: providerLabels[response.provider as LLMProvider] || response.provider,
+  };
+}
+
+function buildDeterministicFallback(
+  projectType: string,
+  massBalanceResults: MassBalanceResults,
+  capexResults: CapexResults | null,
+): OpexAIResult {
+  const editableAssumptions = getDefaultOpexAssumptions(projectType, massBalanceResults, capexResults);
+  const lineItems = calculateAllDeterministicLineItems(editableAssumptions, massBalanceResults, capexResults, projectType);
+  const totalProjectCapex = capexResults?.summary?.totalProjectCost || 0;
+
+  const rngMMBtu = extractMBValue(massBalanceResults.summary, "rng", "renewable") || extractMBValue(massBalanceResults.summary, "biomethane", "pipeline gas");
+  const annualRngMMBtu = rngMMBtu > 10000 ? rngMMBtu : rngMMBtu * 365;
+  const summary = buildOpexSummaryFromLineItems(lineItems, totalProjectCapex, annualRngMMBtu > 0 ? annualRngMMBtu : undefined);
+
+  const displayAssumptions = editableAssumptions.map(a => ({
+    parameter: a.parameter,
+    value: typeof a.value === "number"
+      ? (a.unit.includes("$") || a.unit.includes("/yr") ? `$${a.value.toLocaleString()} ${a.unit}` : `${a.value.toLocaleString()} ${a.unit}`)
+      : `${a.value} ${a.unit}`,
+    source: a.source,
+  }));
+
+  const results: OpexResults = {
+    lineItems,
+    summary,
+    assumptions: displayAssumptions,
+    editableAssumptions,
+    warnings: [{ field: "general", message: "OpEx estimated using deterministic Burnham defaults (AI was unavailable). All values are editable.", severity: "info" as const }],
+    costYear: new Date().getFullYear().toString(),
+    currency: "USD",
+    methodology: "Deterministic calculation using Burnham OpEx Model defaults",
+  };
+
+  console.log(`OpEx Deterministic Fallback: Generated ${lineItems.length} line items, total annual OpEx $${summary.totalAnnualOpex.toLocaleString()}`);
+
+  return {
+    results,
+    provider: "gpt5" as LLMProvider,
+    providerLabel: "Deterministic (Burnham defaults)",
   };
 }
