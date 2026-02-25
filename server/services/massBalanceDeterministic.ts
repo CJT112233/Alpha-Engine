@@ -1006,10 +1006,10 @@ function parseBiogasInput(upif: any): BiogasInputParams {
   };
 }
 
-function buildTypeCAdStages(bg: BiogasInputParams): ADProcessStage[] {
+function buildTypeCAdStages(bg: BiogasInputParams, scaledUnit?: ReturnType<typeof selectProdevalUnit>): ADProcessStage[] {
   const stages: ADProcessStage[] = [];
-  const prodevalUnit = selectProdevalUnit(bg.avgFlowScfm);
-  const prodevalCriteria = getProdevalGasTrainDesignCriteria(bg.avgFlowScfm);
+  const prodevalUnit = scaledUnit || selectProdevalUnit(bg.avgFlowScfm);
+  const prodevalCriteria = getProdevalGasTrainDesignCriteria(Math.min(bg.avgFlowScfm, MAX_PRODEVAL_CAPACITY_SCFM));
   const volumeLoss = prodevalUnit.volumeLossPct / 100;
   const conditionedScfm = bg.avgFlowScfm * (1 - volumeLoss);
   const methaneRecovery = prodevalUnit.methaneRecovery / 100;
@@ -1125,12 +1125,21 @@ function buildTypeCAdStages(bg: BiogasInputParams): ADProcessStage[] {
   return stages;
 }
 
-function buildTypeCEquipment(bg: BiogasInputParams): EquipmentItem[] {
+function buildTypeCEquipment(bg: BiogasInputParams, scaledUnit?: ReturnType<typeof selectProdevalUnit>): EquipmentItem[] {
   const equipment: EquipmentItem[] = [];
   let idCounter = 0;
   const makeId = (suffix: string) => `det-${suffix}-${idCounter++}`;
 
-  const prodevalEquipment = getProdevalEquipmentList(bg.avgFlowScfm, (suffix) => makeId(suffix || "prodeval"));
+  const effectiveScfm = scaledUnit ? Math.min(bg.avgFlowScfm, MAX_PRODEVAL_CAPACITY_SCFM) : bg.avgFlowScfm;
+  const prodevalEquipment = getProdevalEquipmentList(effectiveScfm, (suffix) => makeId(suffix || "prodeval"));
+  if (scaledUnit && scaledUnit.numberOfTrains > 3) {
+    for (const item of prodevalEquipment) {
+      if (item.quantity < scaledUnit.numberOfTrains && item.specs.gasFlow) {
+        item.quantity = scaledUnit.numberOfTrains;
+        item.description = item.description.replace(/\d+ train\(s\)/, `${scaledUnit.numberOfTrains} train(s)`);
+      }
+    }
+  }
   for (const item of prodevalEquipment) {
     equipment.push({
       ...item,
@@ -1162,8 +1171,8 @@ function buildTypeCEquipment(bg: BiogasInputParams): EquipmentItem[] {
   return equipment;
 }
 
-function buildTypeCAssumptions(bg: BiogasInputParams): Array<{ parameter: string; value: string; source: string }> {
-  const prodevalUnit = selectProdevalUnit(bg.avgFlowScfm);
+function buildTypeCAssumptions(bg: BiogasInputParams, scaledUnit?: ReturnType<typeof selectProdevalUnit>): Array<{ parameter: string; value: string; source: string }> {
+  const prodevalUnit = scaledUnit || selectProdevalUnit(bg.avgFlowScfm);
   return [
     { parameter: "Project Type", value: "Type C — RNG Bolt-On (biogas upgrading only)", source: "User selection" },
     { parameter: "Biogas Source", value: "Existing facility biogas (not in scope)", source: "Bolt-on project definition" },
@@ -1180,8 +1189,8 @@ function buildTypeCAssumptions(bg: BiogasInputParams): Array<{ parameter: string
   ];
 }
 
-function buildTypeCSummary(bg: BiogasInputParams): Record<string, { value: string; unit: string }> {
-  const prodevalUnit = selectProdevalUnit(bg.avgFlowScfm);
+function buildTypeCSummary(bg: BiogasInputParams, scaledUnit?: ReturnType<typeof selectProdevalUnit>): Record<string, { value: string; unit: string }> {
+  const prodevalUnit = scaledUnit || selectProdevalUnit(bg.avgFlowScfm);
   const volumeLoss = prodevalUnit.volumeLossPct / 100;
   const conditionedScfm = bg.avgFlowScfm * (1 - volumeLoss);
   const methaneRecovery = prodevalUnit.methaneRecovery / 100;
@@ -1223,6 +1232,26 @@ function buildTypeCSummary(bg: BiogasInputParams): Record<string, { value: strin
 }
 
 const MAX_PRODEVAL_CAPACITY_SCFM = 1200;
+const MAX_TYPE_C_CAPACITY_SCFM = 2400;
+
+function selectProdevalUnitScaled(biogasScfm: number): { unit: ReturnType<typeof selectProdevalUnit>; extraTrains: number } {
+  if (biogasScfm <= MAX_PRODEVAL_CAPACITY_SCFM) {
+    return { unit: selectProdevalUnit(biogasScfm), extraTrains: 0 };
+  }
+  const baseUnit = selectProdevalUnit(MAX_PRODEVAL_CAPACITY_SCFM);
+  const perTrainScfm = baseUnit.perTrainScfm;
+  const totalTrains = Math.ceil(biogasScfm / perTrainScfm);
+  const extraTrains = totalTrains - baseUnit.numberOfTrains;
+  return {
+    unit: {
+      ...baseUnit,
+      modelSize: `${totalTrains * Math.round(perTrainScfm)} SCFM (${totalTrains} trains)`,
+      nominalCapacityScfm: totalTrains * perTrainScfm,
+      numberOfTrains: totalTrains,
+    },
+    extraTrains,
+  };
+}
 
 function generateTypeCMassBalance(upif: any): DeterministicMBResult {
   console.log(`Deterministic MB: Starting Type C (Bolt-On) calculation`);
@@ -1231,11 +1260,14 @@ function generateTypeCMassBalance(upif: any): DeterministicMBResult {
   const bg = parseBiogasInput(upif);
   console.log(`Deterministic MB: Biogas input = ${r(bg.avgFlowScfm, 1)} SCFM, ${bg.ch4Pct}% CH₄, ${bg.h2sPpm} ppm H₂S`);
 
-  if (bg.avgFlowScfm > MAX_PRODEVAL_CAPACITY_SCFM) {
-    throw new Error(`Biogas flow of ${r(bg.avgFlowScfm, 0)} SCFM exceeds maximum Prodeval equipment capacity (${MAX_PRODEVAL_CAPACITY_SCFM} SCFM). Falling back to AI for custom solution.`);
+  if (bg.avgFlowScfm > MAX_TYPE_C_CAPACITY_SCFM) {
+    throw new Error(`Biogas flow of ${r(bg.avgFlowScfm, 0)} SCFM exceeds maximum Prodeval equipment capacity (${MAX_TYPE_C_CAPACITY_SCFM} SCFM for multi-train configuration). Falling back to AI for custom solution.`);
   }
 
-  const prodevalUnit = selectProdevalUnit(bg.avgFlowScfm);
+  const { unit: prodevalUnit, extraTrains } = selectProdevalUnitScaled(bg.avgFlowScfm);
+  if (extraTrains > 0) {
+    console.log(`Deterministic MB: Scaled Prodeval to ${prodevalUnit.numberOfTrains} trains (${prodevalUnit.nominalCapacityScfm} SCFM) for ${r(bg.avgFlowScfm, 0)} SCFM flow`);
+  }
   const volumeLoss = prodevalUnit.volumeLossPct / 100;
   const conditionedScfm = bg.avgFlowScfm * (1 - volumeLoss);
   const methaneRecovery = prodevalUnit.methaneRecovery / 100;
@@ -1243,10 +1275,10 @@ function generateTypeCMassBalance(upif: any): DeterministicMBResult {
   const rngMmbtuPerDay = rngScfm * 1440 * 1012 / 1e6;
   console.log(`Deterministic MB: RNG = ${r(rngScfm, 1)} SCFM (${r(rngMmbtuPerDay, 1)} MMBTU/day)`);
 
-  const adStages = buildTypeCAdStages(bg);
-  const equipment = buildTypeCEquipment(bg);
-  const assumptions = buildTypeCAssumptions(bg);
-  const summary = buildTypeCSummary(bg);
+  const adStages = buildTypeCAdStages(bg, prodevalUnit);
+  const equipment = buildTypeCEquipment(bg, prodevalUnit);
+  const assumptions = buildTypeCAssumptions(bg, prodevalUnit);
+  const summary = buildTypeCSummary(bg, prodevalUnit);
 
   const warnings: Array<{ field: string; message: string; severity: "error" | "warning" | "info" }> = [];
   warnings.push({
@@ -1255,11 +1287,11 @@ function generateTypeCMassBalance(upif: any): DeterministicMBResult {
     severity: "info",
   });
 
-  if (bg.avgFlowScfm > prodevalUnit.nominalCapacityScfm * 1.1) {
+  if (extraTrains > 0) {
     warnings.push({
       field: "gasUpgrading",
-      message: `Biogas flow (${r(bg.avgFlowScfm, 0)} SCFM) exceeds selected Prodeval unit capacity (${prodevalUnit.nominalCapacityScfm} SCFM). Consider additional trains.`,
-      severity: "warning",
+      message: `Biogas flow (${r(bg.avgFlowScfm, 0)} SCFM) exceeds standard 1,200 SCFM capacity. Scaled to ${prodevalUnit.numberOfTrains} Prodeval trains (${r(prodevalUnit.nominalCapacityScfm, 0)} SCFM total).`,
+      severity: "info",
     });
   }
 

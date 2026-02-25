@@ -2904,8 +2904,8 @@ export async function registerRoutes(
   });
 
   app.post("/api/scenarios/:scenarioId/mass-balance/generate", async (req: Request, res: Response) => {
-    req.setTimeout(180000);
-    res.setTimeout(180000);
+    req.setTimeout(300000);
+    res.setTimeout(300000);
     const startTime = Date.now();
     let modelUsed = "deterministic";
     try {
@@ -2941,11 +2941,11 @@ export async function registerRoutes(
           const detErrMsg = (detError as Error).message;
           console.warn(`Mass Balance: Deterministic calculation failed, falling back to AI:`, detErrMsg);
           try {
-            const AI_TIMEOUT_MS = 120000;
+            const AI_TIMEOUT_MS = 240000;
             const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
             const aiPromise = generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
             const timeoutPromise = new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("AI mass balance generation timed out after 2 minutes")), AI_TIMEOUT_MS)
+              setTimeout(() => reject(new Error("AI mass balance generation timed out after 4 minutes")), AI_TIMEOUT_MS)
             );
             const aiResult = await Promise.race([aiPromise, timeoutPromise]);
             results = aiResult.results;
@@ -2959,11 +2959,11 @@ export async function registerRoutes(
         }
       } else {
         try {
-          const AI_TIMEOUT_MS = 120000;
+          const AI_TIMEOUT_MS = 240000;
           const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
           const aiPromise = generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("AI mass balance generation timed out after 2 minutes")), AI_TIMEOUT_MS)
+            setTimeout(() => reject(new Error("AI mass balance generation timed out after 4 minutes")), AI_TIMEOUT_MS)
           );
           const aiResult = await Promise.race([aiPromise, timeoutPromise]);
           results = aiResult.results;
