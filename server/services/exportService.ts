@@ -2033,3 +2033,600 @@ export function exportProjectSummaryPDF(
     doc.end();
   });
 }
+
+export async function exportProjectSummaryExcel(
+  projectName: string,
+  scenarioName: string,
+  projectType: string,
+  upifData: any,
+  mbResults: MassBalanceResults,
+  capexResults: CapexResults,
+  opexResults: OpexResults,
+  financialResults: FinancialModelResults,
+): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Project Factory — Burnham";
+  wb.created = new Date();
+  const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
+  const typeLabel = typeLabels[projectType] || projectType;
+
+  const wsSummary = wb.addWorksheet("Project Summary", { properties: { tabColor: { argb: "FF323F4F" } } });
+  let sr = 1;
+  mbAddSectionTitle(wsSummary, sr, projectName, 4);
+  sr++;
+  const subRow = wsSummary.getRow(sr);
+  subRow.getCell(1).value = `Scenario: ${scenarioName}`;
+  subRow.getCell(1).font = { size: 11, color: { argb: "FF8496B0" } };
+  subRow.getCell(3).value = `Type ${projectType}: ${typeLabel}`;
+  subRow.getCell(3).font = { size: 10, color: { argb: "FF8496B0" } };
+  wsSummary.mergeCells(sr, 1, sr, 2);
+  wsSummary.mergeCells(sr, 3, sr, 4);
+  sr++;
+  const dateRow = wsSummary.getRow(sr);
+  dateRow.getCell(1).value = `Generated: ${new Date().toLocaleDateString("en-US")}`;
+  dateRow.getCell(1).font = { size: 9, color: { argb: "FF8496B0" } };
+  wsSummary.mergeCells(sr, 1, sr, 4);
+  sr++;
+  sr++;
+
+  const overview = buildExecutiveSummary(projectName, projectType, upifData, mbResults, capexResults, opexResults, financialResults);
+  mbAddSubsectionTitle(wsSummary, sr, "Project Overview", 4);
+  sr++;
+  const overviewRow = wsSummary.getRow(sr);
+  overviewRow.getCell(1).value = overview;
+  overviewRow.getCell(1).font = { size: 9, color: { argb: "FF44546A" } };
+  overviewRow.getCell(1).alignment = { wrapText: true, vertical: "top" };
+  wsSummary.mergeCells(sr, 1, sr, 4);
+  overviewRow.height = 50;
+  sr++;
+  sr++;
+
+  if (upifData?.feedstocks && Array.isArray(upifData.feedstocks) && upifData.feedstocks.length > 0) {
+    mbAddSubsectionTitle(wsSummary, sr, "Feedstock Summary", 4);
+    sr++;
+    mbApplyTableHeaders(wsSummary, sr, ["Feedstock Type", "Volume", "Unit", ""], [25, 15, 15, 15]);
+    sr++;
+    upifData.feedstocks.forEach((fs: any, idx: number) => {
+      mbAddDataRow(wsSummary, sr, [
+        fs.feedstockType || "",
+        fs.feedstockVolume ? Number(fs.feedstockVolume).toLocaleString("en-US") : "-",
+        fs.feedstockUnit || "",
+        "",
+      ], idx % 2 === 1);
+      sr++;
+    });
+    sr++;
+  }
+
+  const metrics = financialResults?.metrics || {} as any;
+  mbAddSubsectionTitle(wsSummary, sr, "Key Financial Metrics ($000s)", 4);
+  sr++;
+  mbApplyTableHeaders(wsSummary, sr, ["Metric", "Value", "Metric", "Value"], [20, 15, 20, 15]);
+  sr++;
+  const metricPairs: [string, string, string, string][] = [
+    ["IRR", metrics.irr !== null && metrics.irr !== undefined ? `${fmtNum(metrics.irr * 100)}%` : "N/A", "Total CapEx", fmtCurrencyK(metrics.totalCapex)],
+    ["NPV @ 10%", fmtCurrencyK(metrics.npv10), "ITC Proceeds", fmtCurrencyK(metrics.itcProceeds)],
+    ["MOIC", metrics.moic != null ? `${fmtNum(metrics.moic, 1)}x` : "N/A", "Total 20-Year Revenue", fmtCurrencyK(metrics.totalRevenue)],
+    ["Payback Period", metrics.paybackYears != null ? `${fmtNum(metrics.paybackYears, 1)} years` : "N/A", "Avg Annual EBITDA", fmtCurrencyK(metrics.averageAnnualEbitda)],
+  ];
+  metricPairs.forEach((mp, idx) => {
+    const r = wsSummary.getRow(sr);
+    r.getCell(1).value = mp[0]; r.getCell(1).font = { bold: true, size: 10 }; r.getCell(1).border = MB_BORDER_THIN;
+    r.getCell(2).value = mp[1]; r.getCell(2).border = MB_BORDER_THIN; r.getCell(2).alignment = { horizontal: "right" };
+    r.getCell(3).value = mp[2]; r.getCell(3).font = { bold: true, size: 10 }; r.getCell(3).border = MB_BORDER_THIN;
+    r.getCell(4).value = mp[3]; r.getCell(4).border = MB_BORDER_THIN; r.getCell(4).alignment = { horizontal: "right" };
+    if (idx % 2 === 1) { for (let c = 1; c <= 4; c++) r.getCell(c).fill = MB_ALT_ROW_FILL; }
+    r.height = 18;
+    sr++;
+  });
+  sr++;
+
+  const isDet = capexResults.summary?.subtotalDirectCosts != null;
+  const eqCost = capexResults.summary?.totalEquipmentCost || 0;
+  const tdCosts = isDet ? (capexResults.summary?.subtotalDirectCosts || 0) : (capexResults.summary?.totalInstalledCost || 0);
+  const instCost = tdCosts - eqCost;
+  const engC = capexResults.summary?.engineeringCost || 0;
+  const contC = isDet ? (capexResults.summary?.contingency ?? capexResults.summary?.totalContingency ?? 0) : (capexResults.summary?.totalContingency || 0);
+  const tcCost = capexResults.summary?.totalProjectCost || 0;
+  const oiCost = Math.max(tcCost - tdCosts - engC - contC, 0);
+
+  mbAddSubsectionTitle(wsSummary, sr, "CapEx Summary ($000s)", 4);
+  sr++;
+  mbApplyTableHeaders(wsSummary, sr, ["Item", "", "Amount", ""], [20, 15, 15, 15]);
+  sr++;
+  const capSumItems: [string, number][] = [
+    ["Equipment", eqCost],
+    ["Installation", instCost],
+  ];
+  capSumItems.forEach(([label, val], idx) => {
+    const r = wsSummary.getRow(sr);
+    r.getCell(1).value = label; r.getCell(1).font = { size: 10 }; r.getCell(1).border = MB_BORDER_THIN;
+    wsSummary.mergeCells(sr, 1, sr, 2);
+    r.getCell(3).value = fmtCurrencyK(val as number); r.getCell(3).border = MB_BORDER_THIN; r.getCell(3).alignment = { horizontal: "right" };
+    wsSummary.mergeCells(sr, 3, sr, 4);
+    if (idx % 2 === 1) { r.getCell(1).fill = MB_ALT_ROW_FILL; r.getCell(3).fill = MB_ALT_ROW_FILL; }
+    r.height = 18;
+    sr++;
+  });
+  cxAddSubtotalRow(wsSummary, sr, "Total Direct Costs", tdCosts, 4, CX_SUBTOTAL_FILL, CX_SUBTOTAL_FONT); sr++;
+  const indirectItems: [string, string][] = [
+    [`Engineering (${capexResults.summary?.engineeringPct || 7}%)`, fmtCurrencyK(engC)],
+    ["Other Indirect Costs", fmtCurrencyK(oiCost)],
+    ["Contingency (7.5%)", fmtCurrencyK(contC)],
+  ];
+  indirectItems.forEach(([label, val], idx) => {
+    const r = wsSummary.getRow(sr);
+    r.getCell(1).value = label; r.getCell(1).font = { size: 10 }; r.getCell(1).border = MB_BORDER_THIN;
+    wsSummary.mergeCells(sr, 1, sr, 2);
+    r.getCell(3).value = val; r.getCell(3).border = MB_BORDER_THIN; r.getCell(3).alignment = { horizontal: "right" };
+    wsSummary.mergeCells(sr, 3, sr, 4);
+    if (idx % 2 === 1) { r.getCell(1).fill = MB_ALT_ROW_FILL; r.getCell(3).fill = MB_ALT_ROW_FILL; }
+    r.height = 18;
+    sr++;
+  });
+  cxAddSubtotalRow(wsSummary, sr, "Total Capital Costs", tcCost, 4, CX_TOTAL_FILL, CX_TOTAL_FONT); sr++;
+  sr++;
+
+  const opSummary = opexResults.summary;
+  if (opSummary) {
+    mbAddSubsectionTitle(wsSummary, sr, "OpEx Summary ($000s)", 4);
+    sr++;
+    mbApplyTableHeaders(wsSummary, sr, ["Item", "", "Amount", ""], [20, 15, 15, 15]);
+    sr++;
+    const opSumItems: [string, number][] = [
+      ["Labor", opSummary.totalLaborCost],
+      ["Energy", opSummary.totalEnergyCost],
+      ["Chemicals", opSummary.totalChemicalCost],
+      ["Maintenance", opSummary.totalMaintenanceCost],
+      ["Disposal", opSummary.totalDisposalCost],
+      ["Other", opSummary.totalOtherCost],
+    ];
+    opSumItems.forEach(([label, val], idx) => {
+      const r = wsSummary.getRow(sr);
+      r.getCell(1).value = label; r.getCell(1).font = { size: 10 }; r.getCell(1).border = MB_BORDER_THIN;
+      wsSummary.mergeCells(sr, 1, sr, 2);
+      r.getCell(3).value = fmtCurrencyK(val); r.getCell(3).border = MB_BORDER_THIN; r.getCell(3).alignment = { horizontal: "right" };
+      wsSummary.mergeCells(sr, 3, sr, 4);
+      if (idx % 2 === 1) { r.getCell(1).fill = MB_ALT_ROW_FILL; r.getCell(3).fill = MB_ALT_ROW_FILL; }
+      r.height = 18;
+      sr++;
+    });
+    cxAddSubtotalRow(wsSummary, sr, "Total Annual OpEx", opSummary.totalAnnualOpex, 4, CX_TOTAL_FILL, CX_TOTAL_FONT); sr++;
+  }
+  wsSummary.getColumn(1).width = 20;
+  wsSummary.getColumn(2).width = 15;
+  wsSummary.getColumn(3).width = 20;
+  wsSummary.getColumn(4).width = 15;
+
+  if (upifData) {
+    const wsUpif = wb.addWorksheet("UPIF", { properties: { tabColor: { argb: "FF44546A" } } });
+    let ur = 1;
+    mbAddSectionTitle(wsUpif, ur, "Unified Project Intake Form", 4);
+    ur++;
+    const upifInfo: [string, string][] = [
+      ["Project", projectName],
+      ["Scenario", scenarioName],
+      ["Project Type", `${projectType} - ${typeLabel}`],
+    ];
+    if (upifData.location) upifInfo.push(["Location", cleanDoubleDashes(upifData.location)]);
+    if (upifData.projectDescription) upifInfo.push(["Description", cleanDoubleDashes(upifData.projectDescription)]);
+    mbApplyTableHeaders(wsUpif, ur, ["Field", "", "Value", ""], [20, 10, 25, 20]);
+    ur++;
+    upifInfo.forEach((row, idx) => {
+      const r = wsUpif.getRow(ur);
+      r.getCell(1).value = row[0]; r.getCell(1).font = { bold: true, size: 10 }; r.getCell(1).border = MB_BORDER_THIN;
+      wsUpif.mergeCells(ur, 1, ur, 2);
+      r.getCell(3).value = row[1]; r.getCell(3).border = MB_BORDER_THIN; r.getCell(3).alignment = { wrapText: true };
+      wsUpif.mergeCells(ur, 3, ur, 4);
+      if (idx % 2 === 1) { r.getCell(1).fill = MB_ALT_ROW_FILL; r.getCell(3).fill = MB_ALT_ROW_FILL; }
+      r.height = 18;
+      ur++;
+    });
+    ur++;
+
+    if (upifData.feedstocks && Array.isArray(upifData.feedstocks)) {
+      for (let fi = 0; fi < upifData.feedstocks.length; fi++) {
+        const fs = upifData.feedstocks[fi];
+        const fsLabel = upifData.feedstocks.length > 1 ? `Feedstock ${fi + 1}: ${fs.feedstockType || "Unknown"}` : `Feedstock: ${fs.feedstockType || "Unknown"}`;
+        mbAddSubsectionTitle(wsUpif, ur, fsLabel, 4);
+        ur++;
+        if (fs.feedstockVolume) {
+          const r = wsUpif.getRow(ur);
+          r.getCell(1).value = "Volume"; r.getCell(1).font = { bold: true, size: 10 }; r.getCell(1).border = MB_BORDER_THIN;
+          wsUpif.mergeCells(ur, 1, ur, 2);
+          r.getCell(3).value = `${Number(fs.feedstockVolume).toLocaleString("en-US")} ${fs.feedstockUnit || ""}`.trim();
+          r.getCell(3).border = MB_BORDER_THIN;
+          wsUpif.mergeCells(ur, 3, ur, 4);
+          r.height = 18;
+          ur++;
+        }
+        if (fs.feedstockSpecs && Object.keys(fs.feedstockSpecs).length > 0) {
+          mbApplyTableHeaders(wsUpif, ur, ["Parameter", "Value", "Unit", "Source"], [20, 15, 12, 20]);
+          ur++;
+          Object.entries(fs.feedstockSpecs).sort((a: any, b: any) => (a[1].sortOrder || 0) - (b[1].sortOrder || 0)).forEach(([key, spec]: [string, any], idx) => {
+            mbAddDataRow(wsUpif, ur, [
+              spec.label || camelToTitle(key),
+              mbFormatValue(spec.value),
+              spec.unit || "",
+              spec.source || "",
+            ], idx % 2 === 1);
+            ur++;
+          });
+        }
+        ur++;
+      }
+    }
+
+    if (upifData.outputRequirements && Object.keys(upifData.outputRequirements).length > 0) {
+      mbAddSubsectionTitle(wsUpif, ur, "Output Requirements", 4);
+      ur++;
+      mbApplyTableHeaders(wsUpif, ur, ["Parameter", "Value", "Unit", "Source"], [20, 15, 12, 20]);
+      ur++;
+      Object.entries(upifData.outputRequirements).forEach(([key, spec]: [string, any], idx) => {
+        mbAddDataRow(wsUpif, ur, [
+          spec.label || camelToTitle(key),
+          mbFormatValue(spec.value),
+          spec.unit || "",
+          spec.source || "",
+        ], idx % 2 === 1);
+        ur++;
+      });
+      ur++;
+    }
+
+    if (upifData.unmappedSpecs && Array.isArray(upifData.unmappedSpecs) && upifData.unmappedSpecs.length > 0) {
+      mbAddSubsectionTitle(wsUpif, ur, "Additional Specifications", 4);
+      ur++;
+      mbApplyTableHeaders(wsUpif, ur, ["Specification", "Value", "", ""], [25, 20, 15, 15]);
+      ur++;
+      upifData.unmappedSpecs.forEach((spec: any, idx: number) => {
+        mbAddDataRow(wsUpif, ur, [spec.text || spec, "", "", ""], idx % 2 === 1);
+        ur++;
+      });
+    }
+  }
+
+  if (mbResults) {
+    const wsMB = wb.addWorksheet("Mass Balance", { properties: { tabColor: { argb: "FF00B050" } } });
+    let mr = 1;
+    mbAddSectionTitle(wsMB, mr, `Mass Balance — ${projectName}`, 6);
+    mr++;
+
+    if (mbResults.summary && Object.keys(mbResults.summary).length > 0) {
+      mbAddSubsectionTitle(wsMB, mr, "Summary", 6);
+      mr++;
+      mbApplyTableHeaders(wsMB, mr, ["Parameter", "Value", "Unit", "", "", ""], [25, 18, 15, 10, 10, 10]);
+      mr++;
+      Object.entries(mbResults.summary).forEach(([key, val], idx) => {
+        const v = val as any;
+        mbAddDataRow(wsMB, mr, [
+          camelToTitle(key),
+          v?.value ?? "-",
+          v?.unit ?? "",
+          "", "", "",
+        ], idx % 2 === 1);
+        mr++;
+      });
+      mr++;
+    }
+
+    if (mbResults.equipment && mbResults.equipment.length > 0) {
+      mbAddSubsectionTitle(wsMB, mr, "Equipment List", 6);
+      mr++;
+      mbApplyTableHeaders(wsMB, mr, ["Process", "Equipment", "Qty", "Description", "Design Basis", "Notes"], [18, 22, 6, 30, 25, 20]);
+      mr++;
+      mbResults.equipment.forEach((eq, idx) => {
+        mbAddDataRow(wsMB, mr, [eq.process, eq.equipmentType, eq.quantity, eq.description, eq.designBasis, eq.notes?.join("; ") || ""], idx % 2 === 1);
+        mr++;
+      });
+      mr++;
+    }
+
+    if (mbResults.adStages && mbResults.adStages.length > 0) {
+      mbAddSubsectionTitle(wsMB, mr, "Process Stages", 6);
+      mr++;
+      for (const stage of mbResults.adStages) {
+        const stageRow = wsMB.getRow(mr);
+        stageRow.getCell(1).value = `${stage.name} (${stage.type})`;
+        stageRow.getCell(1).font = { bold: true, size: 10, color: { argb: "FF323F4F" } };
+        stageRow.getCell(1).border = MB_BORDER_THIN;
+        wsMB.mergeCells(mr, 1, mr, 6);
+        stageRow.height = 20;
+        mr++;
+        mbApplyTableHeaders(wsMB, mr, ["Parameter", "Input Value", "Input Unit", "Output Value", "Output Unit", ""], [20, 15, 12, 15, 12, 10]);
+        mr++;
+        const allKeys = new Set([...Object.keys(stage.inputStream || {}), ...Object.keys(stage.outputStream || {})]);
+        Array.from(allKeys).forEach((key, idx) => {
+          const inp = (stage.inputStream as any)?.[key];
+          const out = (stage.outputStream as any)?.[key];
+          mbAddDataRow(wsMB, mr, [
+            camelToTitle(key),
+            inp ? mbFormatValue(inp.value) : "-",
+            inp?.unit || "",
+            out ? mbFormatValue(out.value) : "-",
+            out?.unit || "",
+            "",
+          ], idx % 2 === 1);
+          mr++;
+        });
+        mr++;
+      }
+    }
+
+    if (mbResults.calculationSteps && mbResults.calculationSteps.length > 0) {
+      mbAddSubsectionTitle(wsMB, mr, "Calculation Steps", 6);
+      mr++;
+      mbApplyTableHeaders(wsMB, mr, ["Category", "Step", "Formula", "Inputs", "Result", "Notes"], [15, 18, 25, 25, 18, 18]);
+      mr++;
+      mbResults.calculationSteps.forEach((step, idx) => {
+        const inputsStr = step.inputs.map(inp => `${inp.name}=${inp.value} ${inp.unit}`).join("; ");
+        mbAddDataRow(wsMB, mr, [
+          step.category,
+          step.label,
+          step.formula,
+          inputsStr,
+          `${step.result.value} ${step.result.unit}`,
+          step.notes || "",
+        ], idx % 2 === 1);
+        mr++;
+      });
+    }
+  }
+
+  if (capexResults && capexResults.lineItems) {
+    const wsCap = wb.addWorksheet("CapEx", { properties: { tabColor: { argb: "FF4472C4" } } });
+    let cr = 1;
+    cxAddSectionRow(wsCap, cr, "Capital Cost Estimate", 5);
+    cr++;
+    cxApplyHeaders(wsCap, cr, ["Description", "Qty", "Unit Cost ($)", "Total Cost ($)", "Source"], [30, 8, 18, 18, 25]);
+    cr++;
+
+    let lastProcess = "";
+    let processTotal = 0;
+    let rowIdx = 0;
+    const capItems = capexResults.lineItems;
+    for (let i = 0; i < capItems.length; i++) {
+      const li = capItems[i];
+      if (li.process !== lastProcess) {
+        if (lastProcess && processTotal > 0) {
+          cxAddSubtotalRow(wsCap, cr, `${lastProcess} Subtotal`, processTotal, 5, CX_SUBTOTAL_FILL, CX_SUBTOTAL_FONT);
+          cr++;
+        }
+        lastProcess = li.process;
+        processTotal = 0;
+        const procRow = wsCap.getRow(cr);
+        procRow.getCell(1).value = li.process;
+        procRow.getCell(1).fill = MB_SUBSECTION_FILL;
+        procRow.getCell(1).font = MB_SUBSECTION_FONT;
+        for (let c = 2; c <= 5; c++) { procRow.getCell(c).fill = MB_SUBSECTION_FILL; procRow.getCell(c).border = MB_BORDER_THIN; }
+        wsCap.mergeCells(cr, 1, cr, 5);
+        procRow.height = 22;
+        cr++;
+      }
+      processTotal += li.totalCost;
+      cxAddDataRow(wsCap, cr, [
+        li.equipmentType,
+        li.quantity,
+        li.baseCostPerUnit,
+        li.totalCost,
+        li.source,
+      ], rowIdx % 2 === 1, [2, 3]);
+      cr++;
+      rowIdx++;
+    }
+    if (lastProcess && processTotal > 0) {
+      cxAddSubtotalRow(wsCap, cr, `${lastProcess} Subtotal`, processTotal, 5, CX_SUBTOTAL_FILL, CX_SUBTOTAL_FONT);
+      cr++;
+    }
+    cxAddSubtotalRow(wsCap, cr, "Total Capital Costs", capexResults.summary?.totalProjectCost || 0, 5, CX_TOTAL_FILL, CX_TOTAL_FONT);
+    cr++;
+
+    if (capexResults.assumptions && capexResults.assumptions.length > 0) {
+      cr++;
+      mbAddSubsectionTitle(wsCap, cr, "Cost Assumptions", 5);
+      cr++;
+      mbApplyTableHeaders(wsCap, cr, ["Parameter", "Value", "Source", "", ""], [25, 25, 25, 10, 10]);
+      cr++;
+      capexResults.assumptions.forEach((a, idx) => {
+        mbAddDataRow(wsCap, cr, [a.parameter, a.value, a.source, "", ""], idx % 2 === 1);
+        cr++;
+      });
+    }
+  }
+
+  if (opexResults && opexResults.lineItems) {
+    const wsOp = wb.addWorksheet("OpEx", { properties: { tabColor: { argb: "FF00B050" } } });
+    let or2 = 1;
+    cxAddSectionRow(wsOp, or2, "Annual Operating Cost Estimate", 6);
+    or2++;
+    cxApplyHeaders(wsOp, or2, ["Description", "Unit Rate", "Annual Cost ($)", "Scaling Basis", "Source", "Notes"], [30, 18, 16, 18, 18, 22]);
+    or2++;
+
+    let lastCat = "";
+    let catTotal = 0;
+    let opRowIdx = 0;
+    const opItems = opexResults.lineItems;
+    for (let i = 0; i < opItems.length; i++) {
+      const li = opItems[i];
+      if (li.category !== lastCat) {
+        if (lastCat && catTotal !== 0) {
+          const catLabel = catTotal < 0 ? `${lastCat} Subtotal (Credit)` : `${lastCat} Subtotal`;
+          cxAddSubtotalRow(wsOp, or2, catLabel, catTotal, 6, CX_SUBTOTAL_FILL, CX_SUBTOTAL_FONT);
+          or2++;
+        }
+        lastCat = li.category;
+        catTotal = 0;
+        const catRow = wsOp.getRow(or2);
+        catRow.getCell(1).value = li.category;
+        catRow.getCell(1).fill = MB_SUBSECTION_FILL;
+        catRow.getCell(1).font = MB_SUBSECTION_FONT;
+        for (let c = 2; c <= 6; c++) { catRow.getCell(c).fill = MB_SUBSECTION_FILL; catRow.getCell(c).border = MB_BORDER_THIN; }
+        wsOp.mergeCells(or2, 1, or2, 6);
+        catRow.height = 22;
+        or2++;
+      }
+      catTotal += li.annualCost;
+      const unitRateStr = li.unitCost != null && li.unitBasis
+        ? `${li.unitCost < 1 ? `$${li.unitCost.toFixed(2)}` : `$${li.unitCost.toLocaleString("en-US")}`}/${li.unitBasis}`
+        : "";
+      cxAddDataRow(wsOp, or2, [
+        li.description,
+        unitRateStr,
+        li.annualCost,
+        li.scalingBasis || li.costBasis || "",
+        li.source,
+        li.notes || "",
+      ], opRowIdx % 2 === 1, [2]);
+      or2++;
+      opRowIdx++;
+    }
+    if (lastCat && catTotal !== 0) {
+      const catLabel = catTotal < 0 ? `${lastCat} Subtotal (Credit)` : `${lastCat} Subtotal`;
+      cxAddSubtotalRow(wsOp, or2, catLabel, catTotal, 6, CX_SUBTOTAL_FILL, CX_SUBTOTAL_FONT);
+      or2++;
+    }
+    cxAddSubtotalRow(wsOp, or2, "Total Annual OpEx", opexResults.summary?.totalAnnualOpex || 0, 6, CX_TOTAL_FILL, CX_TOTAL_FONT);
+    or2++;
+
+    if (opexResults.assumptions && opexResults.assumptions.length > 0) {
+      or2++;
+      mbAddSubsectionTitle(wsOp, or2, "OpEx Assumptions", 6);
+      or2++;
+      mbApplyTableHeaders(wsOp, or2, ["Parameter", "Value", "Source", "", "", ""], [25, 18, 25, 10, 10, 10]);
+      or2++;
+      opexResults.assumptions.forEach((a, idx) => {
+        mbAddDataRow(wsOp, or2, [a.parameter, a.value, a.source, "", "", ""], idx % 2 === 1);
+        or2++;
+      });
+    }
+  }
+
+  if (financialResults && financialResults.proForma) {
+    const wsFin = wb.addWorksheet("Financial Model", { properties: { tabColor: { argb: "FF2E7D32" } } });
+    let fr = 1;
+    const assumptions = financialResults.assumptions;
+    const isVol = assumptions?.revenueMarket === "voluntary";
+    const marketLabel = isVol ? "Voluntary Market" : "D3 RIN Market";
+
+    mbAddSectionTitle(wsFin, fr, `Pro-Forma Financial Projections — ${marketLabel}`, 10);
+    fr++;
+
+    mbAddSubsectionTitle(wsFin, fr, "Assumptions", 10);
+    fr++;
+    mbApplyTableHeaders(wsFin, fr, ["Assumption", "Value", "", "", "", "", "", "", "", ""], [25, 20, 10, 10, 10, 10, 10, 10, 10, 10]);
+    fr++;
+    const assRows: [string, string][] = [];
+    if (assumptions) {
+      assRows.push(
+        ["Inflation Rate", `${fmtNum(assumptions.inflationRate * 100)}%`],
+        ["Project Life", `${assumptions.projectLifeYears} years`],
+        ["Construction Period", `${assumptions.constructionMonths} months`],
+        ["Uptime", `${fmtNum(assumptions.uptimePct * 100)}%`],
+        ["Revenue Market", isVol ? "Voluntary" : "D3 RINs"],
+      );
+      if (isVol && assumptions.voluntaryPricing) {
+        const vp = assumptions.voluntaryPricing;
+        assRows.push(
+          ["Gas Price", `$${vp.gasPricePerMMBtu}/MMBtu`],
+          ["Gas Price Escalator", `${fmtNum(vp.gasPriceEscalator * 100)}%/yr`],
+          ["Voluntary Premium", `$${vp.voluntaryPremiumPerMMBtu}/MMBtu`],
+          ["Premium Escalator", `${fmtNum(vp.voluntaryPremiumEscalator * 100)}%/yr`],
+        );
+      } else {
+        assRows.push(
+          ["RIN Price", `$${assumptions.rinPricePerRIN}/RIN`],
+          ["RIN Brokerage", `${fmtNum(assumptions.rinBrokeragePct * 100)}%`],
+          ["Natural Gas Price", `$${assumptions.natGasPricePerMMBtu}/MMBtu`],
+        );
+      }
+      assRows.push(
+        ["Wheel/Hub Cost", `$${assumptions.wheelHubCostPerMMBtu}/MMBtu`],
+        ["Discount Rate", `${fmtNum(assumptions.discountRate * 100)}%`],
+        ["ITC Rate", `${fmtNum(assumptions.itcRate * 100)}%`],
+      );
+      if (assumptions.fortyFiveZ) {
+        assRows.push(["45Z Credits", assumptions.fortyFiveZ.enabled ? "Enabled" : "Disabled"]);
+        if (assumptions.fortyFiveZ.enabled) {
+          assRows.push(
+            ["45Z CI Score", `${fmtNum(assumptions.fortyFiveZ.ciScore)} gCO₂e/MJ`],
+            ["45Z Credit Price", `$${assumptions.fortyFiveZ.creditPricePerGal}/gal`],
+            ["45Z End Year", String(assumptions.fortyFiveZ.endYear)],
+          );
+        }
+      }
+    }
+    assRows.forEach(([label, val], idx) => {
+      const r = wsFin.getRow(fr);
+      r.getCell(1).value = label; r.getCell(1).font = { bold: true, size: 10 }; r.getCell(1).border = MB_BORDER_THIN;
+      r.getCell(2).value = val; r.getCell(2).border = MB_BORDER_THIN;
+      if (idx % 2 === 1) { r.getCell(1).fill = MB_ALT_ROW_FILL; r.getCell(2).fill = MB_ALT_ROW_FILL; }
+      r.height = 18;
+      fr++;
+    });
+    fr++;
+
+    const has45Z = financialResults.proForma.some(pf => (pf.fortyFiveZRevenue || 0) > 0);
+    const pfHeaders = ["Year", "Cal Year", "RNG (MMBtu)"];
+    if (has45Z) pfHeaders.push("45Z Revenue");
+    pfHeaders.push("Tipping Fees", "Total Revenue", "Total OpEx", "EBITDA", "Net Cash Flow", "Cumulative CF");
+    const pfWidths = has45Z ? [8, 10, 16, 14, 14, 14, 14, 14, 14, 14] : [8, 10, 16, 14, 14, 14, 14, 14, 14];
+
+    mbAddSubsectionTitle(wsFin, fr, "Pro-Forma Projections ($000s)", pfHeaders.length);
+    fr++;
+    mbApplyTableHeaders(wsFin, fr, pfHeaders, pfWidths);
+    fr++;
+
+    financialResults.proForma.forEach((pf, idx) => {
+      const vals: (string | number)[] = [
+        pf.year,
+        pf.calendarYear,
+        Math.round(pf.rngProductionMMBtu),
+      ];
+      if (has45Z) vals.push(Math.round((pf.fortyFiveZRevenue || 0) / 1000));
+      vals.push(
+        Math.round((pf.tippingFeeRevenue || 0) / 1000),
+        Math.round(pf.totalRevenue / 1000),
+        Math.round(pf.totalOpex / 1000),
+        Math.round(pf.ebitda / 1000),
+        Math.round(pf.netCashFlow / 1000),
+        Math.round(pf.cumulativeCashFlow / 1000),
+      );
+      const r = wsFin.getRow(fr);
+      vals.forEach((v, ci) => {
+        const cell = r.getCell(ci + 1);
+        cell.value = v;
+        cell.border = MB_BORDER_THIN;
+        cell.alignment = { horizontal: ci <= 1 ? "center" : "right", vertical: "middle" };
+        cell.font = { size: 10 };
+        if (ci >= 2) cell.numFmt = "#,##0";
+        if (idx % 2 === 1) cell.fill = MB_ALT_ROW_FILL;
+      });
+      r.height = 18;
+      fr++;
+    });
+
+    fr++;
+    mbAddSubsectionTitle(wsFin, fr, "Key Metrics", pfHeaders.length);
+    fr++;
+    const metricsList: [string, string][] = [
+      ["IRR", metrics.irr !== null && metrics.irr !== undefined ? `${fmtNum(metrics.irr * 100)}%` : "N/A"],
+      ["NPV @ 10%", fmtCurrencyK(metrics.npv10)],
+      ["MOIC", metrics.moic != null ? `${fmtNum(metrics.moic, 1)}x` : "N/A"],
+      ["Payback Period", metrics.paybackYears != null ? `${fmtNum(metrics.paybackYears, 1)} years` : "N/A"],
+      ["Total CapEx", fmtCurrencyK(metrics.totalCapex)],
+      ["Total 20-Year Revenue", fmtCurrencyK(metrics.totalRevenue)],
+      ["Avg Annual EBITDA", fmtCurrencyK(metrics.averageAnnualEbitda)],
+    ];
+    metricsList.forEach(([label, val], idx) => {
+      const r = wsFin.getRow(fr);
+      r.getCell(1).value = label; r.getCell(1).font = { bold: true, size: 10 }; r.getCell(1).border = MB_BORDER_THIN;
+      r.getCell(2).value = val; r.getCell(2).border = MB_BORDER_THIN; r.getCell(2).alignment = { horizontal: "right" };
+      if (idx % 2 === 1) { r.getCell(1).fill = MB_ALT_ROW_FILL; r.getCell(2).fill = MB_ALT_ROW_FILL; }
+      r.height = 18;
+      fr++;
+    });
+  }
+
+  const buffer = await wb.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}

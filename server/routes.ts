@@ -27,7 +27,7 @@ import { feedstockGroupLabels, feedstockGroupOrder } from "@shared/feedstock-lib
 import { outputGroupLabels, outputGroupOrder } from "@shared/output-criteria-library";
 import { llmComplete, getAvailableProviders, providerLabels, isProviderAvailable, type LLMProvider } from "./llm";
 import { DEFAULT_PROMPTS, PROMPT_KEYS, type PromptKey } from "@shared/default-prompts";
-import { exportMassBalancePDF, exportMassBalanceExcel, exportCapexPDF, exportCapexExcel, exportOpexPDF, exportOpexExcel, exportProjectSummaryPDF } from "./services/exportService";
+import { exportMassBalancePDF, exportMassBalanceExcel, exportCapexPDF, exportCapexExcel, exportOpexPDF, exportOpexExcel, exportProjectSummaryPDF, exportProjectSummaryExcel } from "./services/exportService";
 import type { MassBalanceResults, CapexResults, OpexResults } from "@shared/schema";
 import {
   validateAndSanitizeOutputSpecs,
