@@ -381,6 +381,105 @@ export async function generateMassBalanceWithAI(
   return generateMassBalanceWithLLM(upif, projectType, preferredModel, storage, normalizedType);
 }
 
+function parseAndRepairJSON(rawContent: string, label: string): any {
+  let cleaned = rawContent.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (parseError) {
+    console.log(`${label}: Initial JSON parse failed (${(parseError as Error).message}), attempting repair...`);
+    try {
+      const repaired = repairTruncatedJSON(cleaned);
+      console.log(`${label}: Successfully repaired truncated JSON`);
+      return repaired;
+    } catch (repairError) {
+      console.error(`${label}: Failed to parse or repair JSON. First 500 chars:`, cleaned.substring(0, 500));
+      throw new Error(`AI returned invalid JSON (${label}, length=${cleaned.length}). Parse error: ${(parseError as Error).message}`);
+    }
+  }
+}
+
+async function generateMassBalanceParallel(
+  systemPrompt: string,
+  model: LLMProvider,
+  normalizedType: string,
+): Promise<MassBalanceResults> {
+  const stagesInstruction = `Generate the process stages, summary, assumptions, warnings, and recycle streams for this project. Do NOT include the equipment list.
+Return valid JSON with these fields:
+{
+  "projectType": "...",
+  "stages": [...],
+  "adStages": [...],
+  "recycleStreams": [...],
+  "assumptions": [...],
+  "warnings": [...],
+  "summary": {...},
+  "calculationSteps": [...],
+  "convergenceIterations": 1,
+  "convergenceAchieved": true
+}
+Keep descriptions concise. Return valid JSON only.`;
+
+  const equipmentInstruction = `Generate ONLY the complete equipment list for this project. Include all process equipment with full specs, quantities, design basis, and notes.
+Return valid JSON with this field:
+{
+  "equipment": [
+    {
+      "id": "eq-001",
+      "process": "Process Area",
+      "equipmentType": "Equipment Name",
+      "description": "Brief description with sizing",
+      "quantity": 1,
+      "specs": { "paramName": { "value": 100, "unit": "gpm" } },
+      "designBasis": "Design basis text",
+      "notes": "Notes",
+      "isOverridden": false,
+      "isLocked": false
+    }
+  ]
+}
+Keep descriptions concise. Return valid JSON only.`;
+
+  const maxTokens = 32768;
+
+  console.log(`Mass Balance AI (Parallel): Launching 2 parallel LLM calls using ${model}`);
+  const parallelStart = Date.now();
+
+  const [stagesResponse, equipmentResponse] = await Promise.all([
+    llmComplete({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: stagesInstruction },
+      ],
+      maxTokens,
+      jsonMode: true,
+    }),
+    llmComplete({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: equipmentInstruction },
+      ],
+      maxTokens,
+      jsonMode: true,
+    }),
+  ]);
+
+  console.log(`Mass Balance AI (Parallel): Both calls completed in ${Date.now() - parallelStart}ms`);
+  console.log(`Mass Balance AI (Parallel): Stages response: ${stagesResponse.content.length} chars, Equipment response: ${equipmentResponse.content.length} chars`);
+
+  const stagesParsed = parseAndRepairJSON(stagesResponse.content, "MB-Stages");
+  const equipmentParsed = parseAndRepairJSON(equipmentResponse.content, "MB-Equipment");
+
+  const merged = {
+    ...stagesParsed,
+    equipment: Array.isArray(equipmentParsed.equipment) ? equipmentParsed.equipment : [],
+  };
+
+  return validateMassBalanceResults(merged);
+}
+
 async function generateMassBalanceWithLLM(
   upif: any,
   projectType: string,
@@ -407,47 +506,38 @@ async function generateMassBalanceWithLLM(
   console.log(`Mass Balance AI: Generating for project type ${normalizedType.toUpperCase()} using ${model} (prompt: ${promptKey})`);
   console.log(`Mass Balance AI: UPIF data length: ${upifDataString.length} chars`);
 
-  const userInstruction = `Generate a complete mass balance and equipment list based on the UPIF data provided. Return valid JSON only. Keep descriptions concise to stay within output limits.`;
+  let results: MassBalanceResults;
+  let usedProvider: LLMProvider = model;
 
-  const maxTokens = 65536;
-
-  console.log(`Mass Balance AI: Using maxTokens=${maxTokens} for model=${model}`);
-
-  const response = await llmComplete({
-    model,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userInstruction },
-    ],
-    maxTokens,
-    jsonMode: true,
-  });
-
-  console.log(`Mass Balance AI: Response received from ${response.provider}, ${response.content.length} chars, stop_reason=${response.stopReason || "unknown"}`);
-
-  if (response.stopReason === "max_tokens" || response.stopReason === "length") {
-    console.warn(`Mass Balance AI: Response was TRUNCATED (stop_reason=${response.stopReason}). Will attempt JSON repair.`);
-  }
-
-  let rawContent = response.content;
-  rawContent = rawContent.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
-
-  let parsed: any;
   try {
-    parsed = JSON.parse(rawContent);
-  } catch (parseError) {
-    console.log(`Mass Balance AI: Initial JSON parse failed (${(parseError as Error).message}), attempting truncation repair...`);
-    try {
-      parsed = repairTruncatedJSON(rawContent);
-      console.log("Mass Balance AI: Successfully repaired truncated JSON");
-    } catch (repairError) {
-      console.error("Mass Balance AI: Failed to parse or repair JSON response. First 500 chars:", rawContent.substring(0, 500));
-      console.error("Mass Balance AI: Last 200 chars:", rawContent.substring(rawContent.length - 200));
-      throw new Error(`AI returned invalid JSON (model=${response.provider}, stop_reason=${response.stopReason || "unknown"}, length=${rawContent.length}). Parse error: ${(parseError as Error).message}`);
-    }
-  }
+    results = await generateMassBalanceParallel(systemPrompt, model, normalizedType);
+    console.log(`Mass Balance AI: Parallel generation succeeded`);
+  } catch (parallelError) {
+    console.warn(`Mass Balance AI: Parallel generation failed (${(parallelError as Error).message}), falling back to monolithic call...`);
 
-  let results = validateMassBalanceResults(parsed);
+    const userInstruction = `Generate a complete mass balance and equipment list based on the UPIF data provided. Return valid JSON only. Keep descriptions concise to stay within output limits.`;
+    const maxTokens = 65536;
+
+    const response = await llmComplete({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userInstruction },
+      ],
+      maxTokens,
+      jsonMode: true,
+    });
+
+    console.log(`Mass Balance AI: Fallback response received from ${response.provider}, ${response.content.length} chars, stop_reason=${response.stopReason || "unknown"}`);
+
+    if (response.stopReason === "max_tokens" || response.stopReason === "length") {
+      console.warn(`Mass Balance AI: Response was TRUNCATED (stop_reason=${response.stopReason}). Will attempt JSON repair.`);
+    }
+
+    const parsed = parseAndRepairJSON(response.content, "MB-Fallback");
+    results = validateMassBalanceResults(parsed);
+    usedProvider = response.provider as LLMProvider;
+  }
 
   const { results: enforced, corrections } = enforceProdevalEquipment(results, normalizedType);
   results = enforced;
@@ -461,7 +551,7 @@ async function generateMassBalanceWithLLM(
 
   return {
     results,
-    provider: response.provider,
-    providerLabel: providerLabels[response.provider],
+    provider: usedProvider,
+    providerLabel: providerLabels[usedProvider],
   };
 }

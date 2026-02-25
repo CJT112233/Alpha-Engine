@@ -407,6 +407,104 @@ Return ONLY valid JSON. No markdown, no code fences, no explanation.`;
   };
 }
 
+function parseAndRepairCapexJSON(rawContent: string, label: string): any {
+  let cleaned = rawContent.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (parseError) {
+    console.log(`${label}: Initial JSON parse failed, attempting repair...`);
+    try {
+      const repaired = repairTruncatedJSON(cleaned);
+      console.log(`${label}: Successfully repaired truncated JSON`);
+      return repaired;
+    } catch (repairError) {
+      console.error(`${label}: Failed to parse or repair JSON:`, cleaned.substring(0, 500));
+      throw new Error(`AI returned invalid JSON (${label}). Parse error: ${(parseError as Error).message}`);
+    }
+  }
+}
+
+async function generateCapexParallel(
+  systemPrompt: string,
+  model: LLMProvider,
+): Promise<CapexResults> {
+  const call1Instruction = `Generate capital cost estimates for ONLY the major process equipment and civil/structural items. Include: digesters, tanks, pumps, heat exchangers, blowers, screens, dewatering, gas conditioning/upgrading equipment, earthworks, concrete, structural steel.
+Return valid JSON:
+{
+  "lineItems": [...],
+  "assumptions": [...],
+  "warnings": [...],
+  "costYear": "2026",
+  "currency": "USD",
+  "methodology": "AACE Class 4/5 factored estimate"
+}
+Do NOT include electrical, I&C, non-process site work, or summary totals. Return valid JSON only.`;
+
+  const call2Instruction = `Generate capital cost estimates for ONLY the following categories: electrical systems, instrumentation & controls, non-process site infrastructure (roads, fencing, buildings, utilities), piping, and any mobilization/construction indirect costs.
+Return valid JSON:
+{
+  "lineItems": [...],
+  "assumptions": [...],
+  "warnings": [...]
+}
+Do NOT include major process equipment, digesters, tanks, or civil/structural. Return valid JSON only.`;
+
+  const maxTokens = 32768;
+
+  console.log(`CapEx AI (Parallel): Launching 2 parallel LLM calls using ${model}`);
+  const parallelStart = Date.now();
+
+  const [call1Response, call2Response] = await Promise.all([
+    llmComplete({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: call1Instruction },
+      ],
+      maxTokens,
+      jsonMode: true,
+    }),
+    llmComplete({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: call2Instruction },
+      ],
+      maxTokens,
+      jsonMode: true,
+    }),
+  ]);
+
+  console.log(`CapEx AI (Parallel): Both calls completed in ${Date.now() - parallelStart}ms`);
+
+  const parsed1 = parseAndRepairCapexJSON(call1Response.content, "CapEx-ProcessEquip");
+  const parsed2 = parseAndRepairCapexJSON(call2Response.content, "CapEx-ElecSite");
+
+  const mergedLineItems = [
+    ...(Array.isArray(parsed1.lineItems) ? parsed1.lineItems : []),
+    ...(Array.isArray(parsed2.lineItems) ? parsed2.lineItems : []),
+  ];
+
+  const merged = {
+    projectType: parsed1.projectType || parsed2.projectType,
+    lineItems: mergedLineItems,
+    assumptions: [
+      ...(Array.isArray(parsed1.assumptions) ? parsed1.assumptions : []),
+      ...(Array.isArray(parsed2.assumptions) ? parsed2.assumptions : []),
+    ],
+    warnings: [
+      ...(Array.isArray(parsed1.warnings) ? parsed1.warnings : []),
+      ...(Array.isArray(parsed2.warnings) ? parsed2.warnings : []),
+    ],
+    costYear: parsed1.costYear || "2026",
+    currency: parsed1.currency || "USD",
+    methodology: parsed1.methodology || "AACE Class 4/5 factored estimate",
+  };
+
+  return validateCapexResults(merged);
+}
+
 export async function generateCapexWithAI(
   upif: any,
   massBalanceResults: MassBalanceResults,
@@ -438,6 +536,18 @@ export async function generateCapexWithAI(
   console.log(`CapEx AI: Generating for project type ${normalizedType.toUpperCase()} using ${model} (prompt: ${promptKey})`);
   console.log(`CapEx AI: Equipment data length: ${equipmentDataString.length} chars, UPIF context: ${upifContextString.length} chars`);
 
+  try {
+    const results = await generateCapexParallel(systemPrompt, model);
+    console.log(`CapEx AI: Parallel generation succeeded — ${results.lineItems.length} line items`);
+    return {
+      results,
+      provider: model,
+      providerLabel: providerLabels[model] || model,
+    };
+  } catch (parallelError) {
+    console.warn(`CapEx AI: Parallel generation failed (${(parallelError as Error).message}), falling back to monolithic call...`);
+  }
+
   const capexMaxTokens = 65536;
   const capexUserMsg = `Generate a complete capital expenditure estimate based on the mass balance equipment list and project data provided. Return valid JSON only. Keep the response concise - use short descriptions and notes to stay within output limits.`;
 
@@ -451,25 +561,9 @@ export async function generateCapexWithAI(
     jsonMode: true,
   });
 
-  console.log(`CapEx AI: Response received from ${response.provider}, ${response.content.length} chars, stop_reason=${response.stopReason || "unknown"}`);
+  console.log(`CapEx AI: Fallback response received from ${response.provider}, ${response.content.length} chars, stop_reason=${response.stopReason || "unknown"}`);
 
-  let rawContent = response.content;
-  rawContent = rawContent.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
-
-  let parsed: any;
-  try {
-    parsed = JSON.parse(rawContent);
-  } catch (parseError) {
-    console.log("CapEx AI: Initial JSON parse failed, attempting truncation repair...");
-    try {
-      parsed = repairTruncatedJSON(rawContent);
-      console.log("CapEx AI: Successfully repaired truncated JSON");
-    } catch (repairError) {
-      console.error("CapEx AI: Failed to parse or repair JSON response:", rawContent.substring(0, 500));
-      throw new Error(`AI returned invalid JSON. Parse error: ${(parseError as Error).message}`);
-    }
-  }
-
+  const parsed = parseAndRepairCapexJSON(response.content, "CapEx-Fallback");
   const results = validateCapexResults(parsed);
 
   return {

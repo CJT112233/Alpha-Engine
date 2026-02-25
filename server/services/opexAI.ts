@@ -1052,10 +1052,117 @@ function repairTruncatedJSON(raw: string): any {
   return JSON.parse(s);
 }
 
+function parseAndRepairOpexJSON(rawContent: string, label: string): any {
+  let cleaned = rawContent.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (parseError) {
+    console.log(`${label}: Initial JSON parse failed, attempting repair...`);
+    try {
+      const repaired = repairTruncatedJSON(cleaned);
+      console.log(`${label}: Successfully repaired truncated JSON`);
+      return repaired;
+    } catch (repairError) {
+      throw new Error(`AI returned invalid JSON (${label}). Parse error: ${(parseError as Error).message}`);
+    }
+  }
+}
+
 export interface OpexAIResult {
   results: OpexResults;
   provider: LLMProvider;
   providerLabel: string;
+}
+
+async function generateOpexParallel(
+  systemPrompt: string,
+  model: LLMProvider,
+  skipNote: string,
+): Promise<any> {
+  const utilitiesInstruction = `Generate ONLY the utility and consumable operating cost line items: electricity, natural gas, water, sewer, chemicals, disposal/hauling, and waste management costs. Do NOT include staffing, maintenance, insurance, or administrative costs.${skipNote}
+Return valid JSON:
+{
+  "lineItems": [
+    {
+      "id": "opex-util-1",
+      "category": "Energy",
+      "description": "Brief description",
+      "annualCost": 100000,
+      "unitCost": 0.08,
+      "unitBasis": "$/kWh",
+      "costBasis": "Utility rate estimate",
+      "source": "EIA data",
+      "notes": "Concise note"
+    }
+  ]
+}
+Return valid JSON only.`;
+
+  const staffingInstruction = `Generate ONLY the staffing, maintenance, insurance, and administrative operating cost line items: operator labor, management labor, benefits, maintenance & repairs, property insurance, liability insurance, administrative costs, professional services, lab/testing, and any other fixed annual costs. Do NOT include electricity, gas, water, chemicals, or disposal costs.${skipNote}
+Return valid JSON:
+{
+  "lineItems": [
+    {
+      "id": "opex-staff-1",
+      "category": "Labor",
+      "description": "Brief description",
+      "annualCost": 100000,
+      "unitCost": 65000,
+      "unitBasis": "$/yr per FTE",
+      "costBasis": "BLS data",
+      "source": "Industry benchmark",
+      "notes": "Concise note"
+    }
+  ]
+}
+Return valid JSON only.`;
+
+  const maxTokens = 16384;
+
+  console.log(`OpEx AI (Parallel): Launching 2 parallel LLM calls using ${model}`);
+  const parallelStart = Date.now();
+
+  const [utilitiesResponse, staffingResponse] = await Promise.all([
+    llmComplete({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: utilitiesInstruction },
+      ],
+      maxTokens,
+      jsonMode: true,
+    }),
+    llmComplete({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: staffingInstruction },
+      ],
+      maxTokens,
+      jsonMode: true,
+    }),
+  ]);
+
+  console.log(`OpEx AI (Parallel): Both calls completed in ${Date.now() - parallelStart}ms`);
+
+  const utilitiesParsed = parseAndRepairOpexJSON(utilitiesResponse.content, "OpEx-Utilities");
+  const staffingParsed = parseAndRepairOpexJSON(staffingResponse.content, "OpEx-Staffing");
+
+  return {
+    lineItems: [
+      ...(Array.isArray(utilitiesParsed.lineItems) ? utilitiesParsed.lineItems : []),
+      ...(Array.isArray(staffingParsed.lineItems) ? staffingParsed.lineItems : []),
+    ],
+    assumptions: [
+      ...(Array.isArray(utilitiesParsed.assumptions) ? utilitiesParsed.assumptions : []),
+      ...(Array.isArray(staffingParsed.assumptions) ? staffingParsed.assumptions : []),
+    ],
+    warnings: [
+      ...(Array.isArray(utilitiesParsed.warnings) ? utilitiesParsed.warnings : []),
+      ...(Array.isArray(staffingParsed.warnings) ? staffingParsed.warnings : []),
+    ],
+  };
 }
 
 export async function generateOpexWithAI(
@@ -1103,48 +1210,51 @@ export async function generateOpexWithAI(
     ? ` NOTE: The following cost categories have been pre-calculated from engineering data and must be EXCLUDED from your response — do NOT generate line items for: ${skippedCategories.join(", ")}.`
     : "";
 
-  const opexMaxTokens = 32768;
-  const opexUserMsg = `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep descriptions and notes concise (1 sentence max). Combine similar items where possible.${skipNote}`;
-
   const AI_TIMEOUT_MS = 240_000;
+  let parsed: any;
+  let usedProvider: LLMProvider = model;
 
-  let response: Awaited<ReturnType<typeof llmComplete>>;
   try {
-    response = await Promise.race([
-      llmComplete({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: opexUserMsg },
-        ],
-        maxTokens: opexMaxTokens,
-        jsonMode: true,
-      }),
+    parsed = await Promise.race([
+      generateOpexParallel(systemPrompt, model, skipNote),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("OPEX_AI_TIMEOUT")), AI_TIMEOUT_MS)
       ),
     ]);
-  } catch (timeoutOrLlmError) {
-    const isTimeout = (timeoutOrLlmError as Error).message === "OPEX_AI_TIMEOUT";
-    console.warn(`OpEx AI: ${isTimeout ? `LLM timed out after ${AI_TIMEOUT_MS / 1000}s` : `LLM call failed: ${(timeoutOrLlmError as Error).message}`} — using deterministic fallback`);
-    return buildDeterministicFallback(projectType, massBalanceResults, capexResults);
-  }
+    console.log(`OpEx AI: Parallel generation succeeded — ${(parsed.lineItems || []).length} line items`);
+  } catch (parallelError) {
+    const isTimeout = (parallelError as Error).message === "OPEX_AI_TIMEOUT";
+    if (isTimeout) {
+      console.warn(`OpEx AI: LLM timed out after ${AI_TIMEOUT_MS / 1000}s — using deterministic fallback`);
+      return buildDeterministicFallback(projectType, massBalanceResults, capexResults);
+    }
 
-  console.log(`OpEx AI: Response received from ${response.provider}, ${response.content.length} chars, stop_reason=${response.stopReason || "unknown"}`);
+    console.warn(`OpEx AI: Parallel generation failed (${(parallelError as Error).message}), trying monolithic call...`);
 
-  let rawContent = response.content;
-  rawContent = rawContent.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+    const opexMaxTokens = 32768;
+    const opexUserMsg = `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep descriptions and notes concise (1 sentence max). Combine similar items where possible.${skipNote}`;
 
-  let parsed: any;
-  try {
-    parsed = JSON.parse(rawContent);
-  } catch (parseError) {
-    console.log("OpEx AI: Initial JSON parse failed, attempting truncation repair...");
     try {
-      parsed = repairTruncatedJSON(rawContent);
-      console.log("OpEx AI: Successfully repaired truncated JSON");
-    } catch (repairError) {
-      console.warn("OpEx AI: Failed to parse or repair JSON — using deterministic fallback");
+      const response = await Promise.race([
+        llmComplete({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: opexUserMsg },
+          ],
+          maxTokens: opexMaxTokens,
+          jsonMode: true,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("OPEX_AI_TIMEOUT")), AI_TIMEOUT_MS)
+        ),
+      ]);
+
+      console.log(`OpEx AI: Fallback response received from ${response.provider}, ${response.content.length} chars`);
+      parsed = parseAndRepairOpexJSON(response.content, "OpEx-Fallback");
+      usedProvider = response.provider as LLMProvider;
+    } catch (fallbackError) {
+      console.warn(`OpEx AI: Fallback also failed — using deterministic fallback`);
       return buildDeterministicFallback(projectType, massBalanceResults, capexResults);
     }
   }
@@ -1183,8 +1293,8 @@ export async function generateOpexWithAI(
 
   return {
     results,
-    provider: response.provider as LLMProvider,
-    providerLabel: providerLabels[response.provider as LLMProvider] || response.provider,
+    provider: usedProvider,
+    providerLabel: providerLabels[usedProvider] || usedProvider,
   };
 }
 

@@ -120,6 +120,96 @@ export const CAPEX_SIZE_TIERS: CapexSizeTier[] = [
       siteElectrical: 55_194,
     },
   },
+  {
+    scfm: 1500,
+    majorEquipment: {
+      guu: 7_244_000,
+      flare: 165_000,
+      compressor: 540_000,
+    },
+    engineering: {
+      bopDesign: 665_000,
+      bopConstructionAdmin: 210_000,
+      thirdPartyTesting: 112_000,
+      asBuilts: 12_000,
+    },
+    civilStructural: {
+      earthworks: 775_000,
+      concrete: 340_000,
+      processStructural: 85_000,
+    },
+    processPiping: {
+      pipingBase: 1_360_000,
+      settingEquipment: 80_000,
+    },
+    electrical: 1_400_000,
+    instrumentationControls: 780_000,
+    nonProcess: {
+      siteInfrastructure: 285_000,
+      siteUtilities: 190_000,
+      siteElectrical: 62_000,
+    },
+  },
+  {
+    scfm: 1800,
+    majorEquipment: {
+      guu: 8_375_000,
+      flare: 185_000,
+      compressor: 590_000,
+    },
+    engineering: {
+      bopDesign: 735_000,
+      bopConstructionAdmin: 225_000,
+      thirdPartyTesting: 120_000,
+      asBuilts: 14_000,
+    },
+    civilStructural: {
+      earthworks: 840_000,
+      concrete: 388_000,
+      processStructural: 97_000,
+    },
+    processPiping: {
+      pipingBase: 1_510_000,
+      settingEquipment: 88_000,
+    },
+    electrical: 1_530_000,
+    instrumentationControls: 845_000,
+    nonProcess: {
+      siteInfrastructure: 310_000,
+      siteUtilities: 210_000,
+      siteElectrical: 68_000,
+    },
+  },
+  {
+    scfm: 2100,
+    majorEquipment: {
+      guu: 9_506_000,
+      flare: 205_000,
+      compressor: 640_000,
+    },
+    engineering: {
+      bopDesign: 805_000,
+      bopConstructionAdmin: 240_000,
+      thirdPartyTesting: 128_000,
+      asBuilts: 16_000,
+    },
+    civilStructural: {
+      earthworks: 905_000,
+      concrete: 436_000,
+      processStructural: 109_000,
+    },
+    processPiping: {
+      pipingBase: 1_665_000,
+      settingEquipment: 96_000,
+    },
+    electrical: 1_660_000,
+    instrumentationControls: 910_000,
+    nonProcess: {
+      siteInfrastructure: 335_000,
+      siteUtilities: 230_000,
+      siteElectrical: 75_000,
+    },
+  },
 ];
 
 export interface ConstructionIndirectRates {
@@ -267,7 +357,10 @@ export const DEFAULT_FIELD_TECHNICIANS: FieldTechnicians = {
 export function selectCapexTier(biogasScfm: number): CapexSizeTier {
   if (biogasScfm <= 500) return CAPEX_SIZE_TIERS[0];
   if (biogasScfm <= 1000) return CAPEX_SIZE_TIERS[1];
-  return CAPEX_SIZE_TIERS[2];
+  if (biogasScfm <= 1350) return CAPEX_SIZE_TIERS[2];
+  if (biogasScfm <= 1650) return CAPEX_SIZE_TIERS[3];
+  if (biogasScfm <= 1950) return CAPEX_SIZE_TIERS[4];
+  return CAPEX_SIZE_TIERS[5];
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -275,22 +368,23 @@ function lerp(a: number, b: number, t: number): number {
 }
 
 export function interpolateCapexTier(biogasScfm: number): CapexSizeTier {
-  if (biogasScfm <= 400) return CAPEX_SIZE_TIERS[0];
-  if (biogasScfm >= 1200) return CAPEX_SIZE_TIERS[2];
+  const tiers = CAPEX_SIZE_TIERS;
+  if (biogasScfm <= tiers[0].scfm) return tiers[0];
+  if (biogasScfm >= tiers[tiers.length - 1].scfm) return tiers[tiers.length - 1];
 
-  let lower: CapexSizeTier;
-  let upper: CapexSizeTier;
-  let t: number;
+  let lower: CapexSizeTier = tiers[0];
+  let upper: CapexSizeTier = tiers[1];
 
-  if (biogasScfm <= 800) {
-    lower = CAPEX_SIZE_TIERS[0];
-    upper = CAPEX_SIZE_TIERS[1];
-    t = (biogasScfm - 400) / 400;
-  } else {
-    lower = CAPEX_SIZE_TIERS[1];
-    upper = CAPEX_SIZE_TIERS[2];
-    t = (biogasScfm - 800) / 400;
+  for (let i = 0; i < tiers.length - 1; i++) {
+    if (biogasScfm >= tiers[i].scfm && biogasScfm <= tiers[i + 1].scfm) {
+      lower = tiers[i];
+      upper = tiers[i + 1];
+      break;
+    }
   }
+
+  const span = upper.scfm - lower.scfm;
+  const t = span > 0 ? (biogasScfm - lower.scfm) / span : 0;
 
   return {
     scfm: biogasScfm,
@@ -327,5 +421,8 @@ export function interpolateCapexTier(biogasScfm: number): CapexSizeTier {
 export function getTierLabel(biogasScfm: number): string {
   if (biogasScfm <= 500) return "400 SCFM GUU";
   if (biogasScfm <= 1000) return "800 SCFM GUU";
-  return "1,200 SCFM GUU";
+  if (biogasScfm <= 1350) return "1,200 SCFM GUU";
+  if (biogasScfm <= 1650) return "1,500 SCFM GUU (Bespoke)";
+  if (biogasScfm <= 1950) return "1,800 SCFM GUU (Bespoke)";
+  return "2,100 SCFM GUU (Bespoke)";
 }

@@ -119,8 +119,8 @@ export function generateCapexDeterministic(
     throw new Error("Cannot determine biogas flow rate from mass balance results. Required for deterministic CapEx calculation.");
   }
 
-  if (biogasScfm > 1200) {
-    throw new Error(`Biogas flow ${biogasScfm} SCFM exceeds maximum Prodeval capacity (1,200 SCFM). AI estimation required for custom solutions.`);
+  if (biogasScfm > 2100) {
+    throw new Error(`Biogas flow ${biogasScfm} SCFM exceeds maximum Prodeval capacity (2,100 SCFM). AI estimation required for custom solutions.`);
   }
 
   const tier = interpolateCapexTier(biogasScfm);

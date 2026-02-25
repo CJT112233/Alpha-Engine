@@ -3469,20 +3469,41 @@ export async function registerRoutes(
           const { estimateUpstreamEquipmentCosts, getUncoveredEquipment } = await import("./services/capexAI");
 
           const uncoveredCount = getUncoveredEquipment(mbResults).length;
-          let upstreamLineItems: import("@shared/schema").CapexLineItem[] = [];
 
           if (uncoveredCount > 0) {
-            console.log(`CapEx Hybrid: ${uncoveredCount} upstream equipment items need AI estimation...`);
-            const upstreamResult = await estimateUpstreamEquipmentCosts(upifData, mbResults, projectType, preferredModel, storage);
-            upstreamLineItems = upstreamResult.lineItems;
-            console.log(`CapEx Hybrid: AI estimated ${upstreamLineItems.length} upstream items in ${Date.now() - startTime}ms`);
+            console.log(`CapEx Hybrid: ${uncoveredCount} upstream items — running deterministic + AI in parallel`);
+
+            const results = await Promise.allSettled([
+              Promise.resolve(generateCapexDeterministic(mbResults, projectType, {
+                upstreamEquipmentLineItems: [],
+              })),
+              estimateUpstreamEquipmentCosts(upifData, mbResults, projectType, preferredModel, storage),
+            ]);
+
+            const detSettled = results[0];
+            const aiSettled = results[1];
+
+            let upstreamLineItems: import("@shared/schema").CapexLineItem[] = [];
+            if (aiSettled.status === "fulfilled") {
+              upstreamLineItems = aiSettled.value.lineItems;
+              console.log(`CapEx Hybrid: AI estimated ${upstreamLineItems.length} upstream items in ${Date.now() - startTime}ms`);
+            } else {
+              console.warn(`CapEx Hybrid: Upstream AI failed (${aiSettled.reason?.message}), proceeding with deterministic-only`);
+            }
+
+            const detResultFull = generateCapexDeterministic(mbResults, projectType, {
+              upstreamEquipmentLineItems: upstreamLineItems,
+            });
+            capexResult = { results: detResultFull.results, providerLabel: detResultFull.providerLabel };
+            modelUsed = detResultFull.providerLabel;
+          } else {
+            const detResult = generateCapexDeterministic(mbResults, projectType, {
+              upstreamEquipmentLineItems: [],
+            });
+            capexResult = { results: detResult.results, providerLabel: detResult.providerLabel };
+            modelUsed = detResult.providerLabel;
           }
 
-          const detResult = generateCapexDeterministic(mbResults, projectType, {
-            upstreamEquipmentLineItems: upstreamLineItems,
-          });
-          capexResult = { results: detResult.results, providerLabel: detResult.providerLabel };
-          modelUsed = detResult.providerLabel;
           console.log(`CapEx: Hybrid calculator succeeded for type ${projectType} in ${Date.now() - startTime}ms`);
         } catch (detError) {
           console.log(`CapEx: Hybrid calculator failed (${(detError as Error).message}), falling back to full AI...`);
