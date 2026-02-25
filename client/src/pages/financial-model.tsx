@@ -30,6 +30,8 @@ import {
   Download,
   FileText,
   FileStack,
+  Plus,
+  X,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -230,7 +232,7 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
     voluntaryPremiumEscalator: 0.02,
   };
 
-  const updateAssumption = (path: string, value: number | string) => {
+  const updateAssumption = (path: string, value: number | string | any[]) => {
     if (!assumptions) return;
     const updated = JSON.parse(JSON.stringify(assumptions));
     if (path.startsWith("fortyFiveZ.") && !updated.fortyFiveZ) {
@@ -238,6 +240,11 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
     }
     if (path.startsWith("voluntaryPricing.") && !updated.voluntaryPricing) {
       updated.voluntaryPricing = { ...defaultVoluntaryPricing };
+    }
+    if (path === "feedstockCosts") {
+      updated.feedstockCosts = value as any;
+      setLocalAssumptions(updated);
+      return;
     }
     if (path === "revenueMarket") {
       updated.revenueMarket = value as string;
@@ -460,7 +467,7 @@ function AssumptionsEditor({
 }: {
   assumptions: FinancialAssumptions;
   readOnly: boolean;
-  onUpdate: (path: string, value: number | string) => void;
+  onUpdate: (path: string, value: number | string | any[]) => void;
   onUpdateFeedstock: (index: number, field: string, value: number | string) => void;
 }) {
   return (
@@ -556,57 +563,111 @@ function AssumptionsEditor({
           </CardContent>
         </Card>
 
-        {assumptions.feedstockCosts && assumptions.feedstockCosts.length > 0 && (
-          <Card>
-            <CardHeader className="pb-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
               <CardTitle className="text-sm">Feedstock Economics</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {assumptions.feedstockCosts.map((fc, idx) => {
-                const costType = fc.costType || (fc.costPerTon > 0 ? "cost" : "tip_fee");
-                const unitBasis = fc.unitBasis || "$/ton";
-                const unitRate = fc.unitRate ?? fc.costPerTon ?? 0;
-                const isTipFee = costType === "tip_fee";
-                return (
-                  <div key={idx} className="space-y-2 pb-3 border-b last:border-b-0 last:pb-0" data-testid={`feedstock-economics-${idx}`}>
-                    <div className="text-xs font-medium">{fc.feedstockName}</div>
-                    <div className="flex gap-1 mb-2">
+              {!readOnly && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-7 px-2"
+                  onClick={() => {
+                    const updated = JSON.parse(JSON.stringify(assumptions));
+                    if (!updated.feedstockCosts) updated.feedstockCosts = [];
+                    updated.feedstockCosts.push({
+                      feedstockName: "New Feedstock",
+                      costType: "tip_fee",
+                      unitRate: 0,
+                      unitBasis: "$/ton",
+                      annualTons: 0,
+                      escalator: 0.025,
+                      costPerTon: 0,
+                    });
+                    onUpdate("feedstockCosts", updated.feedstockCosts);
+                  }}
+                  data-testid="button-add-feedstock"
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Add Feedstock
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {(assumptions.feedstockCosts || []).map((fc, idx) => {
+              const costType = fc.costType || "tip_fee";
+              const unitBasis = fc.unitBasis || "$/ton";
+              const unitRate = fc.unitRate ?? fc.costPerTon ?? 0;
+              const isTipFee = costType === "tip_fee";
+              return (
+                <div key={idx} className="space-y-2 pb-3 border-b last:border-b-0 last:pb-0" data-testid={`feedstock-economics-${idx}`}>
+                  <div className="flex items-center justify-between">
+                    <Input
+                      className="text-xs font-medium h-7 w-48"
+                      value={fc.feedstockName}
+                      onChange={(e) => onUpdateFeedstock(idx, "feedstockName", e.target.value)}
+                      disabled={readOnly}
+                      data-testid={`input-feedstock-name-${idx}`}
+                    />
+                    {!readOnly && (assumptions.feedstockCosts || []).length > 1 && (
                       <Button
                         size="sm"
-                        variant={isTipFee ? "default" : "outline"}
-                        onClick={() => onUpdateFeedstock(idx, "costType", "tip_fee")}
-                        disabled={readOnly}
-                        data-testid={`button-feedstock-tipfee-${idx}`}
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => {
+                          const updated = JSON.parse(JSON.stringify(assumptions));
+                          updated.feedstockCosts.splice(idx, 1);
+                          onUpdate("feedstockCosts", updated.feedstockCosts);
+                        }}
+                        data-testid={`button-remove-feedstock-${idx}`}
                       >
-                        Tip Fee (Revenue)
+                        <X className="h-3 w-3" />
                       </Button>
-                      <Button
-                        size="sm"
-                        variant={!isTipFee ? "default" : "outline"}
-                        onClick={() => onUpdateFeedstock(idx, "costType", "cost")}
-                        disabled={readOnly}
-                        data-testid={`button-feedstock-cost-${idx}`}
-                      >
-                        We Pay (Cost)
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <AssumptionField label={isTipFee ? "Tip Fee" : "Cost"} unit={unitBasis} value={unitRate} onChange={(v) => onUpdateFeedstock(idx, "unitRate", v)} readOnly={readOnly} testId={`input-feedstock-rate-${idx}`} />
-                      <AssumptionField label="Annual Tons" unit="" value={fc.annualTons} onChange={(v) => onUpdateFeedstock(idx, "annualTons", v)} readOnly={readOnly} step="1" testId={`input-feedstock-tons-${idx}`} />
-                      <AssumptionField label="Escalator" unit="%/yr" value={fc.escalator} onChange={(v) => onUpdateFeedstock(idx, "escalator", v)} readOnly={readOnly} testId={`input-feedstock-escalator-${idx}`} />
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {isTipFee
-                        ? `Tip fee revenue: $${(unitRate * fc.annualTons).toLocaleString()}/yr`
-                        : `Feedstock cost: $${(unitRate * fc.annualTons).toLocaleString()}/yr`
-                      }
-                    </div>
+                    )}
                   </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        )}
+                  <div className="flex gap-1 mb-2">
+                    <Button
+                      size="sm"
+                      variant={isTipFee ? "default" : "outline"}
+                      className="text-xs h-7 px-3"
+                      onClick={() => onUpdateFeedstock(idx, "costType", "tip_fee")}
+                      disabled={readOnly}
+                      data-testid={`button-feedstock-tipfee-${idx}`}
+                    >
+                      Tip Fee (Revenue)
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={!isTipFee ? "default" : "outline"}
+                      className="text-xs h-7 px-3"
+                      onClick={() => onUpdateFeedstock(idx, "costType", "cost")}
+                      disabled={readOnly}
+                      data-testid={`button-feedstock-cost-${idx}`}
+                    >
+                      We Pay (Cost)
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <AssumptionField label={isTipFee ? "Tip Fee" : "Cost"} unit={unitBasis} value={unitRate} onChange={(v) => onUpdateFeedstock(idx, "unitRate", v)} readOnly={readOnly} testId={`input-feedstock-rate-${idx}`} />
+                    <AssumptionField label="Annual Tons" unit="" value={fc.annualTons} onChange={(v) => onUpdateFeedstock(idx, "annualTons", v)} readOnly={readOnly} step="1" testId={`input-feedstock-tons-${idx}`} />
+                    <AssumptionField label="Escalator" unit="%/yr" value={fc.escalator} onChange={(v) => onUpdateFeedstock(idx, "escalator", v)} readOnly={readOnly} testId={`input-feedstock-escalator-${idx}`} />
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {isTipFee
+                      ? `Tip fee revenue: $${(unitRate * fc.annualTons).toLocaleString()}/yr`
+                      : `Feedstock cost: $${(unitRate * fc.annualTons).toLocaleString()}/yr`
+                    }
+                  </div>
+                </div>
+              );
+            })}
+            {(!assumptions.feedstockCosts || assumptions.feedstockCosts.length === 0) && (
+              <div className="text-xs text-muted-foreground text-center py-2">
+                No feedstock entries. Click "Add Feedstock" to add one.
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="pb-2">

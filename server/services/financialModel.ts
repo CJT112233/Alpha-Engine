@@ -117,7 +117,6 @@ function extractOpexBreakdown(opexResults: OpexResults): {
   feedstockLogisticsCost: number;
   digestateManagementCost: number;
   adminOverheadCost: number;
-  tippingFeeRevenue: number;
 } {
   let utilityCost = 0;
   let laborCost = 0;
@@ -127,7 +126,6 @@ function extractOpexBreakdown(opexResults: OpexResults): {
   let feedstockLogisticsCost = 0;
   let digestateManagementCost = 0;
   let adminOverheadCost = 0;
-  let tippingFeeRevenue = 0;
 
   for (const item of opexResults.lineItems) {
     const cat = (item.category || "").toLowerCase();
@@ -135,9 +133,6 @@ function extractOpexBreakdown(opexResults: OpexResults): {
     const cost = item.annualCost || 0;
 
     if (cat.includes("revenue offset") || (cat.includes("revenue") && !cat.includes("admin") && !cat.includes("overhead"))) {
-      if (desc.includes("tipping") || desc.includes("tip fee")) {
-        tippingFeeRevenue += Math.abs(cost);
-      }
       continue;
     }
 
@@ -167,14 +162,12 @@ function extractOpexBreakdown(opexResults: OpexResults): {
       chemicalCost += cost;
     } else if (desc.includes("insurance")) {
       insuranceCost += cost;
-    } else if (desc.includes("tipping") || desc.includes("tip fee")) {
-      tippingFeeRevenue += Math.abs(cost);
     } else {
       adminOverheadCost += cost;
     }
   }
 
-  return { utilityCost, laborCost, maintenanceCost, chemicalCost, insuranceCost, feedstockLogisticsCost, digestateManagementCost, adminOverheadCost, tippingFeeRevenue };
+  return { utilityCost, laborCost, maintenanceCost, chemicalCost, insuranceCost, feedstockLogisticsCost, digestateManagementCost, adminOverheadCost };
 }
 
 function calculateIRR(cashFlows: number[], maxIterations = 1000, tolerance = 1e-7): number | null {
@@ -323,6 +316,16 @@ export function buildDefaultAssumptions(
         costPerTon: 0,
       };
     });
+  } else {
+    assumptions.feedstockCosts = [{
+      feedstockName: "Feedstock",
+      costType: "tip_fee" as const,
+      unitRate: 0,
+      unitBasis: "$/ton",
+      annualTons: 0,
+      escalator: 0.025,
+      costPerTon: 0,
+    }];
   }
 
   return assumptions;
@@ -394,9 +397,9 @@ export function calculateFinancialModel(
       fortyFiveZRevenue = rngProductionMMBtu * net45ZPricePerMMBtu;
     }
 
-    let tippingFeeRev = opexBreakdown.tippingFeeRevenue * inflationFactor;
+    let tippingFeeRev = 0;
     for (const fs of assumptions.feedstockCosts) {
-      if ((fs.costType || "cost") === "tip_fee" && fs.unitRate > 0) {
+      if ((fs.costType || "tip_fee") === "tip_fee" && fs.unitRate > 0) {
         const fsFactor = Math.pow(1 + (fs.escalator || assumptions.inflationRate), y - 1);
         tippingFeeRev += fs.unitRate * fs.annualTons * fsFactor;
       }

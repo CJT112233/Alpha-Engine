@@ -120,16 +120,12 @@ def extract_opex_breakdown(opex_results: dict) -> dict:
     feedstock_logistics_cost = 0.0
     digestate_management_cost = 0.0
     admin_overhead_cost = 0.0
-    tipping_fee_revenue = 0.0
-
     for item in opex_results.get("lineItems", []):
         cat = (item.get("category") or "").lower()
         desc = (item.get("description") or "").lower()
         cost = item.get("annualCost") or 0
 
         if "revenue offset" in cat or ("revenue" in cat and "admin" not in cat and "overhead" not in cat):
-            if "tipping" in desc or "tip fee" in desc:
-                tipping_fee_revenue += abs(cost)
             continue
 
         if any(x in cat for x in ["utilit", "energy", "electric", "power"]):
@@ -158,8 +154,6 @@ def extract_opex_breakdown(opex_results: dict) -> dict:
             chemical_cost += cost
         elif "insurance" in desc:
             insurance_cost += cost
-        elif "tipping" in desc or "tip fee" in desc:
-            tipping_fee_revenue += abs(cost)
         else:
             admin_overhead_cost += cost
 
@@ -172,7 +166,6 @@ def extract_opex_breakdown(opex_results: dict) -> dict:
         "feedstockLogisticsCost": feedstock_logistics_cost,
         "digestateManagementCost": digestate_management_cost,
         "adminOverheadCost": admin_overhead_cost,
-        "tippingFeeRevenue": tipping_fee_revenue,
     }
 
 
@@ -322,6 +315,16 @@ def build_default_assumptions(mb_results: dict, opex_results: dict = None, feeds
                 "costPerTon": 0,
             })
         assumptions["feedstockCosts"] = feedstock_costs
+    else:
+        assumptions["feedstockCosts"] = [{
+            "feedstockName": "Feedstock",
+            "costType": "tip_fee",
+            "unitRate": 0,
+            "unitBasis": "$/ton",
+            "annualTons": 0,
+            "escalator": 0.025,
+            "costPerTon": 0,
+        }]
 
     return assumptions
 
@@ -397,9 +400,9 @@ def calculate_financial_model(assumptions: dict, mb_results: dict, capex_results
         if forty_five_z.get("enabled") and calendar_year <= forty_five_z.get("endYear", 2029):
             forty_five_z_revenue = rng_production_mmbtu * net_45z_price_per_mmbtu
 
-        tipping_fee_rev = opex_breakdown["tippingFeeRevenue"] * inflation_factor
+        tipping_fee_rev = 0.0
         for fs in assumptions.get("feedstockCosts", []):
-            if (fs.get("costType") or "cost") == "tip_fee" and fs.get("unitRate", 0) > 0:
+            if (fs.get("costType") or "tip_fee") == "tip_fee" and fs.get("unitRate", 0) > 0:
                 fs_factor = math.pow(1 + (fs.get("escalator") or assumptions.get("inflationRate", 0.025)), y - 1)
                 tipping_fee_rev += fs["unitRate"] * fs["annualTons"] * fs_factor
 
