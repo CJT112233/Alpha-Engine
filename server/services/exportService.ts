@@ -31,6 +31,28 @@ function fmtCurrencyK(val: number): string {
   return "$" + inK.toLocaleString("en-US");
 }
 
+function fmtDollarMillions(val: number): string {
+  if (val === undefined || val === null || isNaN(val)) return "$0";
+  const abs = Math.abs(val);
+  if (abs >= 1_000_000) {
+    const m = abs / 1_000_000;
+    const formatted = m >= 100 ? `$${Math.round(m).toLocaleString("en-US")} million`
+      : m >= 10 ? `$${m.toFixed(1)} million`
+      : `$${m.toFixed(2)} million`;
+    return val < 0 ? `(${formatted})` : formatted;
+  }
+  if (abs >= 1_000) {
+    const k = abs / 1_000;
+    const formatted = `$${k.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}K`;
+    return val < 0 ? `(${formatted})` : formatted;
+  }
+  return val < 0 ? `($${Math.abs(Math.round(val)).toLocaleString("en-US")})` : `$${Math.round(val).toLocaleString("en-US")}`;
+}
+
+function cleanDoubleDashes(str: string): string {
+  return str.replace(/\s*--\s*/g, ", ").replace(/,\s*,/g, ",");
+}
+
 function buildExecutiveSummary(
   projectName: string,
   projectType: string,
@@ -42,7 +64,8 @@ function buildExecutiveSummary(
 ): string {
   const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
   const typeLabel = typeLabels[projectType] || projectType;
-  const location = upifData?.location ? ` located in ${upifData.location}` : "";
+  const locationRaw = upifData?.location ? ` located in ${upifData.location}` : "";
+  const location = cleanDoubleDashes(locationRaw);
 
   const feedstocks = upifData?.feedstocks;
   let feedstockDesc = "";
@@ -57,8 +80,8 @@ function buildExecutiveSummary(
   }
 
   const summary = mbResults?.summary || {} as any;
-  const rngScfm = summary.rngProduction?.value;
   const rngAnnualMMBtu = summary.rngEnergyAnnual?.value;
+  const rngDailyMMBtu = summary.rngEnergyDaily?.value;
   const biogasScfm = summary.biogasProduction?.value;
 
   const metrics = financialResults?.metrics || {} as any;
@@ -75,11 +98,13 @@ function buildExecutiveSummary(
   }
   text += ".";
 
-  if (rngScfm || biogasScfm) {
+  if (rngAnnualMMBtu || rngDailyMMBtu || biogasScfm) {
     text += " The facility is designed to produce";
-    if (rngScfm) {
-      text += ` ${fmtNum(Number(rngScfm), 0)} SCFM of RNG`;
-      if (rngAnnualMMBtu) text += ` (${fmtNum(Number(String(rngAnnualMMBtu).replace(/,/g, "")), 0)} MMBtu/year)`;
+    if (rngAnnualMMBtu) {
+      const annual = Number(String(rngAnnualMMBtu).replace(/,/g, ""));
+      text += ` ${fmtNum(annual, 0)} MMBTU/year of RNG`;
+    } else if (rngDailyMMBtu) {
+      text += ` ${fmtNum(Number(rngDailyMMBtu), 0)} MMBTU/day of RNG`;
     } else if (biogasScfm) {
       text += ` ${fmtNum(Number(biogasScfm), 0)} SCFM of biogas`;
     }
@@ -87,19 +112,19 @@ function buildExecutiveSummary(
   }
 
   if (totalCapex && !isNaN(totalCapex) && totalCapex > 0) {
-    text += ` Total project cost is estimated at ${fmtCurrencyK(totalCapex)}`;
-    if (annualOpex && !isNaN(annualOpex) && annualOpex > 0) text += ` with annual operating expenses of ${fmtCurrencyK(annualOpex)}`;
+    text += ` Total project cost is estimated at ${fmtDollarMillions(totalCapex)}`;
+    if (annualOpex && !isNaN(annualOpex) && annualOpex > 0) text += ` with annual operating expenses of ${fmtDollarMillions(annualOpex)}`;
     text += ".";
   }
 
   if (irr !== null && irr !== undefined && !isNaN(irr)) {
     text += ` The project yields an IRR of ${fmtNum(irr * 100)}%`;
     if (payback !== null && payback !== undefined && !isNaN(payback)) text += `, a payback period of ${fmtNum(payback, 1)} years`;
-    if (npv !== null && npv !== undefined && !isNaN(npv)) text += `, and an NPV at 10% of ${fmtCurrencyK(npv)}`;
+    if (npv !== null && npv !== undefined && !isNaN(npv)) text += `, and an NPV at 10% of ${fmtDollarMillions(npv)}`;
     text += ".";
   }
 
-  return text;
+  return cleanDoubleDashes(text);
 }
 
 function drawTable(
