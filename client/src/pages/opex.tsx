@@ -862,9 +862,15 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                                   </TableCell>
                                   <TableCell className="text-sm">{item.description}</TableCell>
                                   <TableCell className="text-right">
-                                    <span className={`text-sm font-medium ${item.isOverridden ? "text-blue-600 dark:text-blue-400" : ""}`} data-testid={`value-annual-cost-${idx}`}>
-                                      {formatCurrencyK(item.annualCost)}
-                                    </span>
+                                    <EditableValue
+                                      fieldKey={`lineItems.${itemId}.annualCost`}
+                                      displayValue={formatCurrencyK(item.annualCost)}
+                                      isLocked={!!locks[`lineItems.${itemId}.annualCost`]}
+                                      isOverridden={!!overrides[`lineItems.${itemId}.annualCost`]}
+                                      onSaveOverride={handleSaveOverride}
+                                      onToggleLock={handleToggleLock}
+                                      compact
+                                    />
                                   </TableCell>
                                   <TableCell className="text-right">
                                     {item.unitCost != null ? (
