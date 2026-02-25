@@ -137,7 +137,6 @@ DEFAULT_BURNHAM_INTERNAL_COSTS: Dict[str, Any] = {
         "it": 2_500,
         "utilitiesDuringConstruction": 77_602,
     },
-    "ribbonCutting": 75_000,
 }
 
 DEFAULT_COMMERCIAL_ITEMS: Dict[str, float] = {
@@ -267,4 +266,4 @@ def calculate_internal_costs_subtotal(costs: dict, epc_total: float) -> float:
         + util["utilitiesDuringConstruction"]
     )
 
-    return pm_total + ops_total + insurance_total + ff + costs["spareParts"] + util_total + costs["ribbonCutting"]
+    return pm_total + ops_total + insurance_total + ff + costs["spareParts"] + util_total

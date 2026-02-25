@@ -167,7 +167,6 @@ export interface BurnhamInternalCosts {
     it: number;
     utilitiesDuringConstruction: number;
   };
-  ribbonCutting: number;
 }
 
 export const DEFAULT_BURNHAM_INTERNAL_COSTS: BurnhamInternalCosts = {
@@ -201,7 +200,6 @@ export const DEFAULT_BURNHAM_INTERNAL_COSTS: BurnhamInternalCosts = {
     it: 2_500,
     utilitiesDuringConstruction: 77_602,
   },
-  ribbonCutting: 75_000,
 };
 
 export function calculateInternalCostsSubtotal(costs: BurnhamInternalCosts, epcTotal: number): number {
@@ -223,7 +221,7 @@ export function calculateInternalCostsSubtotal(costs: BurnhamInternalCosts, epcT
     util.water + util.sewer + util.it + util.utilitiesDuringConstruction;
 
   const spareParts = Math.round(epcTotal * costs.sparePartsPctOfEquipment / 100);
-  return pmTotal + opsTotal + insuranceTotal + ff + spareParts + utilTotal + costs.ribbonCutting;
+  return pmTotal + opsTotal + insuranceTotal + ff + spareParts + utilTotal;
 }
 
 export interface CommercialItems {

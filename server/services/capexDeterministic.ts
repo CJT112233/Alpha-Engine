@@ -534,28 +534,8 @@ export function generateCapexDeterministic(
     isLocked: false,
   });
 
-  lineItems.push({
-    id: makeId("ribbon"),
-    equipmentId: "",
-    process: "Burnham Internal Costs",
-    equipmentType: "Ribbon Cutting",
-    description: "Project ribbon cutting ceremony",
-    quantity: 1,
-    baseCostPerUnit: ic.ribbonCutting,
-    installationFactor: 1.0,
-    installedCost: ic.ribbonCutting,
-    contingencyPct: 0,
-    contingencyCost: 0,
-    totalCost: ic.ribbonCutting,
-    costBasis,
-    source: "Burnham Internal Costs Estimate",
-    notes: "",
-    isOverridden: false,
-    isLocked: false,
-  });
-
   const subtotalInternalCosts = pmTotal + opsTotal + buildersRisk + ffTotal +
-    utilTotal + ic.ribbonCutting;
+    utilTotal;
 
   const devCosts = comm.devCosts;
   const devFee = Math.round(totalEPC * comm.devFeePctOfEpc / 100);
@@ -714,7 +694,7 @@ export function generateCapexDeterministic(
 
   const totalCapex = totalEPC + subtotalInternalCosts + totalCommercial;
   const itcExclusions = comm.utilityConnectionFee + opsTotal + ffTotal +
-    ic.ribbonCutting + subtotalInterconnect;
+    subtotalInterconnect;
   const itcEligible = totalCapex - itcExclusions;
 
   const summary = {

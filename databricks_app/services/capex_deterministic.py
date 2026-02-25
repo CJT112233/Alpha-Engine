@@ -634,29 +634,9 @@ def generate_capex_deterministic(
         "isLocked": False,
     })
 
-    line_items.append({
-        "id": _make_id("ribbon"),
-        "equipmentId": "",
-        "process": "Burnham Internal Costs",
-        "equipmentType": "Ribbon Cutting",
-        "description": "Project ribbon cutting ceremony",
-        "quantity": 1,
-        "baseCostPerUnit": ic["ribbonCutting"],
-        "installationFactor": 1.0,
-        "installedCost": ic["ribbonCutting"],
-        "contingencyPct": 0,
-        "contingencyCost": 0,
-        "totalCost": ic["ribbonCutting"],
-        "costBasis": cost_basis,
-        "source": "Burnham Internal Costs Estimate",
-        "notes": "",
-        "isOverridden": False,
-        "isLocked": False,
-    })
-
     subtotal_internal_costs = (
         pm_total + ops_total + builders_risk + ff_total
-        + ic["spareParts"] + util_total + ic["ribbonCutting"]
+        + ic["spareParts"] + util_total
     )
 
     dev_costs = round(total_epc * comm["devCostsPctOfEpc"] / 100)
@@ -741,7 +721,7 @@ def generate_capex_deterministic(
     total_capex = total_epc + subtotal_internal_costs + total_commercial + escalation
     itc_exclusions = (
         comm["utilityConnectionFee"] + ops_total + ff_total
-        + ic["spareParts"] + ic["ribbonCutting"] + subtotal_interconnect
+        + ic["spareParts"] + subtotal_interconnect
     )
     itc_eligible = total_capex - itc_exclusions
 
