@@ -508,25 +508,7 @@ export function generateCapexDeterministic(
     isLocked: false,
   });
 
-  lineItems.push({
-    id: makeId("spares"),
-    equipmentId: "",
-    process: "Burnham Internal Costs",
-    equipmentType: "Spare Parts",
-    description: "Spare parts inventory",
-    quantity: 1,
-    baseCostPerUnit: ic.spareParts,
-    installationFactor: 1.0,
-    installedCost: ic.spareParts,
-    contingencyPct: 0,
-    contingencyCost: 0,
-    totalCost: ic.spareParts,
-    costBasis,
-    source: "Burnham Internal Costs Estimate",
-    notes: "",
-    isOverridden: false,
-    isLocked: false,
-  });
+  const spareParts = Math.round(subtotalEquipment * ic.sparePartsPctOfEquipment / 100);
 
   const util = ic.utilities;
   const utilTotal = util.tempPower + util.permanentPower + util.natGas +
@@ -573,35 +555,116 @@ export function generateCapexDeterministic(
   });
 
   const subtotalInternalCosts = pmTotal + opsTotal + buildersRisk + ffTotal +
-    ic.spareParts + utilTotal + ic.ribbonCutting;
+    utilTotal + ic.ribbonCutting;
 
-  const devCosts = Math.round(totalEPC * comm.devCostsPctOfEpc / 100);
+  const devCosts = comm.devCosts;
   const devFee = Math.round(totalEPC * comm.devFeePctOfEpc / 100);
   const contingency = Math.round(totalEPC * contingencyPct / 100);
+  const insuranceOnDirectCosts = Math.round(totalEPC * 1.5 / 100);
   const escalationBase = subtotalEquipment + totalConstructionDirects;
   const escalation = Math.round(escalationBase * escalationPct / 100);
 
-  const totalCommercial = comm.utilityConnectionFee + devCosts + devFee + contingency;
-
   lineItems.push({
-    id: makeId("commercial"),
+    id: makeId("contingency"),
     equipmentId: "",
     process: "Commercial / Owner's Costs",
-    equipmentType: "Commercial Items",
-    description: "Utility connection, development costs, contingency",
+    equipmentType: "Contingency",
+    description: `Contingency (${contingencyPct}% of EPC)`,
     quantity: 1,
-    baseCostPerUnit: totalCommercial,
+    baseCostPerUnit: contingency,
     installationFactor: 1.0,
-    installedCost: totalCommercial,
+    installedCost: contingency,
     contingencyPct: 0,
     contingencyCost: 0,
-    totalCost: totalCommercial,
+    totalCost: contingency,
     costBasis,
-    source: "Burnham standard rates",
-    notes: `Utility: $${comm.utilityConnectionFee.toLocaleString()}, Dev (${comm.devCostsPctOfEpc}% EPC): $${devCosts.toLocaleString()}, Contingency (${contingencyPct}% EPC): $${contingency.toLocaleString()}`,
+    source: "Burnham standard",
+    notes: `${contingencyPct}% of EPC ($${totalEPC.toLocaleString()})`,
     isOverridden: false,
     isLocked: false,
   });
+
+  lineItems.push({
+    id: makeId("devcosts"),
+    equipmentId: "",
+    process: "Commercial / Owner's Costs",
+    equipmentType: "Development Costs",
+    description: "Project development costs",
+    quantity: 1,
+    baseCostPerUnit: devCosts,
+    installationFactor: 1.0,
+    installedCost: devCosts,
+    contingencyPct: 0,
+    contingencyCost: 0,
+    totalCost: devCosts,
+    costBasis,
+    source: "Burnham standard",
+    notes: "",
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  lineItems.push({
+    id: makeId("sparepartscomm"),
+    equipmentId: "",
+    process: "Commercial / Owner's Costs",
+    equipmentType: "Spare Parts",
+    description: `Spare parts (${ic.sparePartsPctOfEquipment}% of total equipment costs)`,
+    quantity: 1,
+    baseCostPerUnit: spareParts,
+    installationFactor: 1.0,
+    installedCost: spareParts,
+    contingencyPct: 0,
+    contingencyCost: 0,
+    totalCost: spareParts,
+    costBasis,
+    source: "Burnham standard",
+    notes: `${ic.sparePartsPctOfEquipment}% of total equipment costs ($${subtotalEquipment.toLocaleString()})`,
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  lineItems.push({
+    id: makeId("insurancedc"),
+    equipmentId: "",
+    process: "Commercial / Owner's Costs",
+    equipmentType: "Insurance",
+    description: "Insurance (1.5% of direct costs)",
+    quantity: 1,
+    baseCostPerUnit: insuranceOnDirectCosts,
+    installationFactor: 1.0,
+    installedCost: insuranceOnDirectCosts,
+    contingencyPct: 0,
+    contingencyCost: 0,
+    totalCost: insuranceOnDirectCosts,
+    costBasis,
+    source: "Burnham standard",
+    notes: `1.5% of direct costs ($${totalEPC.toLocaleString()})`,
+    isOverridden: false,
+    isLocked: false,
+  });
+
+  if (comm.utilityConnectionFee > 0) {
+    lineItems.push({
+      id: makeId("utilconn"),
+      equipmentId: "",
+      process: "Commercial / Owner's Costs",
+      equipmentType: "Utility Connection Fee",
+      description: "Utility connection fee",
+      quantity: 1,
+      baseCostPerUnit: comm.utilityConnectionFee,
+      installationFactor: 1.0,
+      installedCost: comm.utilityConnectionFee,
+      contingencyPct: 0,
+      contingencyCost: 0,
+      totalCost: comm.utilityConnectionFee,
+      costBasis,
+      source: "Burnham standard",
+      notes: "",
+      isOverridden: false,
+      isLocked: false,
+    });
+  }
 
   lineItems.push({
     id: makeId("escalation"),
@@ -623,16 +686,26 @@ export function generateCapexDeterministic(
     isLocked: false,
   });
 
-  const totalCapex = totalEPC + subtotalInternalCosts + totalCommercial + escalation;
+  const totalCommercial = contingency + devCosts + spareParts + insuranceOnDirectCosts +
+    comm.utilityConnectionFee + devFee + escalation;
+
+  const totalCapex = totalEPC + subtotalInternalCosts + totalCommercial;
   const itcExclusions = comm.utilityConnectionFee + opsTotal + ffTotal +
-    ic.spareParts + ic.ribbonCutting + subtotalInterconnect;
+    ic.ribbonCutting + subtotalInterconnect;
   const itcEligible = totalCapex - itcExclusions;
 
   const summary = {
     totalEquipmentCost: subtotalEquipment,
     totalInstalledCost: totalEPC,
     totalContingency: contingency,
-    totalDirectCost: totalConstructionDirects,
+    totalDirectCost: totalEPC,
+    subtotalDirectCosts: totalEPC,
+    subtotalInternalCosts,
+    contingency,
+    devCosts,
+    spareParts,
+    insurance: insuranceOnDirectCosts,
+    escalation,
     engineeringPct: 0,
     engineeringCost: 0,
     totalProjectCost: totalCapex,
@@ -658,7 +731,9 @@ export function generateCapexDeterministic(
     { parameter: "CPI Escalation", value: `${escalationPct}%`, source: "BLS CPI data" },
     { parameter: "Builder's Risk Insurance", value: `${ic.insurance.buildersRiskPolicyPctOfEpc}% of EPC`, source: "Burnham Internal Costs Estimate" },
     { parameter: "Internal Costs Subtotal", value: `$${subtotalInternalCosts.toLocaleString()}`, source: "Burnham Internal Costs Estimate" },
-    { parameter: "Dev Costs", value: `${comm.devCostsPctOfEpc}% of EPC`, source: "Burnham standard" },
+    { parameter: "Dev Costs", value: `$${devCosts.toLocaleString()}`, source: "Burnham standard" },
+    { parameter: "Spare Parts", value: `${ic.sparePartsPctOfEquipment}% of total equipment costs`, source: "Burnham standard" },
+    { parameter: "Insurance", value: `1.5% of direct costs`, source: "Burnham standard" },
     { parameter: "Cost Year", value: "Feb 2026", source: "Burnham CapEx Model V5.1" },
     { parameter: "ITC Eligible CapEx", value: `$${itcEligible.toLocaleString()}`, source: "Calculated" },
     ...(hasUpstreamAI ? [

@@ -442,6 +442,13 @@ export type CapexSummary = {
   totalInstalledCost: number;
   totalContingency: number;
   totalDirectCost: number;
+  subtotalDirectCosts?: number;
+  subtotalInternalCosts?: number;
+  contingency?: number;
+  devCosts?: number;
+  spareParts?: number;
+  insurance?: number;
+  escalation?: number;
   engineeringPct: number;
   engineeringCost: number;
   totalProjectCost: number;

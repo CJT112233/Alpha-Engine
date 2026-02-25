@@ -157,7 +157,7 @@ export interface BurnhamInternalCosts {
   fixturesAndFurnishings: {
     permanentOfficeFurnishings: number;
   };
-  spareParts: number;
+  sparePartsPctOfEquipment: number;
   utilities: {
     tempPower: number;
     permanentPower: number;
@@ -191,7 +191,7 @@ export const DEFAULT_BURNHAM_INTERNAL_COSTS: BurnhamInternalCosts = {
   fixturesAndFurnishings: {
     permanentOfficeFurnishings: 247_150,
   },
-  spareParts: 653_552,
+  sparePartsPctOfEquipment: 2.5,
   utilities: {
     tempPower: 5_000,
     permanentPower: 160_000,
@@ -222,12 +222,13 @@ export function calculateInternalCostsSubtotal(costs: BurnhamInternalCosts, epcT
   const utilTotal = util.tempPower + util.permanentPower + util.natGas +
     util.water + util.sewer + util.it + util.utilitiesDuringConstruction;
 
-  return pmTotal + opsTotal + insuranceTotal + ff + costs.spareParts + utilTotal + costs.ribbonCutting;
+  const spareParts = Math.round(epcTotal * costs.sparePartsPctOfEquipment / 100);
+  return pmTotal + opsTotal + insuranceTotal + ff + spareParts + utilTotal + costs.ribbonCutting;
 }
 
 export interface CommercialItems {
   utilityConnectionFee: number;
-  devCostsPctOfEpc: number;
+  devCosts: number;
   devFeePctOfEpc: number;
   contingencyPctOfEpc: number;
   escalationPct: number;
@@ -235,7 +236,7 @@ export interface CommercialItems {
 
 export const DEFAULT_COMMERCIAL_ITEMS: CommercialItems = {
   utilityConnectionFee: 250_000,
-  devCostsPctOfEpc: 3.0,
+  devCosts: 1_000_000,
   devFeePctOfEpc: 0.0,
   contingencyPctOfEpc: 7.5,
   escalationPct: 5.83,

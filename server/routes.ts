@@ -3747,7 +3747,7 @@ export async function registerRoutes(
       if (!scenario) return res.status(404).json({ error: "Scenario not found" });
       const results = latestEstimate.results as CapexResults;
       const projectType = results.projectType || (scenario as any).projectType || "B";
-      const xlsxBuffer = exportCapexExcel(results, scenario.name, scenario.project?.name || "Project", projectType);
+      const xlsxBuffer = await exportCapexExcel(results, scenario.name, scenario.project?.name || "Project", projectType);
       const safeName = (scenario.name || "capex").replace(/[^a-zA-Z0-9_-]/g, "_");
       res.set({
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

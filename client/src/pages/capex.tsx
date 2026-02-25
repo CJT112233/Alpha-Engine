@@ -73,13 +73,19 @@ function recalculateLineItem(item: CapexLineItem): CapexLineItem {
 }
 
 function recalculateSummary(lineItems: CapexLineItem[], summary: CapexSummary): CapexSummary {
-  const totalEquipmentCost = lineItems.reduce((sum, li) => sum + li.baseCostPerUnit * li.quantity, 0);
+  const directProcesses = ["Major Equipment", "Construction Directs", "Construction Mgmt & Indirects", "Interconnect"];
+  const totalEquipmentCost = lineItems
+    .filter(li => li.process === "Major Equipment")
+    .reduce((sum, li) => sum + li.baseCostPerUnit * li.quantity, 0);
+  const subtotalDirectCosts = lineItems
+    .filter(li => directProcesses.includes(li.process))
+    .reduce((sum, li) => sum + li.totalCost, 0);
+  const subtotalInternalCosts = lineItems
+    .filter(li => li.process === "Burnham Internal Costs")
+    .reduce((sum, li) => sum + li.totalCost, 0);
   const totalInstalledCost = lineItems.reduce((sum, li) => sum + li.installedCost, 0);
   const totalContingency = lineItems.reduce((sum, li) => sum + li.contingencyCost, 0);
-  const totalDirectCost = totalInstalledCost + totalContingency;
-  const engineeringPct = summary.engineeringPct;
-  const engineeringCost = totalDirectCost * (engineeringPct / 100);
-  const totalProjectCost = totalDirectCost + engineeringCost;
+  const totalProjectCost = lineItems.reduce((sum, li) => sum + li.totalCost, 0);
   const costPerUnit = summary.costPerUnit
     ? { ...summary.costPerUnit, value: totalProjectCost }
     : undefined;
@@ -88,9 +94,11 @@ function recalculateSummary(lineItems: CapexLineItem[], summary: CapexSummary): 
     totalEquipmentCost,
     totalInstalledCost,
     totalContingency,
-    totalDirectCost,
-    engineeringPct,
-    engineeringCost,
+    totalDirectCost: subtotalDirectCosts,
+    subtotalDirectCosts,
+    subtotalInternalCosts,
+    engineeringPct: summary.engineeringPct,
+    engineeringCost: 0,
     totalProjectCost,
     costPerUnit,
   };
@@ -584,110 +592,105 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
               <WarningsList warnings={results.warnings} />
 
               {summary && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                  <Card data-testid="card-total-equipment-cost">
-                    <CardContent className="p-4">
-                      <div className="text-xs text-muted-foreground">Total Equipment Cost</div>
-                      <div className="mt-1">
-                        <EditableValue
-                          fieldKey="summary.totalEquipmentCost"
-                          displayValue={formatCurrencyK(summary.totalEquipmentCost)}
-                          isLocked={!!locks["summary.totalEquipmentCost"]}
-                          isOverridden={!!overrides["summary.totalEquipmentCost"]}
-                          onSaveOverride={handleSaveOverride}
-                          onToggleLock={handleToggleLock}
-                          compact
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card data-testid="card-total-installed-cost">
-                    <CardContent className="p-4">
-                      <div className="text-xs text-muted-foreground">Total Installed Cost</div>
-                      <div className="mt-1">
-                        <EditableValue
-                          fieldKey="summary.totalInstalledCost"
-                          displayValue={formatCurrencyK(summary.totalInstalledCost)}
-                          isLocked={!!locks["summary.totalInstalledCost"]}
-                          isOverridden={!!overrides["summary.totalInstalledCost"]}
-                          onSaveOverride={handleSaveOverride}
-                          onToggleLock={handleToggleLock}
-                          compact
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card data-testid="card-total-direct-cost">
-                    <CardContent className="p-4">
-                      <div className="text-xs text-muted-foreground">Total Direct Cost</div>
-                      <div className="mt-1">
-                        <EditableValue
-                          fieldKey="summary.totalDirectCost"
-                          displayValue={formatCurrencyK(summary.totalDirectCost)}
-                          isLocked={!!locks["summary.totalDirectCost"]}
-                          isOverridden={!!overrides["summary.totalDirectCost"]}
-                          onSaveOverride={handleSaveOverride}
-                          onToggleLock={handleToggleLock}
-                          compact
-                        />
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">incl. contingency</div>
-                    </CardContent>
-                  </Card>
-                  <Card data-testid="card-total-project-cost">
-                    <CardContent className="p-4">
-                      <div className="text-xs text-muted-foreground">Total Project Cost</div>
-                      <div className="mt-1">
-                        <EditableValue
-                          fieldKey="summary.totalProjectCost"
-                          displayValue={formatCurrencyK(summary.totalProjectCost)}
-                          isLocked={!!locks["summary.totalProjectCost"]}
-                          isOverridden={!!overrides["summary.totalProjectCost"]}
-                          onSaveOverride={handleSaveOverride}
-                          onToggleLock={handleToggleLock}
-                          compact
-                        />
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">incl. engineering</div>
-                    </CardContent>
-                  </Card>
-                  <Card data-testid="card-engineering-pct">
-                    <CardContent className="p-4">
-                      <div className="text-xs text-muted-foreground">Engineering</div>
-                      <div className="mt-1">
-                        <EditableValue
-                          fieldKey="summary.engineeringPct"
-                          displayValue={`${summary.engineeringPct}%`}
-                          isLocked={!!locks["summary.engineeringPct"]}
-                          isOverridden={!!overrides["summary.engineeringPct"]}
-                          onSaveOverride={handleSaveOverride}
-                          onToggleLock={handleToggleLock}
-                          compact
-                        />
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{formatCurrencyK(summary.engineeringCost)}</div>
-                    </CardContent>
-                  </Card>
-                  {summary.costPerUnit && (
-                    <Card data-testid="card-cost-per-unit">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <Card data-testid="card-total-equipment-cost">
                       <CardContent className="p-4">
-                        <div className="text-xs text-muted-foreground">Cost per Unit</div>
+                        <div className="text-xs text-muted-foreground">Total Equipment Cost</div>
                         <div className="mt-1">
                           <EditableValue
-                            fieldKey="summary.costPerUnit"
-                            displayValue={formatCurrency(summary.costPerUnit.value)}
-                            unit={summary.costPerUnit.unit}
-                            isLocked={!!locks["summary.costPerUnit"]}
-                            isOverridden={!!overrides["summary.costPerUnit"]}
+                            fieldKey="summary.totalEquipmentCost"
+                            displayValue={formatCurrencyK(summary.totalEquipmentCost)}
+                            isLocked={!!locks["summary.totalEquipmentCost"]}
+                            isOverridden={!!overrides["summary.totalEquipmentCost"]}
                             onSaveOverride={handleSaveOverride}
                             onToggleLock={handleToggleLock}
                             compact
                           />
                         </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">{summary.costPerUnit.basis}</div>
                       </CardContent>
                     </Card>
-                  )}
+                    <Card data-testid="card-subtotal-direct-costs" className="border-blue-200 dark:border-blue-800">
+                      <CardContent className="p-4">
+                        <div className="text-xs text-muted-foreground font-medium">Subtotal Direct Costs</div>
+                        <div className="mt-1 font-semibold text-blue-700 dark:text-blue-400">
+                          {formatCurrencyK(summary.subtotalDirectCosts ?? summary.totalInstalledCost)}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">EPC total</div>
+                      </CardContent>
+                    </Card>
+                    <Card data-testid="card-total-internal-costs">
+                      <CardContent className="p-4">
+                        <div className="text-xs text-muted-foreground">Internal Costs</div>
+                        <div className="mt-1">
+                          {formatCurrencyK(summary.subtotalInternalCosts ?? 0)}
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card data-testid="card-total-project-cost" className="border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20">
+                      <CardContent className="p-4">
+                        <div className="text-xs text-muted-foreground font-medium">Total Project Cost</div>
+                        <div className="mt-1">
+                          <EditableValue
+                            fieldKey="summary.totalProjectCost"
+                            displayValue={formatCurrencyK(summary.totalProjectCost)}
+                            isLocked={!!locks["summary.totalProjectCost"]}
+                            isOverridden={!!overrides["summary.totalProjectCost"]}
+                            onSaveOverride={handleSaveOverride}
+                            onToggleLock={handleToggleLock}
+                            compact
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                    {summary.costPerUnit && (
+                      <Card data-testid="card-cost-per-unit">
+                        <CardContent className="p-4">
+                          <div className="text-xs text-muted-foreground">Cost per Unit</div>
+                          <div className="mt-1">
+                            <EditableValue
+                              fieldKey="summary.costPerUnit"
+                              displayValue={formatCurrency(summary.costPerUnit.value)}
+                              unit={summary.costPerUnit.unit}
+                              isLocked={!!locks["summary.costPerUnit"]}
+                              isOverridden={!!overrides["summary.costPerUnit"]}
+                              onSaveOverride={handleSaveOverride}
+                              onToggleLock={handleToggleLock}
+                              compact
+                            />
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{summary.costPerUnit.basis}</div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+                    {summary.contingency !== undefined && (
+                      <div className="text-xs text-muted-foreground p-2 rounded bg-muted/50" data-testid="text-contingency">
+                        <span className="font-medium">Contingency (7.5%):</span> {formatCurrencyK(summary.contingency)}
+                      </div>
+                    )}
+                    {summary.devCosts !== undefined && (
+                      <div className="text-xs text-muted-foreground p-2 rounded bg-muted/50" data-testid="text-dev-costs">
+                        <span className="font-medium">Dev Costs:</span> {formatCurrencyK(summary.devCosts)}
+                      </div>
+                    )}
+                    {summary.spareParts !== undefined && (
+                      <div className="text-xs text-muted-foreground p-2 rounded bg-muted/50" data-testid="text-spare-parts">
+                        <span className="font-medium">Spare Parts (2.5%):</span> {formatCurrencyK(summary.spareParts)}
+                      </div>
+                    )}
+                    {summary.insurance !== undefined && (
+                      <div className="text-xs text-muted-foreground p-2 rounded bg-muted/50" data-testid="text-insurance">
+                        <span className="font-medium">Insurance (1.5%):</span> {formatCurrencyK(summary.insurance)}
+                      </div>
+                    )}
+                    {summary.escalation !== undefined && (
+                      <div className="text-xs text-muted-foreground p-2 rounded bg-muted/50" data-testid="text-escalation">
+                        <span className="font-medium">Escalation:</span> {formatCurrencyK(summary.escalation)}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -724,102 +727,156 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {results.lineItems?.map((item, idx) => {
-                              const itemId = item.id || `item-${idx}`;
-                              const baseCostKey = `lineItems.${itemId}.baseCostPerUnit`;
-                              const installFactorKey = `lineItems.${itemId}.installationFactor`;
-                              const installedCostKey = `lineItems.${itemId}.installedCost`;
-                              const contingencyKey = `lineItems.${itemId}.contingencyPct`;
-                              const totalCostKey = `lineItems.${itemId}.totalCost`;
+                            {(() => {
+                              const items = results.lineItems || [];
+                              const directProcesses = ["Major Equipment", "Construction Directs", "Construction Mgmt & Indirects", "Interconnect"];
+                              const rows: JSX.Element[] = [];
+                              let lastProcess = "";
+                              let directSubtotal = 0;
+                              let directsDone = false;
 
-                              return (
-                                <TableRow key={item.id || idx} data-testid={`row-line-item-${idx}`}>
-                                  <TableCell className="font-medium text-sm">{item.process}</TableCell>
-                                  <TableCell className="text-sm">{item.equipmentType}</TableCell>
-                                  <TableCell className="text-sm text-muted-foreground">{item.description}</TableCell>
-                                  <TableCell className="text-center text-sm">{item.quantity}</TableCell>
-                                  <TableCell className="text-right">
-                                    <EditableValue
-                                      fieldKey={baseCostKey}
-                                      displayValue={formatCurrency(item.baseCostPerUnit)}
-                                      isLocked={!!locks[baseCostKey]}
-                                      isOverridden={!!overrides[baseCostKey]}
-                                      onSaveOverride={handleSaveOverride}
-                                      onToggleLock={handleToggleLock}
-                                      compact
-                                    />
+                              items.forEach((item, idx) => {
+                                if (!directsDone && !directProcesses.includes(item.process) && directSubtotal > 0) {
+                                  directsDone = true;
+                                  rows.push(
+                                    <TableRow key="subtotal-directs" className="bg-blue-50 dark:bg-blue-950/30 border-t-2 border-b-2 border-blue-200 dark:border-blue-800" data-testid="row-subtotal-directs">
+                                      <TableCell colSpan={8} className="font-bold text-sm text-blue-700 dark:text-blue-400">
+                                        Subtotal Direct Costs (EPC)
+                                      </TableCell>
+                                      <TableCell className="text-right font-bold text-sm text-blue-700 dark:text-blue-400">
+                                        {formatCurrency(directSubtotal)}
+                                      </TableCell>
+                                      <TableCell />
+                                    </TableRow>
+                                  );
+                                }
+
+                                if (directProcesses.includes(item.process)) {
+                                  directSubtotal += item.totalCost;
+                                }
+
+                                if (item.process !== lastProcess) {
+                                  lastProcess = item.process;
+                                  rows.push(
+                                    <TableRow key={`header-${item.process}`} className="bg-muted/50">
+                                      <TableCell colSpan={10} className="font-semibold text-sm py-1.5">
+                                        {item.process}
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                }
+
+                                const itemId = item.id || `item-${idx}`;
+                                const baseCostKey = `lineItems.${itemId}.baseCostPerUnit`;
+                                const installFactorKey = `lineItems.${itemId}.installationFactor`;
+                                const installedCostKey = `lineItems.${itemId}.installedCost`;
+                                const contingencyKey = `lineItems.${itemId}.contingencyPct`;
+                                const totalCostKey = `lineItems.${itemId}.totalCost`;
+
+                                rows.push(
+                                  <TableRow key={item.id || idx} data-testid={`row-line-item-${idx}`}>
+                                    <TableCell className="font-medium text-sm pl-6">{item.equipmentType}</TableCell>
+                                    <TableCell className="text-sm">{item.equipmentType}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">{item.description}</TableCell>
+                                    <TableCell className="text-center text-sm">{item.quantity}</TableCell>
+                                    <TableCell className="text-right">
+                                      <EditableValue
+                                        fieldKey={baseCostKey}
+                                        displayValue={formatCurrency(item.baseCostPerUnit)}
+                                        isLocked={!!locks[baseCostKey]}
+                                        isOverridden={!!overrides[baseCostKey]}
+                                        onSaveOverride={handleSaveOverride}
+                                        onToggleLock={handleToggleLock}
+                                        compact
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      <EditableValue
+                                        fieldKey={installFactorKey}
+                                        displayValue={item.installationFactor.toFixed(2)}
+                                        isLocked={!!locks[installFactorKey]}
+                                        isOverridden={!!overrides[installFactorKey]}
+                                        onSaveOverride={handleSaveOverride}
+                                        onToggleLock={handleToggleLock}
+                                        compact
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <EditableValue
+                                        fieldKey={installedCostKey}
+                                        displayValue={formatCurrencyK(item.installedCost)}
+                                        isLocked={!!locks[installedCostKey]}
+                                        isOverridden={!!overrides[installedCostKey]}
+                                        onSaveOverride={handleSaveOverride}
+                                        onToggleLock={handleToggleLock}
+                                        compact
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      <EditableValue
+                                        fieldKey={contingencyKey}
+                                        displayValue={`${item.contingencyPct}%`}
+                                        isLocked={!!locks[contingencyKey]}
+                                        isOverridden={!!overrides[contingencyKey]}
+                                        onSaveOverride={handleSaveOverride}
+                                        onToggleLock={handleToggleLock}
+                                        compact
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <EditableValue
+                                        fieldKey={totalCostKey}
+                                        displayValue={formatCurrencyK(item.totalCost)}
+                                        isLocked={!!locks[totalCostKey]}
+                                        isOverridden={!!overrides[totalCostKey]}
+                                        onSaveOverride={handleSaveOverride}
+                                        onToggleLock={handleToggleLock}
+                                        compact
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                      <div className="flex items-center justify-center gap-1">
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              size="icon"
+                                              variant="ghost"
+                                              onClick={() => {
+                                                const rowKey = `lineItems.${itemId}`;
+                                                handleToggleLock(rowKey);
+                                              }}
+                                              data-testid={`button-lock-row-${idx}`}
+                                            >
+                                              {locks[`lineItems.${itemId}`] ? (
+                                                <Lock className="h-3.5 w-3.5 text-amber-500" />
+                                              ) : (
+                                                <Unlock className="h-3.5 w-3.5 text-muted-foreground" />
+                                              )}
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>{locks[`lineItems.${itemId}`] ? "Unlock row" : "Lock row"}</TooltipContent>
+                                        </Tooltip>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              });
+
+                              const totalAll = items.reduce((s, i) => s + i.totalCost, 0);
+                              rows.push(
+                                <TableRow key="total-project" className="bg-green-50 dark:bg-green-950/30 border-t-2 border-green-200 dark:border-green-800" data-testid="row-total-project">
+                                  <TableCell colSpan={8} className="font-bold text-sm text-green-700 dark:text-green-400">
+                                    Total Project Cost
                                   </TableCell>
-                                  <TableCell className="text-center">
-                                    <EditableValue
-                                      fieldKey={installFactorKey}
-                                      displayValue={item.installationFactor.toFixed(2)}
-                                      isLocked={!!locks[installFactorKey]}
-                                      isOverridden={!!overrides[installFactorKey]}
-                                      onSaveOverride={handleSaveOverride}
-                                      onToggleLock={handleToggleLock}
-                                      compact
-                                    />
+                                  <TableCell className="text-right font-bold text-sm text-green-700 dark:text-green-400">
+                                    {formatCurrency(summary?.totalProjectCost ?? totalAll)}
                                   </TableCell>
-                                  <TableCell className="text-right">
-                                    <EditableValue
-                                      fieldKey={installedCostKey}
-                                      displayValue={formatCurrencyK(item.installedCost)}
-                                      isLocked={!!locks[installedCostKey]}
-                                      isOverridden={!!overrides[installedCostKey]}
-                                      onSaveOverride={handleSaveOverride}
-                                      onToggleLock={handleToggleLock}
-                                      compact
-                                    />
-                                  </TableCell>
-                                  <TableCell className="text-center">
-                                    <EditableValue
-                                      fieldKey={contingencyKey}
-                                      displayValue={`${item.contingencyPct}%`}
-                                      isLocked={!!locks[contingencyKey]}
-                                      isOverridden={!!overrides[contingencyKey]}
-                                      onSaveOverride={handleSaveOverride}
-                                      onToggleLock={handleToggleLock}
-                                      compact
-                                    />
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    <EditableValue
-                                      fieldKey={totalCostKey}
-                                      displayValue={formatCurrencyK(item.totalCost)}
-                                      isLocked={!!locks[totalCostKey]}
-                                      isOverridden={!!overrides[totalCostKey]}
-                                      onSaveOverride={handleSaveOverride}
-                                      onToggleLock={handleToggleLock}
-                                      compact
-                                    />
-                                  </TableCell>
-                                  <TableCell className="text-center">
-                                    <div className="flex items-center justify-center gap-1">
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            onClick={() => {
-                                              const rowKey = `lineItems.${itemId}`;
-                                              handleToggleLock(rowKey);
-                                            }}
-                                            data-testid={`button-lock-row-${idx}`}
-                                          >
-                                            {locks[`lineItems.${itemId}`] ? (
-                                              <Lock className="h-3.5 w-3.5 text-amber-500" />
-                                            ) : (
-                                              <Unlock className="h-3.5 w-3.5 text-muted-foreground" />
-                                            )}
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>{locks[`lineItems.${itemId}`] ? "Unlock row" : "Lock row"}</TooltipContent>
-                                      </Tooltip>
-                                    </div>
-                                  </TableCell>
+                                  <TableCell />
                                 </TableRow>
                               );
-                            })}
+
+                              return rows;
+                            })()}
                           </TableBody>
                         </Table>
                       </div>

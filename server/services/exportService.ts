@@ -895,12 +895,15 @@ export function exportCapexPDF(
       y = addSectionHeader(doc, "Cost Summary", y, leftMargin, contentWidth);
       const sumRows: string[][] = [
         ["Total Equipment Cost", fmtCurrency(summary.totalEquipmentCost)],
-        ["Total Installed Cost", fmtCurrency(summary.totalInstalledCost)],
-        ["Total Contingency", fmtCurrency(summary.totalContingency)],
-        ["Total Direct Cost", fmtCurrency(summary.totalDirectCost)],
-        [`Engineering (${summary.engineeringPct}%)`, fmtCurrency(summary.engineeringCost)],
-        ["Total Project Cost", fmtCurrency(summary.totalProjectCost)],
+        ["Subtotal Direct Costs (EPC)", fmtCurrency(summary.subtotalDirectCosts ?? summary.totalInstalledCost)],
       ];
+      if (summary.subtotalInternalCosts !== undefined) sumRows.push(["Internal Costs", fmtCurrency(summary.subtotalInternalCosts)]);
+      if (summary.contingency !== undefined) sumRows.push(["Contingency (7.5%)", fmtCurrency(summary.contingency)]);
+      if (summary.devCosts !== undefined) sumRows.push(["Development Costs", fmtCurrency(summary.devCosts)]);
+      if (summary.spareParts !== undefined) sumRows.push(["Spare Parts (2.5% of equipment)", fmtCurrency(summary.spareParts)]);
+      if (summary.insurance !== undefined) sumRows.push(["Insurance (1.5% of direct costs)", fmtCurrency(summary.insurance)]);
+      if (summary.escalation !== undefined) sumRows.push(["CPI Escalation", fmtCurrency(summary.escalation)]);
+      sumRows.push(["Total Project Cost", fmtCurrency(summary.totalProjectCost)]);
       if (summary.costPerUnit) {
         sumRows.push([`Cost per Unit (${summary.costPerUnit.basis})`, `${fmtCurrency(summary.costPerUnit.value)} / ${summary.costPerUnit.unit}`]);
       }
@@ -944,81 +947,268 @@ export function exportCapexPDF(
   });
 }
 
-export function exportCapexExcel(
+const CX_HEADER_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FF323F4F" } };
+const CX_HEADER_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+const CX_SECTION_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FF00B050" } };
+const CX_SECTION_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+const CX_SUBTOTAL_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4472C4" } };
+const CX_SUBTOTAL_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+const CX_TOTAL_FILL: ExcelJS.FillPattern = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2E7D32" } };
+const CX_TOTAL_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+const CX_CURRENCY_FMT = '#,##0';
+const CX_CURRENCY_DOLLAR_FMT = '$#,##0';
+const CX_PCT_FMT = '0.00%';
+
+function cxApplyHeaders(ws: ExcelJS.Worksheet, row: number, headers: string[], widths: number[]): void {
+  const r = ws.getRow(row);
+  headers.forEach((h, i) => {
+    const cell = r.getCell(i + 1);
+    cell.value = h;
+    cell.fill = CX_HEADER_FILL;
+    cell.font = CX_HEADER_FONT;
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border = MB_BORDER_THIN;
+  });
+  r.height = 22;
+  widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+}
+
+function cxAddSectionRow(ws: ExcelJS.Worksheet, row: number, title: string, colSpan: number): void {
+  const r = ws.getRow(row);
+  const cell = r.getCell(1);
+  cell.value = title;
+  cell.fill = CX_SECTION_FILL;
+  cell.font = CX_SECTION_FONT;
+  cell.alignment = { horizontal: "left", vertical: "middle" };
+  for (let c = 2; c <= colSpan; c++) {
+    const fc = r.getCell(c);
+    fc.fill = CX_SECTION_FILL;
+    fc.border = MB_BORDER_THIN;
+  }
+  if (colSpan > 1) ws.mergeCells(row, 1, row, colSpan);
+  r.height = 24;
+}
+
+function cxAddSubtotalRow(ws: ExcelJS.Worksheet, row: number, label: string, amount: number, colSpan: number, fill: ExcelJS.FillPattern, font: Partial<ExcelJS.Font>): void {
+  const r = ws.getRow(row);
+  const labelCell = r.getCell(1);
+  labelCell.value = label;
+  labelCell.fill = fill;
+  labelCell.font = font;
+  labelCell.alignment = { horizontal: "left", vertical: "middle" };
+  for (let c = 2; c < colSpan; c++) {
+    const fc = r.getCell(c);
+    fc.fill = fill;
+    fc.border = MB_BORDER_THIN;
+  }
+  if (colSpan > 2) ws.mergeCells(row, 1, row, colSpan - 1);
+  const amtCell = r.getCell(colSpan);
+  amtCell.value = amount;
+  amtCell.numFmt = CX_CURRENCY_DOLLAR_FMT;
+  amtCell.fill = fill;
+  amtCell.font = font;
+  amtCell.alignment = { horizontal: "right", vertical: "middle" };
+  amtCell.border = MB_BORDER_THIN;
+  r.height = 24;
+}
+
+function cxAddDataRow(ws: ExcelJS.Worksheet, row: number, values: (string | number | undefined)[], isAlt: boolean, currencyCols: number[] = []): void {
+  const r = ws.getRow(row);
+  values.forEach((v, i) => {
+    const cell = r.getCell(i + 1);
+    cell.value = v ?? "";
+    cell.border = MB_BORDER_THIN;
+    cell.alignment = { vertical: "middle", wrapText: true, horizontal: i === 0 ? "left" : (currencyCols.includes(i) ? "right" : "center") };
+    cell.font = { size: 10 };
+    if (isAlt) cell.fill = MB_ALT_ROW_FILL;
+    if (currencyCols.includes(i) && typeof v === "number") {
+      cell.numFmt = CX_CURRENCY_FMT;
+    }
+  });
+  r.height = 18;
+}
+
+export async function exportCapexExcel(
   results: CapexResults,
   scenarioName: string,
   projectName: string,
   projectType: string
-): Buffer {
-  const wb = XLSX.utils.book_new();
+): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Project Factory — Burnham";
+  wb.created = new Date();
   const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
+  const directProcesses = ["Major Equipment", "Construction Directs", "Construction Mgmt & Indirects", "Interconnect"];
+
+  const wsSummary = wb.addWorksheet("Summary", { properties: { tabColor: { argb: "FF323F4F" } } });
+  let sr = 1;
+
+  cxAddSectionRow(wsSummary, sr, "Capital Cost Estimate", 3);
+  sr++;
+  const infoData: [string, string][] = [
+    ["Project", projectName],
+    ["Scenario", scenarioName],
+    ["Project Type", `${projectType} - ${typeLabels[projectType] || ""}`],
+    ["Cost Year", results.costYear || "Current"],
+    ["Currency", results.currency || "USD"],
+    ["Date Generated", new Date().toLocaleDateString("en-US")],
+  ];
+  cxApplyHeaders(wsSummary, sr, ["Field", "", "Value"], [30, 15, 25]);
+  sr++;
+  infoData.forEach((row, idx) => {
+    const r = wsSummary.getRow(sr);
+    r.getCell(1).value = row[0];
+    r.getCell(1).font = { bold: true, size: 10 };
+    r.getCell(1).border = MB_BORDER_THIN;
+    r.getCell(1).alignment = { vertical: "middle" };
+    wsSummary.mergeCells(sr, 1, sr, 2);
+    r.getCell(3).value = row[1];
+    r.getCell(3).border = MB_BORDER_THIN;
+    r.getCell(3).alignment = { vertical: "middle" };
+    if (idx % 2 === 1) {
+      r.getCell(1).fill = MB_ALT_ROW_FILL;
+      r.getCell(3).fill = MB_ALT_ROW_FILL;
+    }
+    r.height = 18;
+    sr++;
+  });
+  sr++;
 
   const summary = results.summary;
   if (summary) {
-    const sumData: (string | number)[][] = [
-      ["Capital Cost Estimate - Summary"],
-      [`Project: ${projectName}`, `Scenario: ${scenarioName}`, `Type: ${projectType} - ${typeLabels[projectType] || ""}`],
-      [`Cost Year: ${results.costYear || "Current"}`, `Currency: ${results.currency || "USD"}`],
-      [],
-      ["Item", "Amount ($)"],
+    cxApplyHeaders(wsSummary, sr, ["Cost Category", "", "Amount ($)"], [30, 15, 25]);
+    sr++;
+    const summaryRows: [string, number][] = [
       ["Total Equipment Cost", summary.totalEquipmentCost],
-      ["Total Installed Cost", summary.totalInstalledCost],
-      ["Total Contingency", summary.totalContingency],
-      ["Total Direct Cost", summary.totalDirectCost],
-      [`Engineering (${summary.engineeringPct}%)`, summary.engineeringCost],
-      ["Total Project Cost", summary.totalProjectCost],
+      ["Subtotal Direct Costs (EPC)", summary.subtotalDirectCosts ?? summary.totalInstalledCost],
     ];
+    if (summary.subtotalInternalCosts !== undefined) summaryRows.push(["Internal Costs", summary.subtotalInternalCosts]);
+    if (summary.contingency !== undefined) summaryRows.push(["Contingency (7.5%)", summary.contingency]);
+    if (summary.devCosts !== undefined) summaryRows.push(["Development Costs", summary.devCosts]);
+    if (summary.spareParts !== undefined) summaryRows.push(["Spare Parts (2.5% of equipment)", summary.spareParts]);
+    if (summary.insurance !== undefined) summaryRows.push(["Insurance (1.5% of direct costs)", summary.insurance]);
+    if (summary.escalation !== undefined) summaryRows.push(["CPI Escalation", summary.escalation]);
+    summaryRows.forEach((row, idx) => {
+      const r = wsSummary.getRow(sr);
+      r.getCell(1).value = row[0];
+      r.getCell(1).font = { size: 10, bold: row[0].includes("Subtotal") };
+      r.getCell(1).border = MB_BORDER_THIN;
+      r.getCell(1).alignment = { vertical: "middle" };
+      wsSummary.mergeCells(sr, 1, sr, 2);
+      r.getCell(3).value = row[1];
+      r.getCell(3).numFmt = CX_CURRENCY_DOLLAR_FMT;
+      r.getCell(3).border = MB_BORDER_THIN;
+      r.getCell(3).alignment = { vertical: "middle", horizontal: "right" };
+      r.getCell(3).font = { size: 10, bold: row[0].includes("Subtotal") };
+      if (idx % 2 === 1) {
+        r.getCell(1).fill = MB_ALT_ROW_FILL;
+        r.getCell(3).fill = MB_ALT_ROW_FILL;
+      }
+      r.height = 18;
+      sr++;
+    });
+    cxAddSubtotalRow(wsSummary, sr, "Total Project Cost", summary.totalProjectCost, 3, CX_TOTAL_FILL, CX_TOTAL_FONT);
+    sr++;
+
     if (summary.costPerUnit) {
-      sumData.push([`Cost per Unit (${summary.costPerUnit.basis} - ${summary.costPerUnit.unit})`, summary.costPerUnit.value]);
+      sr++;
+      const r = wsSummary.getRow(sr);
+      r.getCell(1).value = `Cost per Unit (${summary.costPerUnit.unit})`;
+      r.getCell(1).font = { bold: true, size: 10 };
+      r.getCell(1).border = MB_BORDER_THIN;
+      wsSummary.mergeCells(sr, 1, sr, 2);
+      r.getCell(3).value = summary.costPerUnit.value;
+      r.getCell(3).numFmt = CX_CURRENCY_DOLLAR_FMT;
+      r.getCell(3).border = MB_BORDER_THIN;
+      r.getCell(3).alignment = { horizontal: "right" };
+      r.height = 18;
+      sr++;
+      const rb = wsSummary.getRow(sr);
+      rb.getCell(1).value = `Basis: ${summary.costPerUnit.basis}`;
+      rb.getCell(1).font = { italic: true, size: 9, color: { argb: "FF666666" } };
+      wsSummary.mergeCells(sr, 1, sr, 3);
     }
-    const ws = XLSX.utils.aoa_to_sheet(sumData);
-    ws["!cols"] = [{ wch: 40 }, { wch: 20 }, { wch: 30 }];
-    XLSX.utils.book_append_sheet(wb, ws, "Summary");
   }
 
-  if (results.lineItems && results.lineItems.length > 0) {
-    const liData: (string | number)[][] = [
-      ["Line Items"],
-      [],
-      ["Process", "Equipment Type", "Description", "Qty", "Base Cost/Unit ($)", "Installation Factor", "Installed Cost ($)", "Contingency %", "Contingency ($)", "Total Cost ($)", "Cost Basis", "Source", "Notes"],
-      ...results.lineItems.map(li => [
-        li.process,
-        li.equipmentType,
-        li.description,
-        li.quantity,
-        li.baseCostPerUnit,
-        li.installationFactor,
-        li.installedCost,
-        li.contingencyPct,
-        li.contingencyCost,
-        li.totalCost,
-        li.costBasis,
-        li.source,
-        li.notes,
-      ]),
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(liData);
-    ws["!cols"] = [
-      { wch: 18 }, { wch: 20 }, { wch: 30 }, { wch: 6 },
-      { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 10 },
-      { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 25 },
-    ];
-    XLSX.utils.book_append_sheet(wb, ws, "Line Items");
+  const wsLI = wb.addWorksheet("Line Items", { properties: { tabColor: { argb: "FF00B050" } } });
+  let lr = 1;
+  cxAddSectionRow(wsLI, lr, "Capital Cost Estimate — Line Items", 10);
+  lr++;
+  const liHeaders = ["Equipment Type", "Description", "Qty", "Base Cost/Unit ($)", "Install Factor", "Installed Cost ($)", "Contingency %", "Contingency ($)", "Total Cost ($)", "Source"];
+  const liWidths = [25, 35, 8, 18, 12, 18, 12, 16, 18, 25];
+  cxApplyHeaders(wsLI, lr, liHeaders, liWidths);
+  lr++;
+
+  const currCols = [3, 5, 7, 8];
+  let lastProcess = "";
+  let directSubtotal = 0;
+  let directsDone = false;
+  const lineItems = results.lineItems || [];
+
+  lineItems.forEach((li, idx) => {
+    if (!directsDone && !directProcesses.includes(li.process) && directSubtotal > 0) {
+      directsDone = true;
+      cxAddSubtotalRow(wsLI, lr, "Subtotal Direct Costs (EPC)", directSubtotal, 10, CX_SUBTOTAL_FILL, CX_SUBTOTAL_FONT);
+      lr++;
+    }
+
+    if (directProcesses.includes(li.process)) {
+      directSubtotal += li.totalCost;
+    }
+
+    if (li.process !== lastProcess) {
+      lastProcess = li.process;
+      const r = wsLI.getRow(lr);
+      const cell = r.getCell(1);
+      cell.value = li.process;
+      cell.fill = MB_SUBSECTION_FILL;
+      cell.font = MB_SUBSECTION_FONT;
+      cell.alignment = { horizontal: "left", vertical: "middle" };
+      for (let c = 2; c <= 10; c++) {
+        const fc = r.getCell(c);
+        fc.fill = MB_SUBSECTION_FILL;
+        fc.border = MB_BORDER_THIN;
+      }
+      wsLI.mergeCells(lr, 1, lr, 10);
+      r.height = 22;
+      lr++;
+    }
+
+    cxAddDataRow(wsLI, lr, [
+      li.equipmentType,
+      li.description,
+      li.quantity,
+      li.baseCostPerUnit,
+      li.installationFactor,
+      li.installedCost,
+      li.contingencyPct,
+      li.contingencyCost,
+      li.totalCost,
+      li.source,
+    ], idx % 2 === 1, currCols);
+    lr++;
+  });
+
+  if (summary) {
+    cxAddSubtotalRow(wsLI, lr, "Total Project Cost", summary.totalProjectCost, 10, CX_TOTAL_FILL, CX_TOTAL_FONT);
+    lr++;
   }
 
   if (results.assumptions && results.assumptions.length > 0) {
-    const assData: string[][] = [
-      ["Assumptions"],
-      [],
-      ["Parameter", "Value", "Source"],
-      ...results.assumptions.map(a => [a.parameter, a.value, a.source]),
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(assData);
-    ws["!cols"] = [{ wch: 30 }, { wch: 25 }, { wch: 30 }];
-    XLSX.utils.book_append_sheet(wb, ws, "Assumptions");
+    const wsAss = wb.addWorksheet("Assumptions", { properties: { tabColor: { argb: "FF44546A" } } });
+    let ar = 1;
+    cxAddSectionRow(wsAss, ar, "Cost Assumptions", 3);
+    ar++;
+    cxApplyHeaders(wsAss, ar, ["Parameter", "Value", "Source"], [30, 30, 30]);
+    ar++;
+    results.assumptions.forEach((a, idx) => {
+      cxAddDataRow(wsAss, ar, [a.parameter, a.value, a.source], idx % 2 === 1);
+      ar++;
+    });
   }
 
-  return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+  const buffer = await wb.xlsx.writeBuffer();
+  return Buffer.from(buffer);
 }
 
 export function exportOpexPDF(
