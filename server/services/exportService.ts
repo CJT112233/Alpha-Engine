@@ -1801,15 +1801,64 @@ export function exportProjectSummaryPDF(
 
       if (capexResults.lineItems && capexResults.lineItems.length > 0) {
         y = addSectionHeader(doc, "CapEx Line Items ($000s)", y, leftMargin, contentWidth);
-        const capLiHeaders = ["Category", "Description", "Qty", "Unit Cost", "Total Cost"];
-        const capLiRows = capexResults.lineItems.map(li => [
-          sanitize(li.process),
-          sanitize(li.equipmentType),
-          String(li.quantity),
-          fmtCurrencyK(li.baseCostPerUnit),
-          fmtCurrencyK(li.totalCost),
-        ]);
-        y = drawTable(doc, capLiHeaders, capLiRows, leftMargin, y, [90, 140, 40, 116, 126], { fontSize: 7 });
+        const capHeaders = ["Description", "Qty", "Unit Cost", "Total Cost"];
+        const capColWidths = [220, 42, 125, 125];
+        const capTableWidth = capColWidths.reduce((a, b) => a + b, 0);
+        const capFontSize = 7;
+        const capCellPad = 3;
+        const capMinRowH = 16;
+
+        const drawCapRow = (cells: string[], bold: boolean, bgColor?: string, fontColor?: string) => {
+          const rowH = Math.max(capMinRowH, ...cells.map((c, i) => {
+            doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(capFontSize);
+            return doc.heightOfString(sanitize(c || ""), { width: capColWidths[i] - capCellPad * 2 }) + capCellPad * 2;
+          }));
+          if (y + rowH > 732) {
+            doc.addPage(); y = 50;
+            drawCapRow(capHeaders, true, "#323F4F", "#FFFFFF");
+          }
+          if (bgColor) doc.rect(leftMargin, y, capTableWidth, rowH).fill(bgColor);
+          let x = leftMargin;
+          for (let i = 0; i < cells.length; i++) {
+            doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(capFontSize)
+              .fillColor(fontColor || "#44546A")
+              .text(sanitize(cells[i] || ""), x + capCellPad, y + capCellPad, { width: capColWidths[i] - capCellPad * 2 });
+            x += capColWidths[i];
+          }
+          doc.rect(leftMargin, y, capTableWidth, rowH).lineWidth(0.5).strokeColor("#CFD1D4").stroke();
+          y += rowH;
+        };
+
+        drawCapRow(capHeaders, true, "#323F4F", "#FFFFFF");
+
+        let lastProcess = "";
+        let processTotal = 0;
+        let grandTotal = 0;
+        let rowIdx = 0;
+        const capItems = capexResults.lineItems;
+        for (let i = 0; i < capItems.length; i++) {
+          const li = capItems[i];
+          if (li.process !== lastProcess) {
+            if (lastProcess && processTotal > 0) {
+              drawCapRow([`${lastProcess} Subtotal`, "", "", fmtCurrencyK(processTotal)], true, "#D6DCE4");
+            }
+            lastProcess = li.process;
+            processTotal = 0;
+          }
+          processTotal += li.totalCost;
+          grandTotal += li.totalCost;
+          drawCapRow([
+            sanitize(li.equipmentType),
+            String(li.quantity),
+            fmtCurrencyK(li.baseCostPerUnit),
+            fmtCurrencyK(li.totalCost),
+          ], false, rowIdx % 2 === 1 ? "#E9E9EB" : undefined);
+          rowIdx++;
+        }
+        if (lastProcess && processTotal > 0) {
+          drawCapRow([`${lastProcess} Subtotal`, "", "", fmtCurrencyK(processTotal)], true, "#D6DCE4");
+        }
+        drawCapRow(["Total Capital Costs", "", "", fmtCurrencyK(capexResults.summary?.totalProjectCost || grandTotal)], true, "#2E7D32", "#FFFFFF");
         y += 15;
       }
 
@@ -1821,14 +1870,69 @@ export function exportProjectSummaryPDF(
 
       if (opexResults.lineItems && opexResults.lineItems.length > 0) {
         y = addSectionHeader(doc, "OpEx Line Items ($000s)", y, leftMargin, contentWidth);
-        const opLiHeaders = ["Category", "Description", "Annual Cost", "Notes"];
-        const opLiRows = opexResults.lineItems.map(li => [
-          sanitize(li.category),
-          sanitize(li.description),
-          fmtCurrencyK(li.annualCost),
-          sanitize(li.notes || ""),
-        ]);
-        y = drawTable(doc, opLiHeaders, opLiRows, leftMargin, y, [100, 170, 100, 142], { fontSize: 7 });
+        const opHeaders = ["Description", "Unit Rate", "Annual Cost", "Notes"];
+        const opColWidths = [175, 95, 80, 162];
+        const opTableWidth = opColWidths.reduce((a, b) => a + b, 0);
+        const opFontSize = 7;
+        const opCellPad = 3;
+        const opMinRowH = 16;
+
+        const drawOpRow = (cells: string[], bold: boolean, bgColor?: string, fontColor?: string) => {
+          const rowH = Math.max(opMinRowH, ...cells.map((c, i) => {
+            doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(opFontSize);
+            return doc.heightOfString(sanitize(c || ""), { width: opColWidths[i] - opCellPad * 2 }) + opCellPad * 2;
+          }));
+          if (y + rowH > 732) {
+            doc.addPage(); y = 50;
+            drawOpRow(opHeaders, true, "#323F4F", "#FFFFFF");
+          }
+          if (bgColor) doc.rect(leftMargin, y, opTableWidth, rowH).fill(bgColor);
+          let x = leftMargin;
+          for (let i = 0; i < cells.length; i++) {
+            doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(opFontSize)
+              .fillColor(fontColor || "#44546A")
+              .text(sanitize(cells[i] || ""), x + opCellPad, y + opCellPad, { width: opColWidths[i] - opCellPad * 2 });
+            x += opColWidths[i];
+          }
+          doc.rect(leftMargin, y, opTableWidth, rowH).lineWidth(0.5).strokeColor("#CFD1D4").stroke();
+          y += rowH;
+        };
+
+        drawOpRow(opHeaders, true, "#323F4F", "#FFFFFF");
+
+        let lastCategory = "";
+        let catTotal = 0;
+        let grandOpTotal = 0;
+        let opRowIdx = 0;
+        const opItems = opexResults.lineItems;
+        for (let i = 0; i < opItems.length; i++) {
+          const li = opItems[i];
+          if (li.category !== lastCategory) {
+            if (lastCategory && catTotal !== 0) {
+              const catLabel = catTotal < 0 ? `${lastCategory} Subtotal (Credit)` : `${lastCategory} Subtotal`;
+              drawOpRow([catLabel, "", fmtCurrencyK(catTotal), ""], true, "#D6DCE4");
+            }
+            lastCategory = li.category;
+            catTotal = 0;
+          }
+          catTotal += li.annualCost;
+          grandOpTotal += li.annualCost;
+          const unitRateStr = li.unitCost != null && li.unitBasis
+            ? `${li.unitCost < 1 ? `$${li.unitCost.toFixed(2)}` : fmtCurrency(li.unitCost)}/${li.unitBasis}`
+            : li.scalingBasis || "";
+          drawOpRow([
+            sanitize(li.description),
+            unitRateStr,
+            fmtCurrencyK(li.annualCost),
+            sanitize(li.notes || ""),
+          ], false, opRowIdx % 2 === 1 ? "#E9E9EB" : undefined);
+          opRowIdx++;
+        }
+        if (lastCategory && catTotal !== 0) {
+          const catLabel = catTotal < 0 ? `${lastCategory} Subtotal (Credit)` : `${lastCategory} Subtotal`;
+          drawOpRow([catLabel, "", fmtCurrencyK(catTotal), ""], true, "#D6DCE4");
+        }
+        drawOpRow(["Total Annual OpEx", "", fmtCurrencyK(opexResults.summary?.totalAnnualOpex || grandOpTotal), ""], true, "#2E7D32", "#FFFFFF");
         y += 15;
       }
 
