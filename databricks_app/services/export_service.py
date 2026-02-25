@@ -162,18 +162,23 @@ def export_mass_balance_pdf(results: dict, scenario_name: str, project_name: str
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=LETTER)
 
-    c.setFont("Helvetica-Bold", 18)
-    c.setFillColor(HexColor("#1E3A5F"))
-    c.drawCentredString(page_width / 2, page_height - 50, "Mass Balance Report")
+    c.setFont("Helvetica-Bold", 22)
+    c.setFillColor(HexColor("#323F4F"))
+    c.drawCentredString(page_width / 2, page_height - 50, _sanitize(project_name))
+
+    c.setFont("Helvetica", 11)
+    c.setFillColor(HexColor("#8496B0"))
+    c.drawCentredString(page_width / 2, page_height - 80, f"Scenario: {_sanitize(scenario_name)}")
+
+    c.setFont("Helvetica-Bold", 14)
+    c.setFillColor(HexColor("#44546A"))
+    c.drawCentredString(page_width / 2, page_height - 100, "Mass Balance Report")
 
     c.setFont("Helvetica", 10)
-    c.setFillColor(HexColor("#666666"))
-    c.drawCentredString(page_width / 2, page_height - 75, f"Project: {_sanitize(project_name)}")
-    c.drawCentredString(page_width / 2, page_height - 88, f"Scenario: {_sanitize(scenario_name)}")
-    c.drawCentredString(page_width / 2, page_height - 101, f"Type {project_type}: {TYPE_LABELS.get(project_type, project_type)}")
-    c.drawCentredString(page_width / 2, page_height - 114, f"Generated: {datetime.now().strftime('%m/%d/%Y')}")
+    c.setFillColor(HexColor("#8496B0"))
+    c.drawCentredString(page_width / 2, page_height - 122, f"Type {project_type}: {TYPE_LABELS.get(project_type, project_type)}  |  Generated: {datetime.now().strftime('%m/%d/%Y')}")
 
-    y = page_height - 140
+    y = page_height - 145
 
     summary = results.get("summary") or {}
     if isinstance(summary, dict) and len(summary) > 0:
@@ -412,21 +417,24 @@ def export_capex_pdf(results: dict, scenario_name: str, project_name: str, proje
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=LETTER)
 
-    c.setFont("Helvetica-Bold", 18)
-    c.setFillColor(HexColor("#1E3A5F"))
-    c.drawCentredString(page_width / 2, page_height - 50, "Capital Cost Estimate")
+    c.setFont("Helvetica-Bold", 22)
+    c.setFillColor(HexColor("#323F4F"))
+    c.drawCentredString(page_width / 2, page_height - 50, _sanitize(project_name))
 
-    c.setFont("Helvetica", 10)
-    c.setFillColor(HexColor("#666666"))
-    c.drawCentredString(page_width / 2, page_height - 75, f"Project: {_sanitize(project_name)}")
-    c.drawCentredString(page_width / 2, page_height - 88, f"Scenario: {_sanitize(scenario_name)}")
-    c.drawCentredString(page_width / 2, page_height - 101, f"Type {project_type}: {TYPE_LABELS.get(project_type, project_type)}")
+    c.setFont("Helvetica", 11)
+    c.setFillColor(HexColor("#8496B0"))
+    c.drawCentredString(page_width / 2, page_height - 80, f"Scenario: {_sanitize(scenario_name)}")
+
+    c.setFont("Helvetica-Bold", 14)
+    c.setFillColor(HexColor("#44546A"))
+    c.drawCentredString(page_width / 2, page_height - 100, "Capital Cost Estimate")
+
     cost_year = results.get("costYear", "Current")
-    currency = results.get("currency", "USD")
-    c.drawCentredString(page_width / 2, page_height - 114, f"Cost Year: {cost_year} | Currency: {currency}")
-    c.drawCentredString(page_width / 2, page_height - 127, f"Generated: {datetime.now().strftime('%m/%d/%Y')}")
+    c.setFont("Helvetica", 10)
+    c.setFillColor(HexColor("#8496B0"))
+    c.drawCentredString(page_width / 2, page_height - 122, f"Type {project_type}: {TYPE_LABELS.get(project_type, project_type)}  |  Cost Year: {cost_year}  |  Generated: {datetime.now().strftime('%m/%d/%Y')}")
 
-    y = page_height - 155
+    y = page_height - 145
 
     summary = results.get("summary") or {}
     if isinstance(summary, dict) and len(summary) > 0:

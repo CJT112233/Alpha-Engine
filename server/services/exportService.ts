@@ -219,15 +219,16 @@ export function exportMassBalancePDF(
     const contentWidth = 512;
     const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
 
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#323F4F")
-      .text("Mass Balance Report", leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica-Bold").fontSize(22).fillColor("#323F4F")
+      .text(sanitize(projectName), leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica").fontSize(11).fillColor("#8496B0")
+      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 80, { align: "center", width: contentWidth });
+    doc.font("Helvetica-Bold").fontSize(14).fillColor("#44546A")
+      .text("Mass Balance Report", leftMargin, 100, { align: "center", width: contentWidth });
     doc.font("Helvetica").fontSize(10).fillColor("#8496B0")
-      .text(`Project: ${sanitize(projectName)}`, leftMargin, 75, { align: "center", width: contentWidth })
-      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 88, { align: "center", width: contentWidth })
-      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 101, { align: "center", width: contentWidth })
-      .text(`Generated: ${new Date().toLocaleDateString("en-US")}`, leftMargin, 114, { align: "center", width: contentWidth });
+      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}  |  Generated: ${new Date().toLocaleDateString("en-US")}`, leftMargin, 122, { align: "center", width: contentWidth });
 
-    let y = 140;
+    let y = 145;
 
     if (results.assumptions && results.assumptions.length > 0) {
       y = addSectionHeader(doc, "Design Assumptions", y, leftMargin, contentWidth);
@@ -904,16 +905,16 @@ export function exportCapexPDF(
     const contentWidth = 512;
     const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
 
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#323F4F")
-      .text("Capital Cost Estimate", leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica-Bold").fontSize(22).fillColor("#323F4F")
+      .text(sanitize(projectName), leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica").fontSize(11).fillColor("#8496B0")
+      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 80, { align: "center", width: contentWidth });
+    doc.font("Helvetica-Bold").fontSize(14).fillColor("#44546A")
+      .text("Capital Cost Estimate", leftMargin, 100, { align: "center", width: contentWidth });
     doc.font("Helvetica").fontSize(10).fillColor("#8496B0")
-      .text(`Project: ${sanitize(projectName)}`, leftMargin, 75, { align: "center", width: contentWidth })
-      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 88, { align: "center", width: contentWidth })
-      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 101, { align: "center", width: contentWidth })
-      .text(`Cost Year: ${results.costYear || "Current"} | Currency: ${results.currency || "USD"}`, leftMargin, 114, { align: "center", width: contentWidth })
-      .text(`Generated: ${new Date().toLocaleDateString("en-US")}`, leftMargin, 127, { align: "center", width: contentWidth });
+      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}  |  Cost Year: ${results.costYear || "Current"}  |  Generated: ${new Date().toLocaleDateString("en-US")}`, leftMargin, 122, { align: "center", width: contentWidth });
 
-    let y = 155;
+    let y = 145;
 
     const summary = results.summary;
     if (summary) {
@@ -1264,16 +1265,16 @@ export function exportOpexPDF(
     const contentWidth = 512;
     const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
 
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#323F4F")
-      .text("Annual Operating Cost Estimate", leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica-Bold").fontSize(22).fillColor("#323F4F")
+      .text(sanitize(projectName), leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica").fontSize(11).fillColor("#8496B0")
+      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 80, { align: "center", width: contentWidth });
+    doc.font("Helvetica-Bold").fontSize(14).fillColor("#44546A")
+      .text("Annual Operating Cost Estimate", leftMargin, 100, { align: "center", width: contentWidth });
     doc.font("Helvetica").fontSize(10).fillColor("#8496B0")
-      .text(`Project: ${sanitize(projectName)}`, leftMargin, 75, { align: "center", width: contentWidth })
-      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 88, { align: "center", width: contentWidth })
-      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 101, { align: "center", width: contentWidth })
-      .text(`Cost Year: ${results.costYear || "Current"} | Currency: ${results.currency || "USD"}`, leftMargin, 114, { align: "center", width: contentWidth })
-      .text(`Generated: ${new Date().toLocaleDateString("en-US")}`, leftMargin, 127, { align: "center", width: contentWidth });
+      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}  |  Cost Year: ${results.costYear || "Current"}  |  Generated: ${new Date().toLocaleDateString("en-US")}`, leftMargin, 122, { align: "center", width: contentWidth });
 
-    let y = 155;
+    let y = 145;
 
     const summary = results.summary;
     if (summary) {
@@ -1428,16 +1429,16 @@ export function exportVendorListPDF(
     const contentWidth = 512;
     const typeLabels: Record<string, string> = { A: "Wastewater Treatment", B: "RNG Greenfield", C: "RNG Bolt-On", D: "Hybrid" };
 
-    doc.font("Helvetica-Bold").fontSize(18).fillColor("#323F4F")
-      .text("Recommended Vendor List", leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica-Bold").fontSize(22).fillColor("#323F4F")
+      .text(sanitize(projectName), leftMargin, 50, { align: "center", width: contentWidth });
+    doc.font("Helvetica").fontSize(11).fillColor("#8496B0")
+      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 80, { align: "center", width: contentWidth });
+    doc.font("Helvetica-Bold").fontSize(14).fillColor("#44546A")
+      .text("Recommended Vendor List", leftMargin, 100, { align: "center", width: contentWidth });
     doc.font("Helvetica").fontSize(10).fillColor("#8496B0")
-      .text(`Project: ${sanitize(projectName)}`, leftMargin, 75, { align: "center", width: contentWidth })
-      .text(`Scenario: ${sanitize(scenarioName)}`, leftMargin, 88, { align: "center", width: contentWidth })
-      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}`, leftMargin, 101, { align: "center", width: contentWidth })
-      .text(`Generated: ${vendorList.generatedAt ? new Date(vendorList.generatedAt).toLocaleDateString("en-US") : new Date().toLocaleDateString("en-US")}`, leftMargin, 114, { align: "center", width: contentWidth })
-      .text(`Model: ${sanitize(vendorList.modelUsed || "")}`, leftMargin, 127, { align: "center", width: contentWidth });
+      .text(`Type ${projectType}: ${typeLabels[projectType] || projectType}  |  Generated: ${vendorList.generatedAt ? new Date(vendorList.generatedAt).toLocaleDateString("en-US") : new Date().toLocaleDateString("en-US")}`, leftMargin, 122, { align: "center", width: contentWidth });
 
-    let y = 155;
+    let y = 145;
 
     for (const item of vendorList.items) {
       if (y > 650) { doc.addPage(); y = 50; }

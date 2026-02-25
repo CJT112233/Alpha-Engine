@@ -504,10 +504,12 @@ export type CapexEstimate = typeof capexEstimates.$inferSelect;
 export type OpexLineItem = {
   id: string;
   category: string;
+  equipmentArea?: string;
   description: string;
   annualCost: number;
   unitCost?: number;
   unitBasis?: string;
+  costPerMMBtu?: number;
   scalingBasis?: string;
   percentOfRevenue?: number;
   costBasis: string;
@@ -524,10 +526,12 @@ export type OpexSummary = {
   totalChemicalCost: number;
   totalMaintenanceCost: number;
   totalDisposalCost: number;
+  totalWaterSewerCost?: number;
   totalOtherCost: number;
   revenueOffsets: number;
   netAnnualOpex: number;
   opexPerUnit?: { value: number; unit: string; basis: string };
+  opexPerMMBtu?: number;
   opexAsPercentOfCapex?: number;
 };
 
