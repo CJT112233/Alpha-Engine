@@ -1078,36 +1078,48 @@ export async function exportCapexExcel(
   if (summary) {
     cxApplyHeaders(wsSummary, sr, ["Cost Category", "", "Amount ($)"], [30, 15, 25]);
     sr++;
-    const summaryRows: [string, number][] = [
-      ["Total Equipment Cost", summary.totalEquipmentCost],
-      ["Subtotal Direct Costs (EPC)", summary.subtotalDirectCosts ?? summary.totalInstalledCost],
-    ];
-    if (summary.subtotalInternalCosts !== undefined) summaryRows.push(["Internal Costs", summary.subtotalInternalCosts]);
-    if (summary.contingency !== undefined) summaryRows.push(["Contingency (7.5%)", summary.contingency]);
-    if (summary.devCosts !== undefined) summaryRows.push(["Development Costs", summary.devCosts]);
-    if (summary.spareParts !== undefined) summaryRows.push(["Spare Parts (2.5% of equipment)", summary.spareParts]);
-    if (summary.insurance !== undefined) summaryRows.push(["Insurance (1.5% of direct costs)", summary.insurance]);
-    if (summary.escalation !== undefined) summaryRows.push(["CPI Escalation", summary.escalation]);
-    summaryRows.forEach((row, idx) => {
+
+    const isDeterministic = summary.subtotalDirectCosts != null;
+    const equipmentCost = summary.totalEquipmentCost || 0;
+    const totalDirectCosts = isDeterministic
+      ? (summary.subtotalDirectCosts || 0)
+      : (summary.totalInstalledCost || 0);
+    const installationCost = totalDirectCosts - equipmentCost;
+    const engCost = summary.engineeringCost || 0;
+    const contingencyAmt = isDeterministic
+      ? (summary.contingency ?? summary.totalContingency ?? 0)
+      : (summary.totalContingency || 0);
+    const totalCapitalCosts = summary.totalProjectCost || 0;
+    const otherIndirect = Math.max(totalCapitalCosts - totalDirectCosts - engCost - contingencyAmt, 0);
+
+    const addSummaryDataRow = (label: string, amount: number, isAlt: boolean) => {
       const r = wsSummary.getRow(sr);
-      r.getCell(1).value = row[0];
-      r.getCell(1).font = { size: 10, bold: row[0].includes("Subtotal") };
+      r.getCell(1).value = label;
+      r.getCell(1).font = { size: 10 };
       r.getCell(1).border = MB_BORDER_THIN;
       r.getCell(1).alignment = { vertical: "middle" };
       wsSummary.mergeCells(sr, 1, sr, 2);
-      r.getCell(3).value = row[1];
+      r.getCell(3).value = amount;
       r.getCell(3).numFmt = CX_CURRENCY_DOLLAR_FMT;
       r.getCell(3).border = MB_BORDER_THIN;
       r.getCell(3).alignment = { vertical: "middle", horizontal: "right" };
-      r.getCell(3).font = { size: 10, bold: row[0].includes("Subtotal") };
-      if (idx % 2 === 1) {
+      r.getCell(3).font = { size: 10 };
+      if (isAlt) {
         r.getCell(1).fill = MB_ALT_ROW_FILL;
         r.getCell(3).fill = MB_ALT_ROW_FILL;
       }
       r.height = 18;
       sr++;
-    });
-    cxAddSubtotalRow(wsSummary, sr, "Total Project Cost", summary.totalProjectCost, 3, CX_TOTAL_FILL, CX_TOTAL_FONT);
+    };
+
+    addSummaryDataRow("Equipment", equipmentCost, false);
+    addSummaryDataRow("Installation", installationCost, true);
+    cxAddSubtotalRow(wsSummary, sr, "Total Direct Costs", totalDirectCosts, 3, CX_SUBTOTAL_FILL, CX_SUBTOTAL_FONT);
+    sr++;
+    addSummaryDataRow(`Engineering (${summary.engineeringPct || 7}%)`, engCost, false);
+    addSummaryDataRow("Other Indirect Costs", otherIndirect, true);
+    addSummaryDataRow("Contingency (7.5%)", contingencyAmt, false);
+    cxAddSubtotalRow(wsSummary, sr, "Total Capital Costs", totalCapitalCosts, 3, CX_TOTAL_FILL, CX_TOTAL_FONT);
     sr++;
 
     if (summary.costPerUnit) {
@@ -1190,7 +1202,7 @@ export async function exportCapexExcel(
   });
 
   if (summary) {
-    cxAddSubtotalRow(wsLI, lr, "Total Project Cost", summary.totalProjectCost, 10, CX_TOTAL_FILL, CX_TOTAL_FONT);
+    cxAddSubtotalRow(wsLI, lr, "Total Capital Costs", summary.totalProjectCost, 10, CX_TOTAL_FILL, CX_TOTAL_FONT);
     lr++;
   }
 
