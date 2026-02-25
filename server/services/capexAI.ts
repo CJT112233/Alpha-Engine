@@ -139,9 +139,9 @@ function validateCapexResults(parsed: any): CapexResults {
     totalInstalledCost,
     totalContingency,
     totalDirectCost,
-    engineeringPct: 15,
-    engineeringCost: Math.round(totalDirectCost * 0.15),
-    totalProjectCost: Math.round(totalDirectCost * 1.15),
+    engineeringPct: 7,
+    engineeringCost: Math.round(totalDirectCost * 0.07),
+    totalProjectCost: Math.round(totalDirectCost * 1.07),
   };
 
   const summary = parsed.summary && typeof parsed.summary === "object"

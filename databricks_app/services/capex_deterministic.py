@@ -714,6 +714,30 @@ def generate_capex_deterministic(
         "isLocked": False,
     })
 
+    engineering_pct = 7
+    engineering_cost = round(total_epc * engineering_pct / 100)
+
+    line_items.append({
+        "id": _make_id("engineering_comm"),
+        "equipmentId": "",
+        "process": "Commercial / Owner's Costs",
+        "equipmentType": "Engineering",
+        "description": f"Engineering ({engineering_pct}% of EPC)",
+        "quantity": 1,
+        "baseCostPerUnit": engineering_cost,
+        "installationFactor": 1.0,
+        "installedCost": engineering_cost,
+        "contingencyPct": 0,
+        "contingencyCost": 0,
+        "totalCost": engineering_cost,
+        "costBasis": cost_basis,
+        "source": "Burnham standard",
+        "notes": f"{engineering_pct}% of EPC (${total_epc:,.0f})",
+        "isOverridden": False,
+        "isLocked": False,
+    })
+
+    total_commercial = total_commercial + engineering_cost
     total_capex = total_epc + subtotal_internal_costs + total_commercial + escalation
     itc_exclusions = (
         comm["utilityConnectionFee"] + ops_total + ff_total
@@ -729,8 +753,8 @@ def generate_capex_deterministic(
         "totalInstalledCost": total_epc,
         "totalContingency": contingency,
         "totalDirectCost": total_construction_directs,
-        "engineeringPct": 0,
-        "engineeringCost": 0,
+        "engineeringPct": engineering_pct,
+        "engineeringCost": engineering_cost,
         "totalProjectCost": total_capex,
         "costPerUnit": {
             "value": cost_per_unit_value,

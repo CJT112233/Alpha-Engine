@@ -686,8 +686,31 @@ export function generateCapexDeterministic(
     isLocked: false,
   });
 
+  const engineeringPct = 7;
+  const engineeringCost = Math.round(totalEPC * engineeringPct / 100);
+
+  lineItems.push({
+    id: makeId("engineering"),
+    equipmentId: "",
+    process: "Commercial / Owner's Costs",
+    equipmentType: "Engineering",
+    description: `Engineering (${engineeringPct}% of EPC)`,
+    quantity: 1,
+    baseCostPerUnit: engineeringCost,
+    installationFactor: 1.0,
+    installedCost: engineeringCost,
+    contingencyPct: 0,
+    contingencyCost: 0,
+    totalCost: engineeringCost,
+    costBasis,
+    source: "Burnham standard",
+    notes: `${engineeringPct}% of EPC ($${totalEPC.toLocaleString()})`,
+    isOverridden: false,
+    isLocked: false,
+  });
+
   const totalCommercial = contingency + devCosts + spareParts + insuranceOnDirectCosts +
-    comm.utilityConnectionFee + devFee + escalation;
+    comm.utilityConnectionFee + devFee + escalation + engineeringCost;
 
   const totalCapex = totalEPC + subtotalInternalCosts + totalCommercial;
   const itcExclusions = comm.utilityConnectionFee + opsTotal + ffTotal +
@@ -706,8 +729,8 @@ export function generateCapexDeterministic(
     spareParts,
     insurance: insuranceOnDirectCosts,
     escalation,
-    engineeringPct: 0,
-    engineeringCost: 0,
+    engineeringPct,
+    engineeringCost,
     totalProjectCost: totalCapex,
     costPerUnit: {
       value: Math.round(totalCapex / (biogasScfm * 60 * 24 * 365 * 0.55 * 0.97 / 1_000_000)),

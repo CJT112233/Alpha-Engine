@@ -98,7 +98,9 @@ function recalculateSummary(lineItems: CapexLineItem[], summary: CapexSummary): 
     subtotalDirectCosts,
     subtotalInternalCosts,
     engineeringPct: summary.engineeringPct,
-    engineeringCost: 0,
+    engineeringCost: lineItems
+      .filter(li => li.equipmentType === "Engineering")
+      .reduce((sum, li) => sum + li.totalCost, 0),
     totalProjectCost,
     costPerUnit,
   };
@@ -683,6 +685,11 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
                     {summary.insurance !== undefined && (
                       <div className="text-xs text-muted-foreground p-2 rounded bg-muted/50" data-testid="text-insurance">
                         <span className="font-medium">Insurance (1.5%):</span> {formatCurrencyK(summary.insurance)}
+                      </div>
+                    )}
+                    {summary.engineeringCost !== undefined && summary.engineeringCost > 0 && (
+                      <div className="text-xs text-muted-foreground p-2 rounded bg-muted/50" data-testid="text-engineering">
+                        <span className="font-medium">Engineering ({summary.engineeringPct || 7}%):</span> {formatCurrencyK(summary.engineeringCost)}
                       </div>
                     )}
                     {summary.escalation !== undefined && (
