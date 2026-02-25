@@ -2258,20 +2258,37 @@ export async function exportProjectSummaryExcel(
       }
     }
 
-    if (upifData.outputRequirements && Object.keys(upifData.outputRequirements).length > 0) {
+    if (upifData.outputRequirements) {
       mbAddSubsectionTitle(wsUpif, ur, "Output Requirements", 4);
       ur++;
-      mbApplyTableHeaders(wsUpif, ur, ["Parameter", "Value", "Unit", "Source"], [20, 15, 12, 20]);
-      ur++;
-      Object.entries(upifData.outputRequirements).forEach(([key, spec]: [string, any], idx) => {
-        mbAddDataRow(wsUpif, ur, [
-          spec.label || camelToTitle(key),
-          mbFormatValue(spec.value),
-          spec.unit || "",
-          spec.source || "",
-        ], idx % 2 === 1);
+      if (typeof upifData.outputRequirements === "string") {
+        const r = wsUpif.getRow(ur);
+        r.getCell(1).value = "Output"; r.getCell(1).font = { bold: true, size: 10 }; r.getCell(1).border = MB_BORDER_THIN;
+        wsUpif.mergeCells(ur, 1, ur, 2);
+        r.getCell(3).value = upifData.outputRequirements; r.getCell(3).border = MB_BORDER_THIN; r.getCell(3).alignment = { wrapText: true };
+        wsUpif.mergeCells(ur, 3, ur, 4);
+        r.height = 18;
         ur++;
-      });
+      } else if (Array.isArray(upifData.outputRequirements)) {
+        mbApplyTableHeaders(wsUpif, ur, ["Output Requirement", "", "", ""], [30, 15, 12, 20]);
+        ur++;
+        upifData.outputRequirements.forEach((req: any, idx: number) => {
+          mbAddDataRow(wsUpif, ur, [typeof req === "string" ? req : (req.label || req.name || JSON.stringify(req)), "", "", ""], idx % 2 === 1);
+          ur++;
+        });
+      } else if (typeof upifData.outputRequirements === "object" && Object.keys(upifData.outputRequirements).length > 0) {
+        mbApplyTableHeaders(wsUpif, ur, ["Parameter", "Value", "Unit", "Source"], [20, 15, 12, 20]);
+        ur++;
+        Object.entries(upifData.outputRequirements).forEach(([key, spec]: [string, any], idx) => {
+          mbAddDataRow(wsUpif, ur, [
+            spec?.label || camelToTitle(key),
+            spec?.value != null ? mbFormatValue(spec.value) : String(spec),
+            spec?.unit || "",
+            spec?.source || "",
+          ], idx % 2 === 1);
+          ur++;
+        });
+      }
       ur++;
     }
 
@@ -2372,6 +2389,60 @@ export async function exportProjectSummaryExcel(
         mr++;
       });
     }
+  }
+
+  if (mbResults && mbResults.equipment && mbResults.equipment.length > 0) {
+    const wsEq = wb.addWorksheet("Equipment List", { properties: { tabColor: { argb: "FF00B050" } } });
+    let er = 1;
+    mbAddSectionTitle(wsEq, er, `Equipment List — ${projectName}`, 7);
+    er++;
+    const eqSubRow = wsEq.getRow(er);
+    eqSubRow.getCell(1).value = `Scenario: ${scenarioName}`;
+    eqSubRow.getCell(1).font = { size: 11, color: { argb: "FF8496B0" } };
+    eqSubRow.getCell(4).value = `Type ${projectType}: ${typeLabel}`;
+    eqSubRow.getCell(4).font = { size: 10, color: { argb: "FF8496B0" } };
+    wsEq.mergeCells(er, 1, er, 3);
+    wsEq.mergeCells(er, 4, er, 7);
+    er++;
+    er++;
+
+    mbApplyTableHeaders(wsEq, er, ["Process", "Equipment Type", "Qty", "Description", "Design Basis", "Sizing / Capacity", "Notes"], [18, 22, 6, 30, 25, 22, 22]);
+    er++;
+
+    let lastEqProcess = "";
+    mbResults.equipment.forEach((eq, idx) => {
+      if (eq.process !== lastEqProcess) {
+        lastEqProcess = eq.process;
+        const procRow = wsEq.getRow(er);
+        procRow.getCell(1).value = eq.process;
+        procRow.getCell(1).fill = MB_SUBSECTION_FILL;
+        procRow.getCell(1).font = MB_SUBSECTION_FONT;
+        for (let c = 2; c <= 7; c++) { procRow.getCell(c).fill = MB_SUBSECTION_FILL; procRow.getCell(c).border = MB_BORDER_THIN; }
+        wsEq.mergeCells(er, 1, er, 7);
+        procRow.height = 22;
+        er++;
+      }
+      const notesVal = Array.isArray(eq.notes) ? eq.notes.join("; ") : (eq.notes || "");
+      const sizing = (eq as any).sizing || (eq as any).capacity || "";
+      mbAddDataRow(wsEq, er, [
+        "",
+        eq.equipmentType,
+        eq.quantity,
+        eq.description,
+        eq.designBasis,
+        sizing,
+        notesVal,
+      ], idx % 2 === 1);
+      er++;
+    });
+
+    wsEq.getColumn(1).width = 18;
+    wsEq.getColumn(2).width = 22;
+    wsEq.getColumn(3).width = 6;
+    wsEq.getColumn(4).width = 30;
+    wsEq.getColumn(5).width = 25;
+    wsEq.getColumn(6).width = 22;
+    wsEq.getColumn(7).width = 22;
   }
 
   if (capexResults && capexResults.lineItems) {
