@@ -1104,7 +1104,7 @@ export async function generateOpexWithAI(
     : "";
 
   const isOpus = model === "claude-opus";
-  const opexMaxTokens = isOpus ? 12288 : 16384;
+  const opexMaxTokens = isOpus ? 16384 : 32768;
   const opexUserMsg = `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep descriptions and notes concise (1 sentence max). Combine similar items where possible.${skipNote}`;
 
   const AI_TIMEOUT_MS = 240_000;

@@ -412,7 +412,7 @@ async function generateMassBalanceWithLLM(
     ? `Generate a complete mass balance and equipment list based on the UPIF data provided. Return valid JSON only. CRITICAL: Keep ALL text fields (descriptions, notes, assumptions) extremely concise — use short phrases, not sentences. Abbreviate where possible (e.g. "Meso. CSTR" not "Mesophilic Continuously Stirred Tank Reactor"). Minimize the number of notes and assumptions entries. This reduces output size and prevents timeout.`
     : `Generate a complete mass balance and equipment list based on the UPIF data provided. Return valid JSON only. Keep descriptions concise to stay within output limits.`;
 
-  const maxTokens = isOpus ? 16384 : 32768;
+  const maxTokens = isOpus ? 32768 : 65536;
 
   console.log(`Mass Balance AI: Using maxTokens=${maxTokens} for model=${model}${isOpus ? " (reduced for Opus speed)" : ""}`);
 

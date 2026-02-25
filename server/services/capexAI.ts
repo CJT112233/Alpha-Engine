@@ -348,7 +348,7 @@ Return ONLY valid JSON. No markdown, no code fences, no explanation.`;
       { role: "system", content: systemPrompt },
       { role: "user", content: `Estimate costs for the ${uncoveredEquipment.length} upstream process equipment items listed. Return valid JSON only.` },
     ],
-    maxTokens: 16384,
+    maxTokens: 32768,
     jsonMode: true,
   });
 
@@ -439,7 +439,7 @@ export async function generateCapexWithAI(
   console.log(`CapEx AI: Equipment data length: ${equipmentDataString.length} chars, UPIF context: ${upifContextString.length} chars`);
 
   const isOpus = model === "claude-opus";
-  const capexMaxTokens = isOpus ? 16384 : 32768;
+  const capexMaxTokens = isOpus ? 32768 : 65536;
   const capexUserMsg = isOpus
     ? `Generate a complete capital expenditure estimate based on the mass balance equipment list and project data provided. Return valid JSON only. CRITICAL: Keep descriptions and notes extremely concise to reduce output size and prevent timeout.`
     : `Generate a complete capital expenditure estimate based on the mass balance equipment list and project data provided. Return valid JSON only. Keep the response concise - use short descriptions and notes to stay within output limits.`;

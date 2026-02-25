@@ -2931,32 +2931,11 @@ export async function registerRoutes(
         || ptNorm.includes("greenfield") || ptNorm.includes("bolt-on") || ptNorm.includes("bolt on") || ptNorm.includes("hybrid");
 
       if (isRngType) {
-        try {
-          const { generateDeterministicMassBalance } = await import("./services/massBalanceDeterministic");
-          const detResult = generateDeterministicMassBalance(upif, projectType);
-          results = detResult.results;
-          modelUsed = "Deterministic Calculator";
-          console.log(`Mass Balance: Deterministic calculation succeeded in ${Date.now() - startTime}ms`);
-        } catch (detError) {
-          const detErrMsg = (detError as Error).message;
-          console.warn(`Mass Balance: Deterministic calculation failed, falling back to AI:`, detErrMsg);
-          try {
-            const AI_TIMEOUT_MS = 240000;
-            const { generateMassBalanceWithAI } = await import("./services/massBalanceAI");
-            const aiPromise = generateMassBalanceWithAI(upif, projectType, preferredModel, storage);
-            const timeoutPromise = new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("AI mass balance generation timed out after 4 minutes")), AI_TIMEOUT_MS)
-            );
-            const aiResult = await Promise.race([aiPromise, timeoutPromise]);
-            results = aiResult.results;
-            modelUsed = aiResult.providerLabel + " (deterministic fallback)";
-            console.log(`Mass Balance: AI fallback succeeded using ${modelUsed}`);
-          } catch (aiError) {
-            const aiErrMsg = (aiError as Error).message;
-            console.error(`Mass Balance: AI fallback also failed:`, aiErrMsg);
-            throw new Error(`Deterministic calculator failed: ${detErrMsg}. AI fallback also failed: ${aiErrMsg}`);
-          }
-        }
+        const { generateDeterministicMassBalance } = await import("./services/massBalanceDeterministic");
+        const detResult = generateDeterministicMassBalance(upif, projectType);
+        results = detResult.results;
+        modelUsed = "Deterministic Calculator";
+        console.log(`Mass Balance: Deterministic calculation succeeded in ${Date.now() - startTime}ms`);
       } else {
         try {
           const AI_TIMEOUT_MS = 240000;

@@ -234,7 +234,7 @@ function calculateBiogasProduction(feedstocks: ParsedFeedstock[], overrides?: De
   const biogasScfd = ch4Scfd / (CH4_PCT / 100);
   const biogasScfm = biogasScfd / 1440;
 
-  const prodevalUnit = selectProdevalUnit(biogasScfm);
+  const { unit: prodevalUnit } = selectProdevalUnitScaled(biogasScfm);
   const methaneRecovery = prodevalUnit.methaneRecovery / 100;
   const volumeLoss = prodevalUnit.volumeLossPct / 100;
 
@@ -460,8 +460,11 @@ function buildTypeBAdStages(
     ],
   });
 
-  const prodevalCriteria = getProdevalGasTrainDesignCriteria(calc.biogasScfm);
-  const conditionedScfm = calc.biogasScfm * (1 - selectProdevalUnit(calc.biogasScfm).volumeLossPct / 100);
+  const effectiveBiogasScfm = Math.min(calc.biogasScfm, MAX_PRODEVAL_CAPACITY_SCFM);
+  const prodevalCriteria = getProdevalGasTrainDesignCriteria(effectiveBiogasScfm);
+  const { unit: scaledProdevalUnit, extraTrains } = selectProdevalUnitScaled(calc.biogasScfm);
+  const conditionedScfm = calc.biogasScfm * (1 - scaledProdevalUnit.volumeLossPct / 100);
+  const multiTrainNote = scaledProdevalUnit.numberOfTrains > 3 ? ` (${scaledProdevalUnit.numberOfTrains} parallel trains)` : "";
 
   stages.push({
     name: "Stage 7: Biogas Conditioning — Prodeval VALOGAZ® + VALOPACK®",
@@ -477,42 +480,43 @@ function buildTypeBAdStages(
       avgFlowScfm: { value: rv(conditionedScfm, 1), unit: "SCFM" },
       ch4: { value: calc.ch4Pct, unit: "%" },
       h2s: { value: 7.5, unit: "ppmv" },
-      pressurePsig: { value: selectProdevalUnit(calc.biogasScfm).acFilterPressurePsig, unit: "psig" },
+      pressurePsig: { value: scaledProdevalUnit.acFilterPressurePsig, unit: "psig" },
     },
     designCriteria: {
       ...prodevalCriteria.gasConditioning,
+      ...(scaledProdevalUnit.numberOfTrains > 3 ? { numberOfTrains: { value: scaledProdevalUnit.numberOfTrains, unit: "trains", source: `Multi-train configuration for ${r(calc.biogasScfm, 0)} SCFM` } } : {}),
     },
     notes: [
-      "Prodeval VALOGAZ® FU 100: Refrigerated condenser for moisture removal",
-      "Prodeval VALOGAZ® FU 200: PD blower for gas transport",
-      "Prodeval VALOPACK® FU 300: Lead-lag activated carbon for H₂S/siloxane/VOC removal + dust filter",
+      `Prodeval VALOGAZ® FU 100: Refrigerated condenser for moisture removal${multiTrainNote}`,
+      `Prodeval VALOGAZ® FU 200: PD blower for gas transport${multiTrainNote}`,
+      `Prodeval VALOPACK® FU 300: Lead-lag activated carbon for H₂S/siloxane/VOC removal + dust filter${multiTrainNote}`,
     ],
   });
 
-  const prodevalUnit = selectProdevalUnit(calc.biogasScfm);
   stages.push({
     name: "Stage 8: Gas Upgrading to RNG — Prodeval VALOPUR®",
     type: "gasUpgrading",
     inputStream: {
       avgFlowScfm: { value: rv(conditionedScfm, 1), unit: "SCFM" },
       ch4: { value: calc.ch4Pct, unit: "%" },
-      pressurePsig: { value: prodevalUnit.acFilterPressurePsig, unit: "psig" },
+      pressurePsig: { value: scaledProdevalUnit.acFilterPressurePsig, unit: "psig" },
     },
     outputStream: {
       rngFlowScfm: { value: rv(calc.rngScfm, 1), unit: "SCFM" },
       rngFlowScfd: { value: rv(calc.rngScfd), unit: "SCFD" },
-      rngCh4: { value: prodevalUnit.productCH4, unit: "%" },
-      rngPressure: { value: prodevalUnit.rngPressurePsig, unit: "psig" },
+      rngCh4: { value: scaledProdevalUnit.productCH4, unit: "%" },
+      rngPressure: { value: scaledProdevalUnit.rngPressurePsig, unit: "psig" },
       rngMmbtuPerDay: { value: rv(calc.rngMmbtuPerDay, 1), unit: "MMBTU/day" },
       rngMmbtuPerYear: { value: rv(calc.rngMmbtuPerDay * 365), unit: "MMBTU/yr" },
       btuPerScf: { value: 1012, unit: "BTU/SCF" },
     },
     designCriteria: {
       ...prodevalCriteria.gasUpgrading,
+      ...(scaledProdevalUnit.numberOfTrains > 3 ? { numberOfTrains: { value: scaledProdevalUnit.numberOfTrains, unit: "trains", source: `Multi-train configuration for ${r(calc.biogasScfm, 0)} SCFM` } } : {}),
     },
     notes: [
-      `Prodeval VALOPUR® FU 500: 3-stage membrane separation (${prodevalUnit.methaneRecovery}% CH₄ recovery)`,
-      `Prodeval VALOPUR® FU 800: HP compressor for pipeline injection at ${prodevalUnit.rngPressurePsig} psig`,
+      `Prodeval VALOPUR® FU 500: 3-stage membrane separation (${scaledProdevalUnit.methaneRecovery}% CH₄ recovery)${multiTrainNote}`,
+      `Prodeval VALOPUR® FU 800: HP compressor for pipeline injection at ${scaledProdevalUnit.rngPressurePsig} psig${multiTrainNote}`,
       `Tail gas (CO₂-rich permeate) to enclosed flare/thermal oxidizer`,
     ],
   });
@@ -814,13 +818,40 @@ function buildTypeBEquipment(
     isLocked: false,
   });
 
-  const prodevalEquipment = getProdevalEquipmentList(calc.biogasScfm, (suffix) => makeId(suffix || "prodeval"));
+  const effectiveScfmForEquip = Math.min(calc.biogasScfm, MAX_PRODEVAL_CAPACITY_SCFM);
+  const prodevalEquipment = getProdevalEquipmentList(effectiveScfmForEquip, (suffix) => makeId(suffix || "prodeval"));
+  const { unit: scaledUnit, extraTrains: extraTrainsEquip } = selectProdevalUnitScaled(calc.biogasScfm);
   for (const item of prodevalEquipment) {
-    equipment.push({
-      ...item,
-      isOverridden: false,
-      isLocked: false,
-    });
+    const scaledItem = { ...item, isOverridden: false, isLocked: false };
+    if (extraTrainsEquip > 0 && item.quantity > 0) {
+      const baseTrains = selectProdevalUnit(effectiveScfmForEquip).numberOfTrains;
+      if (item.quantity === baseTrains) {
+        scaledItem.quantity = scaledUnit.numberOfTrains;
+        scaledItem.description = scaledItem.description.replace(
+          `${baseTrains} train(s)`,
+          `${scaledUnit.numberOfTrains} train(s)`
+        );
+      }
+      if (scaledItem.specs.totalGasFlow) {
+        scaledItem.specs = {
+          ...scaledItem.specs,
+          totalGasFlow: { value: String(Math.round(scaledUnit.perTrainScfm * scaledUnit.numberOfTrains)), unit: "SCFM" },
+        };
+      }
+      if (scaledItem.specs.inletFlow) {
+        scaledItem.specs = {
+          ...scaledItem.specs,
+          inletFlow: { value: String(Math.round(scaledUnit.perTrainScfm * scaledUnit.numberOfTrains)), unit: "SCFM" },
+        };
+      }
+      if (scaledItem.specs.gasFlow && !scaledItem.specs.gasFlow.unit.includes("per train")) {
+        scaledItem.specs = {
+          ...scaledItem.specs,
+          gasFlow: { value: String(Math.round(scaledUnit.perTrainScfm * scaledUnit.numberOfTrains)), unit: "SCFM" },
+        };
+      }
+    }
+    equipment.push(scaledItem);
   }
 
   equipment.push({
@@ -1491,7 +1522,7 @@ function generateTypeDMassBalance(upif: any): DeterministicMBResult {
   const biogasScfd = ch4Scfd / (CH4_PCT / 100);
   const biogasScfm = biogasScfd / 1440;
 
-  const prodevalUnit = selectProdevalUnit(biogasScfm);
+  const { unit: prodevalUnit } = selectProdevalUnitScaled(biogasScfm);
   const methaneRecovery = prodevalUnit.methaneRecovery / 100;
   const volumeLoss = prodevalUnit.volumeLossPct / 100;
   const conditionedBiogasScfd = biogasScfd * (1 - volumeLoss);
@@ -1502,8 +1533,8 @@ function generateTypeDMassBalance(upif: any): DeterministicMBResult {
   console.log(`Deterministic MB: WW sludge VS = ${r(sludgeVsLbPerDay)} lb/d, Co-digestion VS = ${r(totalVsLbPerDay - sludgeVsLbPerDay)} lb/d`);
   console.log(`Deterministic MB: Biogas = ${r(biogasScfm, 1)} SCFM, RNG = ${r(rngScfm, 1)} SCFM (${r(rngMmbtuPerDay, 1)} MMBTU/day)`);
 
-  if (biogasScfm > MAX_PRODEVAL_CAPACITY_SCFM) {
-    throw new Error(`Biogas flow of ${r(biogasScfm, 0)} SCFM exceeds maximum Prodeval equipment capacity (${MAX_PRODEVAL_CAPACITY_SCFM} SCFM). Falling back to AI for custom solution.`);
+  if (biogasScfm > MAX_TYPE_C_CAPACITY_SCFM) {
+    throw new Error(`Biogas flow of ${r(biogasScfm, 0)} SCFM exceeds maximum Prodeval equipment capacity (${MAX_TYPE_C_CAPACITY_SCFM} SCFM for multi-train configuration). Falling back to AI for custom solution.`);
   }
 
   const feedDensity = 8.34;
@@ -1970,8 +2001,8 @@ export function generateDeterministicMassBalance(upif: any, projectType: string,
   const calc = calculateBiogasProduction(feedstocks, designOverrides);
   console.log(`Deterministic MB: Biogas = ${r(calc.biogasScfm, 1)} SCFM (${r(calc.biogasScfd)} SCFD), RNG = ${r(calc.rngScfm, 1)} SCFM (${r(calc.rngMmbtuPerDay, 1)} MMBTU/day)`);
 
-  if (calc.biogasScfm > MAX_PRODEVAL_CAPACITY_SCFM) {
-    throw new Error(`Biogas flow of ${r(calc.biogasScfm, 0)} SCFM exceeds maximum Prodeval equipment capacity (${MAX_PRODEVAL_CAPACITY_SCFM} SCFM). Falling back to AI for custom solution.`);
+  if (calc.biogasScfm > MAX_TYPE_C_CAPACITY_SCFM) {
+    throw new Error(`Biogas flow of ${r(calc.biogasScfm, 0)} SCFM exceeds maximum Prodeval equipment capacity (${MAX_TYPE_C_CAPACITY_SCFM} SCFM for multi-train configuration). Falling back to AI for custom solution.`);
   }
 
   const adStages = buildTypeBAdStages(feedstocks, calc, designOverrides);
@@ -1996,11 +2027,18 @@ export function generateDeterministicMassBalance(upif: any, projectType: string,
     }
   }
 
-  const prodevalUnit = selectProdevalUnit(calc.biogasScfm);
-  if (calc.biogasScfm > prodevalUnit.nominalCapacityScfm * 1.1) {
+  const { unit: scaledProdevalCheck, extraTrains: multiTrainCount } = selectProdevalUnitScaled(calc.biogasScfm);
+  if (multiTrainCount > 0) {
     warnings.push({
       field: "gasUpgrading",
-      message: `Biogas flow (${r(calc.biogasScfm, 0)} SCFM) exceeds selected Prodeval unit capacity (${prodevalUnit.nominalCapacityScfm} SCFM). Consider additional trains or verify feedstock assumptions.`,
+      message: `Biogas flow of ${r(calc.biogasScfm, 0)} SCFM requires ${scaledProdevalCheck.numberOfTrains} parallel Prodeval GUU trains (${r(scaledProdevalCheck.perTrainScfm)} SCFM each).`,
+      severity: "info",
+    });
+  }
+  if (calc.biogasScfm > scaledProdevalCheck.nominalCapacityScfm * 1.1) {
+    warnings.push({
+      field: "gasUpgrading",
+      message: `Biogas flow (${r(calc.biogasScfm, 0)} SCFM) exceeds selected Prodeval configuration capacity (${scaledProdevalCheck.nominalCapacityScfm} SCFM). Verify feedstock assumptions.`,
       severity: "warning",
     });
   }
