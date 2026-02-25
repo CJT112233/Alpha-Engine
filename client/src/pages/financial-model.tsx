@@ -30,6 +30,7 @@ import {
   Download,
   FileText,
   FileStack,
+  FileSpreadsheet,
   Plus,
   X,
 } from "lucide-react";
@@ -403,6 +404,15 @@ export function FinancialModelContent({ scenarioId }: { scenarioId: string }) {
               >
                 <FileStack className="h-4 w-4 mr-2" />
                 Full Report with Appendices
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-testid="menu-export-excel"
+                onClick={() => {
+                  window.open(`/api/scenarios/${scenarioId}/project-summary-excel`, "_blank");
+                }}
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Excel Workbook (.xlsx)
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

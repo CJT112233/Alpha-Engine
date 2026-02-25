@@ -4079,6 +4079,56 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/scenarios/:scenarioId/project-summary-excel", async (req: Request, res: Response) => {
+    try {
+      const scenarioId = req.params.scenarioId as string;
+
+      const scenario = await storage.getScenario(scenarioId);
+      if (!scenario) return res.status(404).json({ error: "Scenario not found" });
+
+      const upif = await storage.getUpifByScenario(scenarioId);
+      if (!upif) return res.status(400).json({ error: "UPIF not found" });
+
+      const mbRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
+      const latestMB = mbRuns[0];
+      if (!latestMB) return res.status(400).json({ error: "Mass balance must be generated first." });
+
+      const capexEstimates = await storage.getCapexEstimatesByScenario(scenarioId);
+      const latestCapex = capexEstimates[0];
+      if (!latestCapex) return res.status(400).json({ error: "CapEx estimate must be generated first." });
+
+      const opexEstimates = await storage.getOpexEstimatesByScenario(scenarioId);
+      const latestOpex = opexEstimates[0];
+      if (!latestOpex) return res.status(400).json({ error: "OpEx estimate must be generated first." });
+
+      const financialModels = await storage.getFinancialModelsByScenario(scenarioId);
+      const latestFM = financialModels[0];
+      if (!latestFM || !latestFM.results) return res.status(400).json({ error: "Financial model must be generated first." });
+
+      const projectType = (scenario as any).projectType || (upif as any).projectType || "B";
+      const projectName = (scenario as any).project?.name || "Project";
+
+      const excelBuffer = await exportProjectSummaryExcel(
+        projectName,
+        scenario.name,
+        projectType,
+        upif,
+        latestMB.results as MassBalanceResults,
+        latestCapex.results as CapexResults,
+        latestOpex.results as OpexResults,
+        latestFM.results as any,
+      );
+
+      const fileName = `Project_Summary_${scenario.name.replace(/\s+/g, "_")}.xlsx`;
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.send(excelBuffer);
+    } catch (error) {
+      console.error("Error exporting project summary Excel:", error);
+      res.status(500).json({ error: "Failed to export project summary Excel" });
+    }
+  });
+
   // ========================================================================
   // FINANCIAL MODEL ROUTES
   // ========================================================================
