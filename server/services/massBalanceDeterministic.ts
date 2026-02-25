@@ -460,8 +460,7 @@ function buildTypeBAdStages(
     ],
   });
 
-  const effectiveBiogasScfm = Math.min(calc.biogasScfm, MAX_PRODEVAL_CAPACITY_SCFM);
-  const prodevalCriteria = getProdevalGasTrainDesignCriteria(effectiveBiogasScfm);
+  const prodevalCriteria = getProdevalGasTrainDesignCriteria(calc.biogasScfm);
   const { unit: scaledProdevalUnit, extraTrains } = selectProdevalUnitScaled(calc.biogasScfm);
   const conditionedScfm = calc.biogasScfm * (1 - scaledProdevalUnit.volumeLossPct / 100);
   const multiTrainNote = scaledProdevalUnit.numberOfTrains > 3 ? ` (${scaledProdevalUnit.numberOfTrains} parallel trains)` : "";
@@ -818,40 +817,9 @@ function buildTypeBEquipment(
     isLocked: false,
   });
 
-  const effectiveScfmForEquip = Math.min(calc.biogasScfm, MAX_PRODEVAL_CAPACITY_SCFM);
-  const prodevalEquipment = getProdevalEquipmentList(effectiveScfmForEquip, (suffix) => makeId(suffix || "prodeval"));
-  const { unit: scaledUnit, extraTrains: extraTrainsEquip } = selectProdevalUnitScaled(calc.biogasScfm);
+  const prodevalEquipment = getProdevalEquipmentList(calc.biogasScfm, (suffix) => makeId(suffix || "prodeval"));
   for (const item of prodevalEquipment) {
-    const scaledItem = { ...item, isOverridden: false, isLocked: false };
-    if (extraTrainsEquip > 0 && item.quantity > 0) {
-      const baseTrains = selectProdevalUnit(effectiveScfmForEquip).numberOfTrains;
-      if (item.quantity === baseTrains) {
-        scaledItem.quantity = scaledUnit.numberOfTrains;
-        scaledItem.description = scaledItem.description.replace(
-          `${baseTrains} train(s)`,
-          `${scaledUnit.numberOfTrains} train(s)`
-        );
-      }
-      if (scaledItem.specs.totalGasFlow) {
-        scaledItem.specs = {
-          ...scaledItem.specs,
-          totalGasFlow: { value: String(Math.round(scaledUnit.perTrainScfm * scaledUnit.numberOfTrains)), unit: "SCFM" },
-        };
-      }
-      if (scaledItem.specs.inletFlow) {
-        scaledItem.specs = {
-          ...scaledItem.specs,
-          inletFlow: { value: String(Math.round(scaledUnit.perTrainScfm * scaledUnit.numberOfTrains)), unit: "SCFM" },
-        };
-      }
-      if (scaledItem.specs.gasFlow && !scaledItem.specs.gasFlow.unit.includes("per train")) {
-        scaledItem.specs = {
-          ...scaledItem.specs,
-          gasFlow: { value: String(Math.round(scaledUnit.perTrainScfm * scaledUnit.numberOfTrains)), unit: "SCFM" },
-        };
-      }
-    }
-    equipment.push(scaledItem);
+    equipment.push({ ...item, isOverridden: false, isLocked: false });
   }
 
   equipment.push({
@@ -1040,7 +1008,7 @@ function parseBiogasInput(upif: any): BiogasInputParams {
 function buildTypeCAdStages(bg: BiogasInputParams, scaledUnit?: ReturnType<typeof selectProdevalUnit>): ADProcessStage[] {
   const stages: ADProcessStage[] = [];
   const prodevalUnit = scaledUnit || selectProdevalUnit(bg.avgFlowScfm);
-  const prodevalCriteria = getProdevalGasTrainDesignCriteria(Math.min(bg.avgFlowScfm, MAX_PRODEVAL_CAPACITY_SCFM));
+  const prodevalCriteria = getProdevalGasTrainDesignCriteria(bg.avgFlowScfm);
   const volumeLoss = prodevalUnit.volumeLossPct / 100;
   const conditionedScfm = bg.avgFlowScfm * (1 - volumeLoss);
   const methaneRecovery = prodevalUnit.methaneRecovery / 100;
@@ -1161,16 +1129,7 @@ function buildTypeCEquipment(bg: BiogasInputParams, scaledUnit?: ReturnType<type
   let idCounter = 0;
   const makeId = (suffix: string) => `det-${suffix}-${idCounter++}`;
 
-  const effectiveScfm = scaledUnit ? Math.min(bg.avgFlowScfm, MAX_PRODEVAL_CAPACITY_SCFM) : bg.avgFlowScfm;
-  const prodevalEquipment = getProdevalEquipmentList(effectiveScfm, (suffix) => makeId(suffix || "prodeval"));
-  if (scaledUnit && scaledUnit.numberOfTrains > 3) {
-    for (const item of prodevalEquipment) {
-      if (item.quantity < scaledUnit.numberOfTrains && item.specs.gasFlow) {
-        item.quantity = scaledUnit.numberOfTrains;
-        item.description = item.description.replace(/\d+ train\(s\)/, `${scaledUnit.numberOfTrains} train(s)`);
-      }
-    }
-  }
+  const prodevalEquipment = getProdevalEquipmentList(bg.avgFlowScfm, (suffix) => makeId(suffix || "prodeval"));
   for (const item of prodevalEquipment) {
     equipment.push({
       ...item,
@@ -1262,26 +1221,13 @@ function buildTypeCSummary(bg: BiogasInputParams, scaledUnit?: ReturnType<typeof
   };
 }
 
-const MAX_PRODEVAL_CAPACITY_SCFM = 1200;
-const MAX_TYPE_C_CAPACITY_SCFM = 2400;
+const MAX_PRODEVAL_CAPACITY_SCFM = 2100;
+const MAX_TYPE_C_CAPACITY_SCFM = 2100;
 
 function selectProdevalUnitScaled(biogasScfm: number): { unit: ReturnType<typeof selectProdevalUnit>; extraTrains: number } {
-  if (biogasScfm <= MAX_PRODEVAL_CAPACITY_SCFM) {
-    return { unit: selectProdevalUnit(biogasScfm), extraTrains: 0 };
-  }
-  const baseUnit = selectProdevalUnit(MAX_PRODEVAL_CAPACITY_SCFM);
-  const perTrainScfm = baseUnit.perTrainScfm;
-  const totalTrains = Math.ceil(biogasScfm / perTrainScfm);
-  const extraTrains = totalTrains - baseUnit.numberOfTrains;
-  return {
-    unit: {
-      ...baseUnit,
-      modelSize: `${totalTrains * Math.round(perTrainScfm)} SCFM (${totalTrains} trains)`,
-      nominalCapacityScfm: totalTrains * perTrainScfm,
-      numberOfTrains: totalTrains,
-    },
-    extraTrains,
-  };
+  const unit = selectProdevalUnit(biogasScfm);
+  const extraTrains = unit.numberOfTrains > 3 ? unit.numberOfTrains - 3 : 0;
+  return { unit, extraTrains };
 }
 
 function generateTypeCMassBalance(upif: any): DeterministicMBResult {

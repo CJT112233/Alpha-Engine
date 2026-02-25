@@ -85,12 +85,69 @@ export const PRODEVAL_UNIT_CONFIGS: ProdevalUnitConfig[] = [
     hpFiltrationPsig: 116,
     electricalDemandKWhPer1000Scf: 8.8,
   },
+  {
+    modelSize: "1500 SCFM (Bespoke)",
+    nominalCapacityScfm: 1500,
+    numberOfTrains: 4,
+    perTrainScfm: 375,
+    methaneRecovery: 97,
+    productCH4: 97,
+    rngPressurePsig: 200,
+    h2sRemovalEff: 99.5,
+    volumeLossPct: 1,
+    condenserOutletTempF: 39,
+    blowerOutletPsig: 2.32,
+    acFilterPressurePsig: 2.18,
+    compressorOutletPsig: 202,
+    membranePressurePsig: 189,
+    hpFiltrationPsig: 116,
+    electricalDemandKWhPer1000Scf: 8.5,
+  },
+  {
+    modelSize: "1800 SCFM (Bespoke)",
+    nominalCapacityScfm: 1800,
+    numberOfTrains: 5,
+    perTrainScfm: 360,
+    methaneRecovery: 97,
+    productCH4: 97,
+    rngPressurePsig: 200,
+    h2sRemovalEff: 99.5,
+    volumeLossPct: 1,
+    condenserOutletTempF: 39,
+    blowerOutletPsig: 2.32,
+    acFilterPressurePsig: 2.18,
+    compressorOutletPsig: 202,
+    membranePressurePsig: 189,
+    hpFiltrationPsig: 116,
+    electricalDemandKWhPer1000Scf: 8.2,
+  },
+  {
+    modelSize: "2100 SCFM (Bespoke)",
+    nominalCapacityScfm: 2100,
+    numberOfTrains: 6,
+    perTrainScfm: 350,
+    methaneRecovery: 97,
+    productCH4: 97,
+    rngPressurePsig: 200,
+    h2sRemovalEff: 99.5,
+    volumeLossPct: 1,
+    condenserOutletTempF: 39,
+    blowerOutletPsig: 2.32,
+    acFilterPressurePsig: 2.18,
+    compressorOutletPsig: 202,
+    membranePressurePsig: 189,
+    hpFiltrationPsig: 116,
+    electricalDemandKWhPer1000Scf: 8.0,
+  },
 ];
 
 export function selectProdevalUnit(biogasScfm: number): ProdevalUnitConfig {
   if (biogasScfm <= 500) return PRODEVAL_UNIT_CONFIGS[0];
   if (biogasScfm <= 1000) return PRODEVAL_UNIT_CONFIGS[1];
-  return PRODEVAL_UNIT_CONFIGS[2];
+  if (biogasScfm <= 1350) return PRODEVAL_UNIT_CONFIGS[2];
+  if (biogasScfm <= 1650) return PRODEVAL_UNIT_CONFIGS[3];
+  if (biogasScfm <= 1950) return PRODEVAL_UNIT_CONFIGS[4];
+  return PRODEVAL_UNIT_CONFIGS[5];
 }
 
 function roundTo(val: number, decimals: number = 0): number {
@@ -332,4 +389,4 @@ export const PRODEVAL_PROCESS_DESCRIPTION = `Prodeval VALOGAZ®/VALOPACK®/VALOP
 - FU 300 VALOPACK® Filtration: Lead-lag activated carbon (2×4m³) + dust filter for H₂S/siloxane/VOC removal
 - FU 500 VALOPUR® Purification: Mixing bottle → biogas compressor (~200 psig) → 3-stage membrane separation (97% CH₄ recovery)
 - FU 800 VALOPUR® Compression: HP compressor + filtration for pipeline injection
-Standard unit sizes: 400 SCFM (1 train), 800 SCFM (2 trains), 1,200 SCFM (3 trains). Each train handles ~400 SCFM.`;
+Standard unit sizes: 400 SCFM (1 train), 800 SCFM (2 trains), 1,200 SCFM (3 trains). Bespoke configurations: 1,500 SCFM (4 trains), 1,800 SCFM (5 trains), 2,100 SCFM (6 trains).`;
