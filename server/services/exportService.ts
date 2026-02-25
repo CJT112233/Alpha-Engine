@@ -2118,6 +2118,34 @@ export async function exportProjectSummaryExcel(
     wsSummary.mergeCells(sr, 3, sr, 4);
     r.height = 18;
     sr++;
+  }
+
+  if (upifData?.outputSpecs && typeof upifData.outputSpecs === "object" && Object.keys(upifData.outputSpecs).length > 0) {
+    mbAddSubsectionTitle(wsSummary, sr, "Output / Acceptance Criteria", 4);
+    sr++;
+    for (const [category, specs] of Object.entries(upifData.outputSpecs)) {
+      if (!specs || typeof specs !== "object") continue;
+      const catRow = wsSummary.getRow(sr);
+      catRow.getCell(1).value = category;
+      catRow.getCell(1).font = { bold: true, size: 10, color: { argb: "FF00B050" } };
+      catRow.getCell(1).border = MB_BORDER_THIN;
+      wsSummary.mergeCells(sr, 1, sr, 4);
+      sr++;
+      mbApplyTableHeaders(wsSummary, sr, ["Parameter", "Value", "Unit", ""], [20, 15, 12, 20]);
+      sr++;
+      const sortedSpecs = Object.entries(specs as Record<string, any>).sort((a, b) => (a[1].sortOrder || 0) - (b[1].sortOrder || 0));
+      sortedSpecs.forEach(([key, spec]: [string, any], idx) => {
+        mbAddDataRow(wsSummary, sr, [
+          spec.displayName || spec.label || camelToTitle(key),
+          mbFormatValue(spec.value),
+          spec.unit || "",
+          "",
+        ], idx % 2 === 1);
+        sr++;
+      });
+      sr++;
+    }
+  } else {
     sr++;
   }
 
@@ -2312,6 +2340,33 @@ export async function exportProjectSummaryExcel(
         });
       }
       ur++;
+    }
+
+    if (upifData.outputSpecs && typeof upifData.outputSpecs === "object" && Object.keys(upifData.outputSpecs).length > 0) {
+      mbAddSubsectionTitle(wsUpif, ur, "Output / Acceptance Criteria", 4);
+      ur++;
+      for (const [category, specs] of Object.entries(upifData.outputSpecs)) {
+        if (!specs || typeof specs !== "object") continue;
+        const catRow = wsUpif.getRow(ur);
+        catRow.getCell(1).value = category;
+        catRow.getCell(1).font = { bold: true, size: 10, color: { argb: "FF00B050" } };
+        catRow.getCell(1).border = MB_BORDER_THIN;
+        wsUpif.mergeCells(ur, 1, ur, 4);
+        ur++;
+        mbApplyTableHeaders(wsUpif, ur, ["Parameter", "Value", "Unit", "Source"], [20, 15, 12, 20]);
+        ur++;
+        const sortedSpecs = Object.entries(specs as Record<string, any>).sort((a, b) => (a[1].sortOrder || 0) - (b[1].sortOrder || 0));
+        sortedSpecs.forEach(([key, spec]: [string, any], idx) => {
+          mbAddDataRow(wsUpif, ur, [
+            spec.displayName || spec.label || camelToTitle(key),
+            mbFormatValue(spec.value),
+            spec.unit || "",
+            spec.source || "",
+          ], idx % 2 === 1);
+          ur++;
+        });
+        ur++;
+      }
     }
 
     if (upifData.unmappedSpecs && Array.isArray(upifData.unmappedSpecs) && upifData.unmappedSpecs.length > 0) {
