@@ -59,7 +59,7 @@ Unit conventions (US-based):
 
 ### AI/ML Integration
 - OpenAI (GPT-5)
-- Anthropic (Claude Sonnet 4.5, Claude Opus 4.6)
+- Anthropic (Claude Sonnet 4.6)
 - Built-in knowledge bases: Feedstock Library, Wastewater Influent Library, Output Criteria Library.
 
 ### Document Processing

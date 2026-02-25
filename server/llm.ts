@@ -17,9 +17,8 @@ import Anthropic from "@anthropic-ai/sdk";
  * LLMProvider: Union type representing all supported LLM providers.
  * - "gpt5": OpenAI's GPT-5 model
  * - "claude": Anthropic Claude Sonnet 4.6
- * - "claude-opus": Anthropic Claude Opus 4.6
  */
-export type LLMProvider = "gpt5" | "claude" | "claude-opus";
+export type LLMProvider = "gpt5" | "claude";
 
 /**
  * LLMMessage: Represents a single message in the conversation history.
@@ -33,7 +32,7 @@ export interface LLMMessage {
 
 /**
  * LLMCompletionOptions: Configuration for requesting an LLM completion.
- * - model: The LLM provider to use (gpt5, claude, or claude-opus)
+ * - model: The LLM provider to use (gpt5 or claude)
  * - messages: Conversation history to include in the request
  * - maxTokens: Maximum tokens in the response (default: 8192)
  * - jsonMode: If true, forces the model to respond with valid JSON only
@@ -148,9 +147,6 @@ export function isProviderAvailable(provider: LLMProvider): boolean {
   if (provider === "claude") {
     return isAnthropicAvailable();
   }
-  if (provider === "claude-opus") {
-    return !!directAnthropicKey;
-  }
   return false;
 }
 
@@ -169,16 +165,12 @@ export function getAvailableProviders(): LLMProvider[] {
   if (isAnthropicAvailable()) {
     providers.push("claude");
   }
-  if (directAnthropicKey) {
-    providers.push("claude-opus");
-  }
   return providers;
 }
 
 export const providerLabels: Record<LLMProvider, string> = {
   gpt5: "GPT-5",
   claude: "Claude Sonnet 4.6",
-  "claude-opus": "Claude Opus 4.6",
 };
 
 /**
@@ -193,7 +185,6 @@ export const providerLabels: Record<LLMProvider, string> = {
  */
 const anthropicModelIds: Record<string, string> = {
   claude: "claude-sonnet-4-6",
-  "claude-opus": "claude-opus-4-6",
 };
 
 /**
@@ -221,7 +212,7 @@ export async function llmComplete(options: LLMCompletionOptions): Promise<LLMCom
   }
 
   const tryProvider = async (provider: LLMProvider): Promise<LLMCompletionResult> => {
-    if (provider === "claude" || provider === "claude-opus") {
+    if (provider === "claude") {
       return await completeWithClaude(provider, messages, maxTokens, jsonMode);
     }
     return await completeWithOpenAI(messages, maxTokens, jsonMode);
@@ -267,6 +258,7 @@ async function completeWithOpenAI(
     model: "gpt-5",
     messages,
     max_completion_tokens: maxTokens,
+    temperature: 0,
     ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
   });
 
@@ -345,14 +337,13 @@ async function completeWithClaude(
   // Map provider to Claude model ID - defaults to Sonnet if lookup fails
   const modelId = anthropicModelIds[provider] || "claude-sonnet-4-6";
 
-  // Select appropriate Anthropic client based on model support and availability
   let client: Anthropic;
-  if (directAnthropic && (!integrationSupportedModels.has(modelId) || !integrationAnthropic)) {
-    client = directAnthropic;
-    console.log(`LLM: Calling Anthropic (direct key) model=${modelId} provider=${provider} maxTokens=${maxTokens} jsonMode=${jsonMode}`);
-  } else if (integrationAnthropic && integrationSupportedModels.has(modelId)) {
+  if (integrationAnthropic && integrationSupportedModels.has(modelId)) {
     client = integrationAnthropic;
     console.log(`LLM: Calling Anthropic (integration) model=${modelId} provider=${provider} maxTokens=${maxTokens} jsonMode=${jsonMode}`);
+  } else if (directAnthropic) {
+    client = directAnthropic;
+    console.log(`LLM: Calling Anthropic (direct key) model=${modelId} provider=${provider} maxTokens=${maxTokens} jsonMode=${jsonMode}`);
   } else {
     client = anthropic;
     console.log(`LLM: Calling Anthropic (fallback) model=${modelId} provider=${provider} maxTokens=${maxTokens} jsonMode=${jsonMode}`);
@@ -363,6 +354,7 @@ async function completeWithClaude(
   const stream = client.messages.stream({
     model: modelId,
     max_tokens: maxTokens,
+    temperature: 0,
     ...(effectiveSystemText ? { system: effectiveSystemText } : {}),
     messages: claudeMessages,
   });

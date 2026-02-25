@@ -796,8 +796,8 @@ export default function Documentation() {
                     AI Generation (Primary)
                   </h4>
                   <p className="text-xs text-muted-foreground">
-                    Type-specific AI prompts generate mass balance using confirmed UPIF data. Supports GPT-5, Claude Sonnet 4.6,
-                    and Claude Opus 4.6. Model can be selected per scenario. Returns structured JSON with process stages,
+                    Type-specific AI prompts generate mass balance using confirmed UPIF data. Supports GPT-5 and Claude Sonnet 4.6.
+                    Model can be selected per scenario. Returns structured JSON with process stages,
                     equipment sizing, and summary metrics.
                   </p>
                 </div>
@@ -1074,11 +1074,6 @@ export default function Documentation() {
                   <h4 className="text-sm font-medium">Claude Sonnet 4.6</h4>
                   <p className="text-xs text-muted-foreground">Mid-tier Anthropic model. Balanced performance and cost. Works via both direct API and integration proxy.</p>
                   <Badge variant="outline" className="text-xs">Requires ANTHROPIC_API_KEY</Badge>
-                </div>
-                <div className="p-4 rounded-md border space-y-2">
-                  <h4 className="text-sm font-medium">Claude Opus 4.6</h4>
-                  <p className="text-xs text-muted-foreground">Top-tier Anthropic model. Best reasoning for complex engineering calculations. Direct API only.</p>
-                  <Badge variant="outline" className="text-xs">Requires ANTHROPIC_API_KEY (direct)</Badge>
                 </div>
               </div>
 

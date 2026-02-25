@@ -438,11 +438,8 @@ export async function generateCapexWithAI(
   console.log(`CapEx AI: Generating for project type ${normalizedType.toUpperCase()} using ${model} (prompt: ${promptKey})`);
   console.log(`CapEx AI: Equipment data length: ${equipmentDataString.length} chars, UPIF context: ${upifContextString.length} chars`);
 
-  const isOpus = model === "claude-opus";
-  const capexMaxTokens = isOpus ? 32768 : 65536;
-  const capexUserMsg = isOpus
-    ? `Generate a complete capital expenditure estimate based on the mass balance equipment list and project data provided. Return valid JSON only. CRITICAL: Keep descriptions and notes extremely concise to reduce output size and prevent timeout.`
-    : `Generate a complete capital expenditure estimate based on the mass balance equipment list and project data provided. Return valid JSON only. Keep the response concise - use short descriptions and notes to stay within output limits.`;
+  const capexMaxTokens = 65536;
+  const capexUserMsg = `Generate a complete capital expenditure estimate based on the mass balance equipment list and project data provided. Return valid JSON only. Keep the response concise - use short descriptions and notes to stay within output limits.`;
 
   const response = await llmComplete({
     model,

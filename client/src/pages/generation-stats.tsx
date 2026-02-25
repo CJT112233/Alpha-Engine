@@ -50,7 +50,6 @@ function modelLabel(model: string): string {
   const labels: Record<string, string> = {
     gpt5: "GPT-5",
     claude: "Claude Sonnet 4.6",
-    "claude-opus": "Claude Opus 4.6",
     deterministic: "Deterministic Engine",
   };
   return labels[model] || model;
@@ -108,7 +107,7 @@ export default function GenerationStatsPage() {
   const documentTypes = Array.from(new Set((logs || []).map(l => l.documentType)));
 
   const docTypeOrder = ["Classification", "UPIF", "Mass Balance", "CapEx"];
-  const modelOrder = ["gpt5", "claude", "claude-opus", "deterministic"];
+  const modelOrder = ["gpt5", "claude", "deterministic"];
 
   const aggregatedByOutput = (() => {
     if (!logs || logs.length === 0) return [];

@@ -1103,8 +1103,7 @@ export async function generateOpexWithAI(
     ? ` NOTE: The following cost categories have been pre-calculated from engineering data and must be EXCLUDED from your response — do NOT generate line items for: ${skippedCategories.join(", ")}.`
     : "";
 
-  const isOpus = model === "claude-opus";
-  const opexMaxTokens = isOpus ? 16384 : 32768;
+  const opexMaxTokens = 32768;
   const opexUserMsg = `Generate a complete annual operating expenditure estimate based on the mass balance equipment list, project data, and capital cost estimate provided. Return valid JSON only. Keep descriptions and notes concise (1 sentence max). Combine similar items where possible.${skipNote}`;
 
   const AI_TIMEOUT_MS = 240_000;

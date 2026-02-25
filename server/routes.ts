@@ -808,8 +808,8 @@ export async function registerRoutes(
   app.patch("/api/scenarios/:id/preferred-model", async (req: Request, res: Response) => {
     try {
       const { model } = req.body;
-      if (!model || !["gpt5", "claude", "claude-opus"].includes(model)) {
-        return res.status(400).json({ error: "Invalid model. Must be 'gpt5', 'claude', or 'claude-opus'." });
+      if (!model || !["gpt5", "claude"].includes(model)) {
+        return res.status(400).json({ error: "Invalid model. Must be 'gpt5' or 'claude'." });
       }
       const scenario = await storage.getScenario((req.params.id as string));
       if (!scenario) {
