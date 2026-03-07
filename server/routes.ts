@@ -3130,7 +3130,9 @@ export async function registerRoutes(
       const existingLocks = (run.locks || {}) as Record<string, boolean>;
 
       const { extractDesignOverrides, isRecalculableField } = await import("./services/designOverrides");
-      const designOverrides = extractDesignOverrides(existingOverrides, existingLocks);
+      const existingResults = run.results as any;
+      const adStages = existingResults?.adStages as Array<{ type?: string }> | undefined;
+      const designOverrides = extractDesignOverrides(existingOverrides, existingLocks, adStages);
       const hasDesignOverrides = Object.keys(designOverrides).length > 0;
 
       let results;
@@ -3143,7 +3145,7 @@ export async function registerRoutes(
           results = calculateMassBalanceTypeB(upif, designOverrides);
         } else if (ptLower === "c" || ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
           const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
-          results = calculateMassBalanceTypeC(upif);
+          results = calculateMassBalanceTypeC(upif, designOverrides);
         } else if (ptLower === "d" || ptLower.includes("type d") || ptLower.includes("hybrid")) {
           const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
           results = calculateMassBalanceTypeD(upif, designOverrides);

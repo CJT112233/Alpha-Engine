@@ -31,11 +31,20 @@ export interface DesignOverrides {
   depackagingRejectRate?: number;
   preheatTempC?: number;
   targetTSPct?: number;
+  biogasScfm?: number;
+  rngScfm?: number;
+  feedTpd?: number;
+  totalSolidsPct?: number;
+  volatileSolidsPct?: number;
 }
 
 const RECALCULABLE_FIELDS: Record<string, keyof DesignOverrides> = {
   "summary.hrt": "hrtDays",
   "summary.vsDestruction": "vsDestructionPct",
+  "summary.biogasAvgFlowScfm": "biogasScfm",
+  "summary.rngAvgFlowScfm": "rngScfm",
+  "summary.feedTpd": "feedTpd",
+  "summary.totalFeedTpd": "feedTpd",
 
   "adStages.3.designCriteria.hrt": "hrtDays",
   "adStages.3.designCriteria.olr": "olrTarget",
@@ -63,6 +72,7 @@ const RECALCULABLE_FIELDS: Record<string, keyof DesignOverrides> = {
 export function extractDesignOverrides(
   overrides: Record<string, any>,
   locks: Record<string, boolean>,
+  stages?: Array<{ type?: string }>,
 ): DesignOverrides {
   const result: DesignOverrides = {};
 
@@ -90,10 +100,71 @@ export function extractDesignOverrides(
       if (!isNaN(numVal)) {
         (result as any)[match] = numVal;
       }
+      continue;
+    }
+
+    const outputMatch = stages
+      ? matchOutputStreamKeyWithContext(fieldKey, stages)
+      : matchOutputStreamKey(fieldKey);
+    if (outputMatch) {
+      const numVal = parseFloat(String(override.value).replace(/,/g, ""));
+      if (!isNaN(numVal)) {
+        (result as any)[outputMatch] = numVal;
+      }
     }
   }
 
   return result;
+}
+
+function matchOutputStreamKey(fieldKey: string): keyof DesignOverrides | null {
+  if (!fieldKey.includes("outputStream.")) return null;
+  const lastPart = fieldKey.split(".").pop() || "";
+  if (lastPart !== "avgFlowScfm") return null;
+
+  if (fieldKey.includes("adStages.3.")) {
+    return "biogasScfm";
+  }
+
+  return null;
+}
+
+let stageTypeMap: Map<number, string> | null = null;
+
+export function setStageTypeMap(stages: Array<{ type?: string }>) {
+  stageTypeMap = new Map();
+  stages.forEach((stage, idx) => {
+    if (stage.type) {
+      stageTypeMap!.set(idx, stage.type);
+    }
+  });
+}
+
+export function matchOutputStreamKeyWithContext(fieldKey: string, stages?: Array<{ type?: string }>): keyof DesignOverrides | null {
+  if (!fieldKey.includes("outputStream.")) return null;
+  const lastPart = fieldKey.split(".").pop() || "";
+  if (lastPart !== "avgFlowScfm") return null;
+
+  const stageIdx = fieldKey.match(/adStages\.(\d+)\./);
+  if (!stageIdx) return null;
+  const idx = parseInt(stageIdx[1]);
+
+  const stageTypes = stages || (stageTypeMap ? Array.from(stageTypeMap.entries()).reduce((acc, [i, t]) => { acc[i] = { type: t }; return acc; }, [] as Array<{ type?: string }>) : null);
+
+  if (stageTypes && stageTypes[idx]) {
+    const stageType = stageTypes[idx].type?.toLowerCase() || "";
+    if (stageType === "digester" || stageType === "anaerobic digester" || stageType === "ad") {
+      return "biogasScfm";
+    }
+    if (stageType === "gasupgrading" || stageType === "gas upgrading" || stageType === "rng" || stageType === "membrane") {
+      return "rngScfm";
+    }
+  }
+
+  if (idx === 3) return "biogasScfm";
+  if (idx >= 6) return "rngScfm";
+
+  return null;
 }
 
 function matchDesignCriteriaKey(fieldKey: string): keyof DesignOverrides | null {
@@ -147,6 +218,9 @@ export function isRecalculableField(fieldKey: string): boolean {
       "targetTS", "thickenedSolids", "captureRate",
     ];
     return criteriaKeys.includes(lastPart);
+  }
+  if (fieldKey.includes("outputStream.")) {
+    return matchOutputStreamKey(fieldKey) !== null;
   }
   return false;
 }

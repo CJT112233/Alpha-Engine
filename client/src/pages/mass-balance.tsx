@@ -416,12 +416,13 @@ function StreamTable({ stages, overrides, locks, onSaveOverride, onToggleLock }:
   );
 }
 
-function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLock }: {
+function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLock, isRecalculableField }: {
   adStages: ADProcessStage[];
   overrides: MassBalanceOverrides;
   locks: Record<string, boolean>;
   onSaveOverride: (key: string, value: string, originalValue: string) => void;
   onToggleLock: (key: string, currentValue?: string) => void;
+  isRecalculableField?: (fieldKey: string) => boolean;
 }) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
@@ -502,9 +503,20 @@ function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLoc
                           const fieldKey = `adStages.${idx}.outputStream.${key}`;
                           const rawStr = typeof val?.value === 'number' ? val.value.toLocaleString() : String(val?.value ?? "");
                           const valStr = resolveValue(fieldKey, rawStr, overrides);
+                          const isCascading = isRecalculableField?.(fieldKey) ?? false;
                           return (
-                            <div key={key} className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-2 py-1">
-                              <span className="text-muted-foreground">{formatLabel(key)}</span>
+                            <div key={key} className={`flex items-center justify-between text-sm rounded-md px-2 py-1 ${isCascading ? "bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40" : "bg-muted/40"}`}>
+                              <span className="text-muted-foreground flex items-center gap-1">
+                                {formatLabel(key)}
+                                {isCascading && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <RefreshCw className="h-3 w-3 text-blue-500" data-testid={`icon-cascading-${key}`} />
+                                    </TooltipTrigger>
+                                    <TooltipContent>Editing this value will recalculate all downstream outputs</TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </span>
                               <EditableValue
                                 fieldKey={fieldKey}
                                 displayValue={valStr}
@@ -1393,6 +1405,7 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
 
   const RECALCULABLE_EXACT_KEYS = new Set([
     "summary.hrt", "summary.vsDestruction",
+    "summary.biogasAvgFlowScfm", "summary.rngAvgFlowScfm",
   ]);
 
   const RECALCULABLE_DESIGN_CRITERIA_SUFFIXES = new Set([
@@ -1404,11 +1417,19 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
     "targetTS", "thickenedSolids", "captureRate", "organicLoadingRate",
   ]);
 
+  const RECALCULABLE_OUTPUT_STREAM_SUFFIXES = new Set([
+    "avgFlowScfm",
+  ]);
+
   const isRecalculableField = (fieldKey: string): boolean => {
     if (RECALCULABLE_EXACT_KEYS.has(fieldKey)) return true;
     if (fieldKey.includes("designCriteria.")) {
       const lastPart = fieldKey.split(".").pop() || "";
       return RECALCULABLE_DESIGN_CRITERIA_SUFFIXES.has(lastPart);
+    }
+    if (fieldKey.includes("outputStream.")) {
+      const lastPart = fieldKey.split(".").pop() || "";
+      return RECALCULABLE_OUTPUT_STREAM_SUFFIXES.has(lastPart);
     }
     return false;
   };
@@ -1807,6 +1828,7 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
                       locks={locks}
                       onSaveOverride={handleSaveOverride}
                       onToggleLock={handleToggleLock}
+                      isRecalculableField={isRecalculableField}
                     />
                   </TabsContent>
                 )}

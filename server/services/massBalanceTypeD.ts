@@ -258,11 +258,20 @@ export function calculateMassBalanceTypeD(upif: UpifRecord, designOverrides?: De
   const ch4Pct = defaults.digester.ch4Content.value;
   const h2sPpmv = defaults.digester.h2sContent.value;
 
-  const vsDestroyedKgPerDay = totalVSLoad * vsDestruction;
-  const biogasM3PerDay = vsDestroyedKgPerDay * gasYield;
-  const biogasScfPerDay = biogasM3PerDay * 35.3147;
-  const biogasScfm = biogasScfPerDay / 1440;
-  const ch4M3PerDay = biogasM3PerDay * (ch4Pct / 100);
+  let vsDestroyedKgPerDay = totalVSLoad * vsDestruction;
+  let biogasM3PerDay = vsDestroyedKgPerDay * gasYield;
+  let biogasScfPerDay = biogasM3PerDay * 35.3147;
+  let biogasScfm = biogasScfPerDay / 1440;
+  let ch4M3PerDay = biogasM3PerDay * (ch4Pct / 100);
+
+  if (designOverrides?.biogasScfm !== undefined) {
+    biogasScfm = designOverrides.biogasScfm;
+    biogasScfPerDay = biogasScfm * 1440;
+    biogasM3PerDay = biogasScfPerDay / 35.3147;
+    ch4M3PerDay = biogasM3PerDay * (ch4Pct / 100);
+    vsDestroyedKgPerDay = gasYield > 0 ? biogasM3PerDay / gasYield : vsDestroyedKgPerDay;
+    console.log(`Mass Balance Type D: Biogas flow overridden to ${biogasScfm} SCFM`);
+  }
 
   const digesterVolumeByHRT = sludgeVolM3PerDay * hrt;
   const digesterVolumeByOLR = totalVSLoad > 0 ? totalVSLoad / olr : 0;
@@ -352,11 +361,21 @@ export function calculateMassBalanceTypeD(upif: UpifRecord, designOverrides?: De
 
   const methaneRecovery = prodevDesign.gasUpgrading.methaneRecovery.value / 100;
   const productCH4 = prodevDesign.gasUpgrading.productCH4.value;
-  const rngCH4M3PerDay = ch4M3PerDay * methaneRecovery;
-  const rngM3PerDay = rngCH4M3PerDay / (productCH4 / 100);
-  const rngScfPerDay = rngM3PerDay * 35.3147;
-  const rngScfm = rngScfPerDay / 1440;
-  const rngMMBtuPerDay = rngScfPerDay * 1012 / 1_000_000;
+  let rngCH4M3PerDay = ch4M3PerDay * methaneRecovery;
+  let rngM3PerDay = rngCH4M3PerDay / (productCH4 / 100);
+  let rngScfPerDay = rngM3PerDay * 35.3147;
+  let rngScfm = rngScfPerDay / 1440;
+  let rngMMBtuPerDay = rngScfPerDay * 1012 / 1_000_000;
+
+  if (designOverrides?.rngScfm !== undefined) {
+    rngScfm = designOverrides.rngScfm;
+    rngScfPerDay = rngScfm * 1440;
+    rngM3PerDay = rngScfPerDay / 35.3147;
+    rngCH4M3PerDay = rngM3PerDay * (productCH4 / 100);
+    rngMMBtuPerDay = rngScfPerDay * 1012 / 1_000_000;
+    console.log(`Mass Balance Type D: RNG flow overridden to ${rngScfm} SCFM`);
+  }
+
   const tailgasM3PerDay = conditionedBiogasM3PerDay - rngM3PerDay;
   const tailgasScfm = roundTo(m3ToScf(tailgasM3PerDay) / 1440);
   const electricalDemandKW = biogasM3PerDay * prodevDesign.gasUpgrading.electricalDemand.value / 24;
