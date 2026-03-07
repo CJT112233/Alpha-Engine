@@ -54,18 +54,34 @@ function parseMidpoint(rangeStr: string): number {
   return isNaN(num) ? 0 : num;
 }
 
+function aliasMatchesAsWholeWord(searchTerm: string, alias: string): boolean {
+  if (alias.length < 4) return false;
+  const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(?:^|\\s|[^a-z])${escaped}(?:$|\\s|[^a-z])`, "i");
+  return re.test(` ${searchTerm} `);
+}
+
 function matchFeedstockLibrary(feedstockType: string): FeedstockProfile | null {
   const searchTerm = feedstockType.toLowerCase().trim();
   for (const profile of FEEDSTOCK_LIBRARY) {
     if (profile.name.toLowerCase() === searchTerm) return profile;
+  }
+  for (const profile of FEEDSTOCK_LIBRARY) {
     for (const alias of profile.aliases) {
-      if (searchTerm.includes(alias) || alias.includes(searchTerm)) return profile;
+      if (alias.length >= 4 && searchTerm.includes(alias)) return profile;
+      if (alias.includes(searchTerm)) return profile;
     }
   }
   for (const profile of FEEDSTOCK_LIBRARY) {
+    for (const alias of profile.aliases) {
+      if (aliasMatchesAsWholeWord(searchTerm, alias)) return profile;
+    }
+  }
+  const STOP_WORDS = new Set(["wastewater", "waste", "water", "sludge", "liquid", "solid", "mixed", "organic", "processing", "residual", "residuals"]);
+  for (const profile of FEEDSTOCK_LIBRARY) {
     const words = searchTerm.split(/\s+/);
     for (const word of words) {
-      if (word.length < 3) continue;
+      if (word.length < 4 || STOP_WORDS.has(word)) continue;
       if (profile.name.toLowerCase().includes(word)) return profile;
       for (const alias of profile.aliases) {
         if (alias.includes(word)) return profile;
@@ -140,11 +156,23 @@ function parseFeedstocks(upif: any): ParsedFeedstock[] {
     const libraryProfile = matchFeedstockLibrary(type);
     const libProps = libraryProfile?.properties || {};
 
-    const tsStr = getSpecValue(specs, "totalSolids")
+    let tsStr = getSpecValue(specs, "totalSolids")
       || getSpecByDisplayName(specs, "Total Solids (TS)")
       || getSpecByDisplayName(specs, "TS")
       || getSpecByDisplayName(specs, "Total Solids")
-      || libProps.totalSolids?.value || "15";
+      || libProps.totalSolids?.value || null;
+    if (!tsStr) {
+      const tssRaw = getSpecValue(specs, "tss") || getSpecByDisplayName(specs, "TSS");
+      if (tssRaw) {
+        const tssMgL = parseMidpoint(tssRaw);
+        if (tssMgL > 0) {
+          const derivedTs = (tssMgL / 10000) * 1.3;
+          tsStr = String(Math.round(derivedTs * 10) / 10);
+          console.log(`Deterministic MB: Derived TS=${tsStr}% from TSS=${tssMgL} mg/L (TSS/10000 × 1.3)`);
+        }
+      }
+    }
+    if (!tsStr) tsStr = "15";
     const vsStr = getSpecValue(specs, "volatileSolids")
       || getSpecValue(specs, "vsTs")
       || getSpecByDisplayName(specs, "VS/TS Ratio")
@@ -159,7 +187,11 @@ function parseFeedstocks(upif: any): ParsedFeedstock[] {
     const tknStr = getSpecValue(specs, "tkn") || libProps.tkn?.value || "3.0";
 
     let bmpM3 = parseMidpoint(bmpStr);
-    if (bmpM3 > 1.0 || /ml/i.test(bmpUnit)) {
+    const unitIsML = /\bml\b|milliliter/i.test(bmpUnit);
+    const unitIsM3 = /m³|m3|cubic\s*met/i.test(bmpUnit);
+    if (unitIsML) {
+      bmpM3 = bmpM3 / 1000;
+    } else if (!unitIsM3 && bmpM3 > 10) {
       bmpM3 = bmpM3 / 1000;
     }
 
