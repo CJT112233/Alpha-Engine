@@ -2913,12 +2913,8 @@ export async function registerRoutes(
       const scenario = await storage.getScenario(scenarioId);
       if (!scenario) return res.status(404).json({ error: "Scenario not found" });
 
-      if (scenario.status !== "confirmed") {
-        return res.status(400).json({ error: "Scenario must be confirmed before generating a mass balance. Confirm the UPIF first." });
-      }
-
       const upif = await storage.getUpifByScenario(scenarioId);
-      if (!upif) return res.status(400).json({ error: "No UPIF found for this scenario. Generate and confirm a UPIF first." });
+      if (!upif) return res.status(400).json({ error: "No UPIF found for this scenario. Generate a UPIF first." });
 
       const projectType = (scenario as any).projectType || (upif as any).projectType || "";
       const preferredModel = (scenario.preferredModel || "gpt5") as LLMProvider;
@@ -3435,10 +3431,7 @@ export async function registerRoutes(
       const mbRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
       const latestMB = mbRuns[0];
       if (!latestMB) {
-        return res.status(400).json({ error: "No mass balance found. Generate and finalize a mass balance first." });
-      }
-      if (latestMB.status !== "finalized") {
-        return res.status(400).json({ error: "Mass balance must be finalized before generating CapEx. Please finalize the mass balance first." });
+        return res.status(400).json({ error: "No mass balance found. Generate a mass balance first." });
       }
 
       const mbResults = latestMB.results as import("@shared/schema").MassBalanceResults;
@@ -3812,10 +3805,7 @@ export async function registerRoutes(
       const mbRuns = await storage.getMassBalanceRunsByScenario(scenarioId);
       const latestMB = mbRuns[0];
       if (!latestMB) {
-        return res.status(400).json({ error: "No mass balance found. Generate and finalize a mass balance first." });
-      }
-      if (latestMB.status !== "finalized") {
-        return res.status(400).json({ error: "Mass balance must be finalized before generating OpEx." });
+        return res.status(400).json({ error: "No mass balance found. Generate a mass balance first." });
       }
 
       const mbResults = latestMB.results as MassBalanceResults;

@@ -260,13 +260,13 @@ export default function ScenarioDetail() {
               documents={documents || []}
               isEntriesLoading={entriesLoading}
               isDocumentsLoading={documentsLoading}
-              isLocked={isConfirmed}
+              isLocked={false}
             />
           </TabsContent>
 
           <TabsContent value="upif" className="space-y-4">
             <div className="flex items-center gap-3 justify-end flex-wrap" data-testid="upif-toolbar">
-              {siblingUpifs && siblingUpifs.length > 0 && !isConfirmed && (
+              {siblingUpifs && siblingUpifs.length > 0 && (
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Import className="h-4 w-4" />
@@ -306,7 +306,7 @@ export default function ScenarioDetail() {
             <UpifChat
               scenarioId={id!}
               hasUpif={!!upif}
-              isConfirmed={isConfirmed}
+              isConfirmed={false}
             />
           </TabsContent>
 

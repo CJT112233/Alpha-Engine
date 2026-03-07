@@ -698,10 +698,7 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
             <div className="text-center">
               <h3 className="font-medium">No OpEx Estimate Generated</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Generate an annual operating cost estimate from the finalized mass balance and equipment list.
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Mass balance must be finalized first. CapEx data will be used if available.
+                Generate an annual operating cost estimate from the mass balance and equipment list. CapEx data will be used if available.
               </p>
             </div>
             <div className="flex items-center gap-2">

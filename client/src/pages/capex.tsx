@@ -544,10 +544,7 @@ export function CapexContent({ scenarioId }: { scenarioId: string }) {
             <div className="text-center">
               <h3 className="font-medium">No CapEx Estimate Generated</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Generate a capital cost estimate from the finalized mass balance equipment list.
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Mass balance must be finalized first.
+                Generate a capital cost estimate from the mass balance equipment list.
               </p>
             </div>
             <div className="flex items-center gap-2">

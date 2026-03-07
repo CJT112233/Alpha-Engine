@@ -731,7 +731,7 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
   const [feedstockNoteEdits, setFeedstockNoteEdits] = useState<Record<number, Record<string, string>>>({});
   const [deletedFeedstockIndices, setDeletedFeedstockIndices] = useState<Set<number>>(new Set());
   const [deletedFeedstockSpecs, setDeletedFeedstockSpecs] = useState<Record<number, Set<string>>>({});
-  const isConfirmed = scenarioStatus === "confirmed";
+  const isConfirmed = false;
 
   const [localConfirmedFields, setLocalConfirmedFields] = useState<ConfirmedFields>(
     (upif?.confirmedFields as ConfirmedFields | null) || {}
@@ -1429,20 +1429,6 @@ export function UpifReview({ scenarioId, upif, isLoading, hasInputs, scenarioSta
               )}
               {isExportingPdf && (
                 <AiThinking isActive={true} label="Generating PDF..." compact />
-              )}
-              {upif && !isConfirmed && (
-                <Button
-                  onClick={() => {
-                    if (confirm("Are you sure you want to confirm this UPIF? This will lock the scenario.")) {
-                      confirmUpifMutation.mutate();
-                    }
-                  }}
-                  disabled={confirmUpifMutation.isPending}
-                  data-testid="button-confirm-upif"
-                >
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  {confirmUpifMutation.isPending ? "Confirming..." : "Confirm UPIF"}
-                </Button>
               )}
             </div>
           )}
