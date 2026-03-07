@@ -448,8 +448,8 @@ function buildTypeBAdStages(
       totalSolidsLbPerDay: { value: rv(calc.totalTsLbPerDay), unit: "lb/d" },
     },
     designCriteria: {
-      storageDays: { value: 3, unit: "days", source: "Design standard" },
-      storageCapacity: { value: rv(calc.totalFeedTonsPerDay * 3, 0), unit: "tons", source: "1.5× design throughput" },
+      storageDays: { value: overrides?.storageDays ?? 3, unit: "days", source: "Design standard" },
+      storageCapacity: { value: rv(calc.totalFeedTonsPerDay * (overrides?.storageDays ?? 3), 0), unit: "tons", source: "Design throughput × storage days" },
     },
     notes: feedstocks.map(f => `${f.name}: ${r(f.tonsPerYear)} TPY (${r(f.tonsPerYear / 365, 1)} TPD)`),
   });
@@ -684,22 +684,23 @@ function buildTypeBEquipment(
   const feedGpd = calc.totalFeedLbPerDay / FEED_DENSITY_LB_PER_GAL;
   const HRT_DAYS = overrides?.hrtDays ?? 25;
   const EQ_RETENTION_DAYS = overrides?.eqRetentionDays ?? 1.5;
+  const STORAGE_DAYS = overrides?.storageDays ?? 3;
 
   equipment.push({
     id: makeId("receiving"),
     process: "Feedstock Receiving",
     equipmentType: "Receiving Hopper / Tipping Floor",
-    description: `Covered receiving area with tipping floor and receiving pit, ${r(calc.totalFeedTonsPerDay * 3)} ton storage capacity`,
+    description: `Covered receiving area with tipping floor and receiving pit, ${r(calc.totalFeedTonsPerDay * STORAGE_DAYS)} ton storage capacity`,
     quantity: 1,
     specs: {
       capacity: { value: r(calc.totalFeedTonsPerDay * 1.5, 0), unit: "TPD" },
-      storageCapacity: { value: r(calc.totalFeedTonsPerDay * 3, 0), unit: "tons" },
+      storageCapacity: { value: r(calc.totalFeedTonsPerDay * STORAGE_DAYS, 0), unit: "tons" },
       dimensionsL: { value: "60", unit: "ft" },
       dimensionsW: { value: "40", unit: "ft" },
       dimensionsH: { value: "20", unit: "ft" },
       power: { value: "5", unit: "HP" },
     },
-    designBasis: `1.5× design throughput, 3-day covered storage`,
+    designBasis: `1.5× design throughput, ${STORAGE_DAYS}-day covered storage`,
     notes: "Includes truck scale, odor control, and drainage collection",
     isOverridden: false,
     isLocked: false,
@@ -1055,9 +1056,11 @@ function buildAssumptions(feedstocks: ParsedFeedstock[], calc: BiogasCalcResult,
 }
 
 function buildSummary(calc: BiogasCalcResult): Record<string, { value: string; unit: string }> {
+  const adInfluentGPD = calc.totalFeedLbPerDay / 8.5;
   return {
     totalFeedstockInput: { value: r(calc.totalFeedTonsPerYear), unit: "TPY" },
     dailyFeedRate: { value: r(calc.totalFeedTonsPerDay, 1), unit: "TPD" },
+    adInfluentGPD: { value: r(adInfluentGPD), unit: "GPD" },
     totalVSLoading: { value: r(calc.totalVsLbPerDay), unit: "lb VS/day" },
     vsDestroyed: { value: r(calc.vsDestroyedLbPerDay), unit: "lb VS/day" },
     biogasProduction: { value: r(calc.biogasScfm, 1), unit: "SCFM" },
@@ -1948,6 +1951,7 @@ function generateTypeDMassBalance(upif: any): DeterministicMBResult {
     );
   }
 
+  const adInfluentGPD = totalFeedLbPerDay / feedDensity;
   const summary: Record<string, { value: string; unit: string }> = {
     designWastewaterFlow: { value: r(wwFlowMgd, 2), unit: "MGD" },
     influentBod: { value: String(wwBod), unit: "mg/L" },
@@ -1957,6 +1961,7 @@ function generateTypeDMassBalance(upif: any): DeterministicMBResult {
     primarySludge: { value: r(primarySludgeLbPerDay), unit: "lb TS/day" },
     wasSludge: { value: r(wasTssLbPerDay), unit: "lb TSS/day" },
     ...(hasFeedstocks ? { coDigestionFeedstock: { value: r(totalFeedTpy), unit: "TPY" } } : {}),
+    adInfluentGPD: { value: r(adInfluentGPD), unit: "GPD" },
     totalVsToDigester: { value: r(totalVsLbPerDay), unit: "lb VS/day" },
     vsDestroyed: { value: r(vsDestroyedLbPerDay), unit: "lb VS/day" },
     biogasProduction: { value: r(biogasScfm, 1), unit: "SCFM" },

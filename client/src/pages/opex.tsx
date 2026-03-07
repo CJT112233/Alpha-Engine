@@ -36,8 +36,6 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
-  TrendingDown,
-  TrendingUp,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { ElapsedTimer } from "@/components/elapsed-timer";
@@ -476,9 +474,9 @@ const CATEGORY_COLORS: Record<string, string> = {
   "Labor": "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
   "Energy": "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
   "Chemical": "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+  "R&M": "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
   "Maintenance": "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
   "Disposal": "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
-  "Revenue Offset": "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
   "Other": "bg-gray-100 text-gray-800 dark:bg-gray-800/40 dark:text-gray-300",
 };
 
@@ -746,19 +744,6 @@ export function OpexContent({ scenarioId }: { scenarioId: string }) {
                       </div>
                     </CardContent>
                   </Card>
-                  {summary.revenueOffsets !== 0 && (
-                    <Card data-testid="card-revenue-offsets">
-                      <CardContent className="p-4">
-                        <div className="text-xs text-muted-foreground flex items-center gap-1">
-                          {summary.revenueOffsets < 0 ? <TrendingDown className="h-3 w-3 text-emerald-500" /> : <TrendingUp className="h-3 w-3" />}
-                          Revenue Offsets
-                        </div>
-                        <div className="mt-1 text-lg font-semibold" data-testid="value-revenue-offsets">
-                          {formatCurrencyK(summary.revenueOffsets)}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
                   <Card data-testid="card-net-annual-opex">
                     <CardContent className="p-4">
                       <div className="text-xs text-muted-foreground font-medium">Net Annual OpEx</div>
@@ -986,22 +971,20 @@ function recalculateSummary(lineItems: OpexLineItem[]): OpexSummary {
     if (c.includes("labor") || c.includes("staff") || c.includes("personnel")) return "Labor";
     if (c.includes("energy") || c.includes("electric") || c.includes("utilit")) return "Energy";
     if (c.includes("chemical") || c.includes("consumab")) return "Chemical";
-    if (c.includes("mainten") || c.includes("repair")) return "Maintenance";
+    if (c.includes("r&m") || c.includes("mainten") || c.includes("repair") || c.includes("membrane")) return "R&M";
     if (c.includes("dispos") || c.includes("haul") || c.includes("sludge") || c.includes("digestate")) return "Disposal";
-    if (c.includes("revenue") || c.includes("offset") || c.includes("credit")) return "Revenue Offset";
     return "Other";
   };
 
   const totalLaborCost = lineItems.filter(li => categorize(li.category) === "Labor").reduce((s, li) => s + li.annualCost, 0);
   const totalEnergyCost = lineItems.filter(li => categorize(li.category) === "Energy").reduce((s, li) => s + li.annualCost, 0);
   const totalChemicalCost = lineItems.filter(li => categorize(li.category) === "Chemical").reduce((s, li) => s + li.annualCost, 0);
-  const totalMaintenanceCost = lineItems.filter(li => categorize(li.category) === "Maintenance").reduce((s, li) => s + li.annualCost, 0);
+  const totalMaintenanceCost = lineItems.filter(li => categorize(li.category) === "R&M").reduce((s, li) => s + li.annualCost, 0);
   const totalDisposalCost = lineItems.filter(li => categorize(li.category) === "Disposal").reduce((s, li) => s + li.annualCost, 0);
   const totalOtherCost = lineItems.filter(li => categorize(li.category) === "Other").reduce((s, li) => s + li.annualCost, 0);
-  const revenueOffsets = lineItems.filter(li => categorize(li.category) === "Revenue Offset").reduce((s, li) => s + li.annualCost, 0);
 
   const totalAnnualOpex = totalLaborCost + totalEnergyCost + totalChemicalCost + totalMaintenanceCost + totalDisposalCost + totalOtherCost;
-  const netAnnualOpex = totalAnnualOpex + revenueOffsets;
+  const netAnnualOpex = totalAnnualOpex;
 
   return {
     totalAnnualOpex,
@@ -1011,7 +994,7 @@ function recalculateSummary(lineItems: OpexLineItem[]): OpexSummary {
     totalMaintenanceCost,
     totalDisposalCost,
     totalOtherCost,
-    revenueOffsets,
+    revenueOffsets: 0,
     netAnnualOpex,
   };
 }

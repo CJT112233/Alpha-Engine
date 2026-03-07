@@ -699,6 +699,7 @@ export function generateCapexDeterministic(
 
   const summary = {
     totalEquipmentCost: subtotalEquipment,
+    upstreamEquipmentCost: subtotalUpstreamEquipment,
     totalInstalledCost: totalEPC,
     totalContingency: contingency,
     totalDirectCost: totalEPC,

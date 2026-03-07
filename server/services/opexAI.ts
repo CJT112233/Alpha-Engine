@@ -15,7 +15,7 @@ export function getDefaultOpexAssumptions(projectType: string, massBalanceResult
   const isWW = pt === "a";
   const isRNG = pt === "b" || pt === "c" || pt === "d";
 
-  const maintenanceRate = isWW ? 3 : 4;
+  const rmRate = 0.5;
   const electricityRate = 0.08;
   const loadFactor = 75;
   const operatingHoursPerYear = 8760;
@@ -23,7 +23,7 @@ export function getDefaultOpexAssumptions(projectType: string, massBalanceResult
   const gasCostPerMMBtu = 4.50;
 
   const assumptions: OpexEditableAssumption[] = [
-    { key: "maintenance_rate", parameter: "Maintenance Rate", value: maintenanceRate, unit: "% of equipment CapEx", source: "WEF MOP 8 / Industry benchmark", category: "Maintenance", description: "Annual maintenance & repair cost as a percentage of total equipment capital cost" },
+    { key: "maintenance_rate", parameter: "R&M Rate", value: rmRate, unit: "% of upstream equipment CapEx", source: "Industry benchmark", category: "R&M", description: "Annual repair & maintenance cost as a percentage of upstream equipment capital cost (excludes Prodeval/GUU)" },
     { key: "electricity_rate", parameter: "Electricity Rate", value: electricityRate, unit: "$/kWh", source: "EIA national average", category: "Energy", description: "Average electricity cost per kilowatt-hour" },
     { key: "gas_cost", parameter: "Natural Gas Cost", value: gasCostPerMMBtu, unit: "$/MMBtu", source: "Burnham OpEx Model", category: "Energy", description: "Natural gas cost per MMBtu for heating" },
     { key: "load_factor", parameter: "Equipment Load Factor", value: loadFactor, unit: "%", source: "Engineering estimate", category: "Energy", description: "Average equipment utilization as a fraction of installed capacity" },
@@ -64,7 +64,7 @@ export function getDefaultOpexAssumptions(projectType: string, massBalanceResult
       { key: "guu_consumables_per_scfm", parameter: "GUU Consumables", value: 90, unit: "$/scfm biogas", source: "Burnham OpEx Model", category: "Chemical", description: "Annual consumables cost per scfm biogas for gas upgrading unit" },
       { key: "liquid_digestate_disposal_cost", parameter: "Liquid Digestate Disposal", value: 0.01, unit: "$/gal", source: "Burnham OpEx Model", category: "Disposal", description: "Cost to haul and dispose of liquid digestate fraction" },
       { key: "solid_digestate_disposal_cost", parameter: "Solid Digestate Disposal", value: 10, unit: "$/ton", source: "Burnham OpEx Model", category: "Disposal", description: "Cost to haul and land-apply solid digestate fraction" },
-      { key: "membrane_replacement", parameter: "Membrane/Media Replacement", value: pt === "b" ? 50000 : 35000, unit: "$/yr", source: "Prodeval maintenance schedule", category: "Maintenance", description: "Annual membrane and media replacement for gas upgrading system" },
+      { key: "membrane_replacement", parameter: "Membrane/Media Replacement", value: pt === "b" ? 50000 : 35000, unit: "$/yr", source: "Prodeval maintenance schedule", category: "R&M", description: "Annual membrane and media replacement for gas upgrading system" },
       { key: "potable_water_rate", parameter: "Potable Water Rate", value: 0.007, unit: "$/gal", source: "Burnham OpEx Model", category: "Water & Sewer", description: "Municipal potable water supply cost per gallon" },
       { key: "sewer_fee_rate", parameter: "Sewer Fee Rate", value: 0.01, unit: "$/gal", source: "Burnham OpEx Model", category: "Water & Sewer", description: "Sewage discharge fee per gallon of liquid effluent" },
       { key: "lab_testing_annual", parameter: "Lab & Testing", value: 15000, unit: "$/yr", source: "Regulatory compliance estimate", category: "Other", description: "Annual gas quality testing and environmental monitoring" },
@@ -116,13 +116,14 @@ export function calculateAllDeterministicLineItems(
   };
 
   const totalEquipmentCost = capexResults?.summary?.totalEquipmentCost || 0;
+  const upstreamEquipmentCost = (capexResults?.summary as any)?.upstreamEquipmentCost || totalEquipmentCost;
   const totalProjectCost = capexResults?.summary?.totalProjectCost || 0;
 
   const summary = massBalanceResults.summary;
   const rngMMBtu = extractMBValue(summary, "rng", "renewable") || extractMBValue(summary, "biomethane", "pipeline gas");
   const annualRngMMBtu = rngMMBtu > 10000 ? rngMMBtu : rngMMBtu * 365;
 
-  const influGPD = extractMBValue(summary, "influent", "inflow", "ad influent", "burnham") || extractMBValue(summary, "flow", "gpd");
+  const influGPD = extractMBValue(summary, "adinfluent", "influent", "inflow", "ad influent", "burnham") || extractMBValue(summary, "flow", "gpd");
   const biogasScfm = extractMBValue(summary, "biogas", "scfm");
 
   const electricityRate = getVal("electricity_rate");
@@ -131,18 +132,19 @@ export function calculateAllDeterministicLineItems(
   const operatingHours = getVal("operating_hours");
 
   const maintenanceRate = getVal("maintenance_rate") / 100;
-  if (totalEquipmentCost > 0 && maintenanceRate > 0) {
-    const maintenanceCost = Math.round(totalEquipmentCost * maintenanceRate);
+  const rmBaseCost = isRNG ? upstreamEquipmentCost : totalEquipmentCost;
+  if (rmBaseCost > 0 && maintenanceRate > 0) {
+    const rmCost = Math.round(rmBaseCost * maintenanceRate);
     lineItems.push({
       id: makeId(),
-      category: "Maintenance",
-      description: `Annual maintenance & repairs (${(maintenanceRate * 100).toFixed(1)}% of equipment CapEx $${totalEquipmentCost.toLocaleString()})`,
-      annualCost: maintenanceCost,
-      costPerMMBtu: annualRngMMBtu > 0 ? Math.round((maintenanceCost / annualRngMMBtu) * 100) / 100 : undefined,
-      scalingBasis: `$${totalEquipmentCost.toLocaleString()} equipment cost`,
-      costBasis: `Deterministic: ${(maintenanceRate * 100).toFixed(1)}% × $${totalEquipmentCost.toLocaleString()}`,
-      source: "WEF MOP 8 / industry benchmark",
-      notes: "",
+      category: "R&M",
+      description: `R&M — repairs & maintenance (${(maintenanceRate * 100).toFixed(1)}% of ${isRNG ? "upstream" : ""} equipment CapEx $${rmBaseCost.toLocaleString()})`,
+      annualCost: rmCost,
+      costPerMMBtu: annualRngMMBtu > 0 ? Math.round((rmCost / annualRngMMBtu) * 100) / 100 : undefined,
+      scalingBasis: `$${rmBaseCost.toLocaleString()} ${isRNG ? "upstream " : ""}equipment cost`,
+      costBasis: `Deterministic: ${(maintenanceRate * 100).toFixed(1)}% × $${rmBaseCost.toLocaleString()}`,
+      source: "Industry benchmark",
+      notes: isRNG ? "Excludes Prodeval/GUU equipment (covered by separate membrane replacement)" : "",
       isOverridden: false,
       isLocked: false,
     });
@@ -152,7 +154,7 @@ export function calculateAllDeterministicLineItems(
   if (membraneReplacement > 0) {
     lineItems.push({
       id: makeId(),
-      category: "Maintenance",
+      category: "R&M",
       equipmentArea: "GUU",
       description: "Membrane & media replacement (gas upgrading system)",
       annualCost: Math.round(membraneReplacement),
@@ -658,29 +660,33 @@ export function calculateAllDeterministicLineItems(
 }
 
 function buildOpexSummaryFromLineItems(lineItems: OpexLineItem[], totalProjectCapex: number, annualRngMMBtu?: number): OpexSummary {
+  const isRevenueOffset = (cat: string): boolean => {
+    const c = cat.toLowerCase();
+    return c.includes("revenue") || c.includes("offset") || c.includes("credit") || c.includes("sales");
+  };
   const categorize = (cat: string): string => {
     const c = cat.toLowerCase();
+    if (isRevenueOffset(cat)) return "EXCLUDED";
     if (c.includes("labor") || c.includes("staff") || c.includes("personnel")) return "Labor";
     if (c.includes("energy") || c.includes("electric") || c.includes("utilit") || c.includes("natural gas") || c.includes("fuel") || c.includes("heat")) return "Energy";
-    if (c.includes("chemical") || c.includes("consumab") || c.includes("media") || c.includes("membrane") || c.includes("feedstock")) return "Chemical";
-    if (c.includes("mainten") || c.includes("repair") || c.includes("spare")) return "Maintenance";
+    if (c.includes("chemical") || c.includes("consumab") || c.includes("media") || c.includes("feedstock")) return "Chemical";
+    if (c.includes("r&m") || c.includes("mainten") || c.includes("repair") || c.includes("spare") || c.includes("membrane")) return "R&M";
     if (c.includes("dispos") || c.includes("haul") || c.includes("sludge") || c.includes("digestate")) return "Disposal";
     if (c.includes("water") || c.includes("sewer")) return "Water & Sewer";
-    if (c.includes("revenue") || c.includes("offset") || c.includes("credit")) return "Revenue Offset";
     return "Other";
   };
 
-  const totalLaborCost = lineItems.filter(li => categorize(li.category) === "Labor").reduce((s, li) => s + li.annualCost, 0);
-  const totalEnergyCost = lineItems.filter(li => categorize(li.category) === "Energy").reduce((s, li) => s + li.annualCost, 0);
-  const totalChemicalCost = lineItems.filter(li => categorize(li.category) === "Chemical").reduce((s, li) => s + li.annualCost, 0);
-  const totalMaintenanceCost = lineItems.filter(li => categorize(li.category) === "Maintenance").reduce((s, li) => s + li.annualCost, 0);
-  const totalDisposalCost = lineItems.filter(li => categorize(li.category) === "Disposal").reduce((s, li) => s + li.annualCost, 0);
-  const totalWaterSewerCost = lineItems.filter(li => categorize(li.category) === "Water & Sewer").reduce((s, li) => s + li.annualCost, 0);
-  const totalOtherCost = lineItems.filter(li => categorize(li.category) === "Other").reduce((s, li) => s + li.annualCost, 0);
-  const revenueOffsets = lineItems.filter(li => categorize(li.category) === "Revenue Offset").reduce((s, li) => s + li.annualCost, 0);
+  const costItems = lineItems.filter(li => categorize(li.category) !== "EXCLUDED");
+  const totalLaborCost = costItems.filter(li => categorize(li.category) === "Labor").reduce((s, li) => s + li.annualCost, 0);
+  const totalEnergyCost = costItems.filter(li => categorize(li.category) === "Energy").reduce((s, li) => s + li.annualCost, 0);
+  const totalChemicalCost = costItems.filter(li => categorize(li.category) === "Chemical").reduce((s, li) => s + li.annualCost, 0);
+  const totalMaintenanceCost = costItems.filter(li => categorize(li.category) === "R&M").reduce((s, li) => s + li.annualCost, 0);
+  const totalDisposalCost = costItems.filter(li => categorize(li.category) === "Disposal").reduce((s, li) => s + li.annualCost, 0);
+  const totalWaterSewerCost = costItems.filter(li => categorize(li.category) === "Water & Sewer").reduce((s, li) => s + li.annualCost, 0);
+  const totalOtherCost = costItems.filter(li => categorize(li.category) === "Other").reduce((s, li) => s + li.annualCost, 0);
 
   const totalAnnualOpex = totalLaborCost + totalEnergyCost + totalChemicalCost + totalMaintenanceCost + totalDisposalCost + totalWaterSewerCost + totalOtherCost;
-  const netAnnualOpex = totalAnnualOpex + revenueOffsets;
+  const netAnnualOpex = totalAnnualOpex;
 
   const opexPerMMBtu = annualRngMMBtu && annualRngMMBtu > 0
     ? Math.round((totalAnnualOpex / annualRngMMBtu) * 100) / 100
@@ -695,7 +701,7 @@ function buildOpexSummaryFromLineItems(lineItems: OpexLineItem[], totalProjectCa
     totalDisposalCost,
     totalWaterSewerCost: totalWaterSewerCost > 0 ? totalWaterSewerCost : undefined,
     totalOtherCost,
-    revenueOffsets,
+    revenueOffsets: 0,
     netAnnualOpex,
     opexPerMMBtu,
     opexAsPercentOfCapex: totalProjectCapex > 0 ? Math.round((totalAnnualOpex / totalProjectCapex) * 1000) / 10 : undefined,
@@ -842,7 +848,7 @@ async function getPromptTemplate(key: PromptKey, storage?: any): Promise<string>
   return DEFAULT_PROMPTS[key].template;
 }
 
-const OPEX_CATEGORIES = ["Labor", "Energy", "Chemical", "Maintenance", "Disposal", "Other", "Revenue Offset"];
+const OPEX_CATEGORIES = ["Labor", "Energy", "Chemical", "R&M", "Maintenance", "Disposal", "Other"];
 
 interface DeterministicResult {
   lineItems: OpexLineItem[];
@@ -859,24 +865,28 @@ function calculateDeterministicLineItems(
   const pt = projectType.toLowerCase();
 
   const totalEquipmentCost = capexResults?.summary?.totalEquipmentCost || 0;
-  if (totalEquipmentCost > 0) {
-    const maintenanceRate = (pt === "a") ? 0.03 : 0.04;
-    const maintenanceCost = Math.round(totalEquipmentCost * maintenanceRate);
+  const upstreamEquipmentCost = (capexResults?.summary as any)?.upstreamEquipmentCost || totalEquipmentCost;
+  const isRNG = pt === "b" || pt === "c" || pt === "d";
+  const rmBaseCost = isRNG ? upstreamEquipmentCost : totalEquipmentCost;
+  if (rmBaseCost > 0) {
+    const rmRate = 0.005;
+    const rmCost = Math.round(rmBaseCost * rmRate);
     lineItems.push({
-      id: `opex-det-maintenance-${Math.random().toString(36).substring(2, 8)}`,
-      category: "Maintenance",
-      description: `Annual maintenance & repairs (${(maintenanceRate * 100).toFixed(0)}% of equipment CapEx)`,
-      annualCost: maintenanceCost,
+      id: `opex-det-rm-${Math.random().toString(36).substring(2, 8)}`,
+      category: "R&M",
+      description: `R&M — repairs & maintenance (${(rmRate * 100).toFixed(1)}% of ${isRNG ? "upstream " : ""}equipment CapEx)`,
+      annualCost: rmCost,
       unitCost: undefined,
       unitBasis: undefined,
-      scalingBasis: `$${totalEquipmentCost.toLocaleString()} equipment cost`,
+      scalingBasis: `$${rmBaseCost.toLocaleString()} ${isRNG ? "upstream " : ""}equipment cost`,
       percentOfRevenue: undefined,
-      costBasis: `Deterministic: ${(maintenanceRate * 100).toFixed(0)}% of total equipment CapEx`,
-      source: "WEF MOP 8 / industry benchmark",
-      notes: "",
+      costBasis: `Deterministic: ${(rmRate * 100).toFixed(1)}% of ${isRNG ? "upstream " : ""}equipment CapEx`,
+      source: "Industry benchmark",
+      notes: isRNG ? "Excludes Prodeval/GUU equipment (covered by separate membrane replacement)" : "",
       isOverridden: false,
       isLocked: false,
     });
+    skippedCategories.push("R&M");
     skippedCategories.push("Maintenance");
   }
 
@@ -940,8 +950,8 @@ function categorizeLineItem(item: any): string {
   const cat = (item.category || "").toLowerCase();
   if (cat.includes("labor") || cat.includes("staff") || cat.includes("personnel")) return "Labor";
   if (cat.includes("energy") || cat.includes("electric") || cat.includes("utilit") || cat.includes("fuel") || cat.includes("heat")) return "Energy";
-  if (cat.includes("chemical") || cat.includes("consumab") || cat.includes("media") || cat.includes("membrane")) return "Chemical";
-  if (cat.includes("mainten") || cat.includes("repair") || cat.includes("spare")) return "Maintenance";
+  if (cat.includes("chemical") || cat.includes("consumab") || cat.includes("media") || cat.includes("feedstock")) return "Chemical";
+  if (cat.includes("r&m") || cat.includes("mainten") || cat.includes("repair") || cat.includes("spare") || cat.includes("membrane")) return "R&M";
   if (cat.includes("dispos") || cat.includes("haul") || cat.includes("sludge") || cat.includes("digestate") || cat.includes("solid")) return "Disposal";
   if (cat.includes("water") || cat.includes("sewer")) return "Water & Sewer";
   if (cat.includes("revenue") || cat.includes("offset") || cat.includes("credit") || cat.includes("sales")) return "Revenue Offset";
@@ -969,17 +979,18 @@ function validateOpexResults(parsed: any, totalProjectCapex: number): OpexResult
       }))
     : [];
 
-  const totalLaborCost = lineItems.filter(li => categorizeLineItem(li) === "Labor").reduce((sum, li) => sum + li.annualCost, 0);
-  const totalEnergyCost = lineItems.filter(li => categorizeLineItem(li) === "Energy").reduce((sum, li) => sum + li.annualCost, 0);
-  const totalChemicalCost = lineItems.filter(li => categorizeLineItem(li) === "Chemical").reduce((sum, li) => sum + li.annualCost, 0);
-  const totalMaintenanceCost = lineItems.filter(li => categorizeLineItem(li) === "Maintenance").reduce((sum, li) => sum + li.annualCost, 0);
-  const totalDisposalCost = lineItems.filter(li => categorizeLineItem(li) === "Disposal").reduce((sum, li) => sum + li.annualCost, 0);
-  const totalWaterSewerCost = lineItems.filter(li => categorizeLineItem(li) === "Water & Sewer").reduce((sum, li) => sum + li.annualCost, 0);
-  const revenueOffsets = lineItems.filter(li => categorizeLineItem(li) === "Revenue Offset").reduce((sum, li) => sum + li.annualCost, 0);
-  const totalOtherCost = lineItems.filter(li => categorizeLineItem(li) === "Other").reduce((sum, li) => sum + li.annualCost, 0);
+  const filteredLineItems = lineItems.filter(li => categorizeLineItem(li) !== "Revenue Offset");
+
+  const totalLaborCost = filteredLineItems.filter(li => categorizeLineItem(li) === "Labor").reduce((sum, li) => sum + li.annualCost, 0);
+  const totalEnergyCost = filteredLineItems.filter(li => categorizeLineItem(li) === "Energy").reduce((sum, li) => sum + li.annualCost, 0);
+  const totalChemicalCost = filteredLineItems.filter(li => categorizeLineItem(li) === "Chemical").reduce((sum, li) => sum + li.annualCost, 0);
+  const totalMaintenanceCost = filteredLineItems.filter(li => categorizeLineItem(li) === "R&M" || categorizeLineItem(li) === "Maintenance").reduce((sum, li) => sum + li.annualCost, 0);
+  const totalDisposalCost = filteredLineItems.filter(li => categorizeLineItem(li) === "Disposal").reduce((sum, li) => sum + li.annualCost, 0);
+  const totalWaterSewerCost = filteredLineItems.filter(li => categorizeLineItem(li) === "Water & Sewer").reduce((sum, li) => sum + li.annualCost, 0);
+  const totalOtherCost = filteredLineItems.filter(li => categorizeLineItem(li) === "Other").reduce((sum, li) => sum + li.annualCost, 0);
 
   const totalAnnualOpex = totalLaborCost + totalEnergyCost + totalChemicalCost + totalMaintenanceCost + totalDisposalCost + totalWaterSewerCost + totalOtherCost;
-  const netAnnualOpex = totalAnnualOpex + revenueOffsets;
+  const netAnnualOpex = totalAnnualOpex;
 
   const defaultSummary: OpexSummary = {
     totalAnnualOpex,
@@ -990,7 +1001,7 @@ function validateOpexResults(parsed: any, totalProjectCapex: number): OpexResult
     totalDisposalCost,
     totalWaterSewerCost: totalWaterSewerCost > 0 ? totalWaterSewerCost : undefined,
     totalOtherCost,
-    revenueOffsets,
+    revenueOffsets: 0,
     netAnnualOpex,
     opexAsPercentOfCapex: totalProjectCapex > 0 ? Math.round((totalAnnualOpex / totalProjectCapex) * 1000) / 10 : undefined,
   };
@@ -1004,7 +1015,7 @@ function validateOpexResults(parsed: any, totalProjectCapex: number): OpexResult
         totalMaintenanceCost: typeof parsed.summary.totalMaintenanceCost === "number" ? parsed.summary.totalMaintenanceCost : defaultSummary.totalMaintenanceCost,
         totalDisposalCost: typeof parsed.summary.totalDisposalCost === "number" ? parsed.summary.totalDisposalCost : defaultSummary.totalDisposalCost,
         totalOtherCost: typeof parsed.summary.totalOtherCost === "number" ? parsed.summary.totalOtherCost : defaultSummary.totalOtherCost,
-        revenueOffsets: typeof parsed.summary.revenueOffsets === "number" ? parsed.summary.revenueOffsets : defaultSummary.revenueOffsets,
+        revenueOffsets: 0,
         netAnnualOpex: typeof parsed.summary.netAnnualOpex === "number" ? parsed.summary.netAnnualOpex : defaultSummary.netAnnualOpex,
         opexPerUnit: parsed.summary.opexPerUnit || undefined,
         opexAsPercentOfCapex: typeof parsed.summary.opexAsPercentOfCapex === "number"
@@ -1015,7 +1026,7 @@ function validateOpexResults(parsed: any, totalProjectCapex: number): OpexResult
 
   return {
     projectType: parsed.projectType || "A",
-    lineItems,
+    lineItems: filteredLineItems,
     summary,
     assumptions: Array.isArray(parsed.assumptions) ? parsed.assumptions : [],
     warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
@@ -1265,7 +1276,7 @@ export async function generateOpexWithAI(
       const cat = categorizeLineItem(item);
       if (skippedCategories.includes(cat)) return false;
       const desc = ((item.description || "") + " " + (item.category || "")).toLowerCase();
-      if (skippedCategories.includes("Maintenance") && (desc.includes("mainten") || desc.includes("repair"))) return false;
+      if ((skippedCategories.includes("Maintenance") || skippedCategories.includes("R&M")) && (desc.includes("mainten") || desc.includes("repair") || desc.includes("r&m"))) return false;
       if (skippedCategories.includes("Energy") && (desc.includes("energy") || desc.includes("electric") || desc.includes("power cost"))) return false;
       return true;
     });

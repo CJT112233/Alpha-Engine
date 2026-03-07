@@ -132,7 +132,7 @@ function extractOpexBreakdown(opexResults: OpexResults): {
     const desc = (item.description || "").toLowerCase();
     const cost = item.annualCost || 0;
 
-    if (cat.includes("revenue offset") || (cat.includes("revenue") && !cat.includes("admin") && !cat.includes("overhead"))) {
+    if (cat.includes("revenue offset") || cat.includes("revenue") || cat.includes("offset") || cat.includes("credit") || cat.includes("sales")) {
       continue;
     }
 
@@ -140,7 +140,7 @@ function extractOpexBreakdown(opexResults: OpexResults): {
       utilityCost += cost;
     } else if (cat.includes("labor") || cat.includes("staff") || cat.includes("personnel")) {
       laborCost += cost;
-    } else if (cat.includes("mainten") || cat.includes("repair") || cat.includes("r&m")) {
+    } else if (cat.includes("r&m") || cat.includes("mainten") || cat.includes("repair") || cat.includes("membrane")) {
       maintenanceCost += cost;
     } else if (cat.includes("chemical") || cat.includes("reagent") || cat.includes("consumab")) {
       chemicalCost += cost;
