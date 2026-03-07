@@ -416,13 +416,12 @@ function StreamTable({ stages, overrides, locks, onSaveOverride, onToggleLock }:
   );
 }
 
-function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLock, isRecalculableField }: {
+function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLock }: {
   adStages: ADProcessStage[];
   overrides: MassBalanceOverrides;
   locks: Record<string, boolean>;
   onSaveOverride: (key: string, value: string, originalValue: string) => void;
   onToggleLock: (key: string, currentValue?: string) => void;
-  isRecalculableField?: (fieldKey: string) => boolean;
 }) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
@@ -500,33 +499,13 @@ function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLoc
                       <h4 className="text-xs font-medium text-muted-foreground mb-2">Output Stream</h4>
                       <div className="space-y-1">
                         {Object.entries(outputStream).map(([key, val]) => {
-                          const fieldKey = `adStages.${idx}.outputStream.${key}`;
                           const rawStr = typeof val?.value === 'number' ? val.value.toLocaleString() : String(val?.value ?? "");
-                          const valStr = resolveValue(fieldKey, rawStr, overrides);
-                          const isCascading = isRecalculableField?.(fieldKey) ?? false;
                           return (
-                            <div key={key} className={`flex items-center justify-between text-sm rounded-md px-2 py-1 ${isCascading ? "bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40" : "bg-muted/40"}`}>
-                              <span className="text-muted-foreground flex items-center gap-1">
-                                {formatLabel(key)}
-                                {isCascading && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <RefreshCw className="h-3 w-3 text-blue-500" data-testid={`icon-cascading-${key}`} />
-                                    </TooltipTrigger>
-                                    <TooltipContent>Editing this value will recalculate all downstream outputs</TooltipContent>
-                                  </Tooltip>
-                                )}
+                            <div key={key} className="flex items-center justify-between text-sm rounded-md bg-muted/30 px-2 py-1">
+                              <span className="text-muted-foreground">{formatLabel(key)}</span>
+                              <span className="font-medium text-sm" data-testid={`text-output-stream-${idx}-${key}`}>
+                                {rawStr}{val?.unit ? <span className="text-xs text-muted-foreground ml-1">{val.unit}</span> : null}
                               </span>
-                              <EditableValue
-                                fieldKey={fieldKey}
-                                displayValue={valStr}
-                                unit={val?.unit}
-                                isLocked={!!locks[fieldKey]}
-                                isOverridden={!!overrides[fieldKey]}
-                                onSaveOverride={onSaveOverride}
-                                onToggleLock={onToggleLock}
-                                compact
-                              />
                             </div>
                           );
                         })}
@@ -537,7 +516,10 @@ function ADStagesTable({ adStages, overrides, locks, onSaveOverride, onToggleLoc
 
                 {Object.keys(designCriteria).length > 0 && (
                   <div className="mt-3">
-                    <h4 className="text-xs font-medium text-muted-foreground mb-2">Design Criteria</h4>
+                    <h4 className="text-xs font-medium text-blue-600 dark:text-blue-400 mb-2 flex items-center gap-1">
+                      <Pencil className="h-3 w-3" />
+                      Design Criteria (Editable Inputs)
+                    </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       {Object.entries(designCriteria).map(([key, val]) => {
                         const fieldKey = `adStages.${idx}.designCriteria.${key}`;
@@ -906,6 +888,20 @@ function MassBalanceOutputsTable({ results, overrides, locks, onSaveOverride, on
   );
 }
 
+const SUMMARY_INPUT_KEYS = new Set([
+  "totalFeedRate",
+  "totalSolidsPct",
+  "volatileSolidsPct",
+  "hrt",
+  "vsDestruction",
+  "biogasAvgFlowScfm",
+  "rngAvgFlowScfm",
+  "biogasCH4",
+  "biogasCO2",
+  "biogasH2S",
+  "methaneRecovery",
+]);
+
 function StatsCard({ summary, overrides, locks, onSaveOverride, onToggleLock }: {
   summary: Record<string, { value: string; unit: string }> | undefined;
   overrides: MassBalanceOverrides;
@@ -942,37 +938,76 @@ function StatsCard({ summary, overrides, locks, onSaveOverride, onToggleLock }: 
     biosolidsCake: "Biosolids Cake",
   };
 
+  const inputEntries = Object.entries(summary).filter(([key]) => SUMMARY_INPUT_KEYS.has(key));
+  const outputEntries = Object.entries(summary).filter(([key]) => !SUMMARY_INPUT_KEYS.has(key));
+
   return (
     <Card data-testid="card-stats">
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Project Stats</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {Object.entries(summary).map(([key, val]) => {
-            const fieldKey = `summary.${key}`;
-            const rawVal = val.value;
-            const originalVal = (rawVal !== null && typeof rawVal === "object" && "value" in (rawVal as any)) ? String((rawVal as any).value) : String(rawVal ?? "");
-            const displayVal = resolveValue(fieldKey, originalVal, overrides);
-            const displayUnit = val.unit || ((rawVal !== null && typeof rawVal === "object" && "unit" in (rawVal as any)) ? (rawVal as any).unit : "");
-            return (
-              <div key={key} className="rounded-md bg-muted/40 p-3">
-                <div className="text-xs text-muted-foreground">{summaryLabels[key] || formatLabel(key)}</div>
-                <div className="mt-1">
-                  <EditableValue
-                    fieldKey={fieldKey}
-                    displayValue={displayVal}
-                    unit={displayUnit}
-                    isLocked={!!locks[fieldKey]}
-                    isOverridden={!!overrides[fieldKey]}
-                    onSaveOverride={onSaveOverride}
-                    onToggleLock={onToggleLock}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {inputEntries.length > 0 && (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <Pencil className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              <span className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">Design Inputs</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
+              {inputEntries.map(([key, val]) => {
+                const fieldKey = `summary.${key}`;
+                const rawVal = val.value;
+                const originalVal = (rawVal !== null && typeof rawVal === "object" && "value" in (rawVal as any)) ? String((rawVal as any).value) : String(rawVal ?? "");
+                const displayVal = resolveValue(fieldKey, originalVal, overrides);
+                const displayUnit = val.unit || ((rawVal !== null && typeof rawVal === "object" && "unit" in (rawVal as any)) ? (rawVal as any).unit : "");
+                return (
+                  <div key={key} className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-950/20 p-3" data-testid={`stat-input-${key}`}>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      {summaryLabels[key] || formatLabel(key)}
+                      <Pencil className="h-2.5 w-2.5 text-blue-500 opacity-60" />
+                    </div>
+                    <div className="mt-1">
+                      <EditableValue
+                        fieldKey={fieldKey}
+                        displayValue={displayVal}
+                        unit={displayUnit}
+                        isLocked={!!locks[fieldKey]}
+                        isOverridden={!!overrides[fieldKey]}
+                        onSaveOverride={onSaveOverride}
+                        onToggleLock={onToggleLock}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+        {outputEntries.length > 0 && (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Calculated Outputs</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {outputEntries.map(([key, val]) => {
+                const fieldKey = `summary.${key}`;
+                const rawVal = val.value;
+                const originalVal = (rawVal !== null && typeof rawVal === "object" && "value" in (rawVal as any)) ? String((rawVal as any).value) : String(rawVal ?? "");
+                const displayVal = resolveValue(fieldKey, originalVal, overrides);
+                const displayUnit = val.unit || ((rawVal !== null && typeof rawVal === "object" && "unit" in (rawVal as any)) ? (rawVal as any).unit : "");
+                return (
+                  <div key={key} className="rounded-md bg-muted/30 p-3" data-testid={`stat-output-${key}`}>
+                    <div className="text-xs text-muted-foreground">{summaryLabels[key] || formatLabel(key)}</div>
+                    <div className="mt-1 text-sm font-medium" data-testid={`text-output-${key}`}>
+                      {displayVal}{displayUnit ? <span className="text-xs text-muted-foreground ml-1">{displayUnit}</span> : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
@@ -1404,8 +1439,7 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
   });
 
   const RECALCULABLE_EXACT_KEYS = new Set([
-    "summary.hrt", "summary.vsDestruction",
-    "summary.biogasAvgFlowScfm", "summary.rngAvgFlowScfm",
+    ...Array.from(SUMMARY_INPUT_KEYS).map(k => `summary.${k}`),
   ]);
 
   const RECALCULABLE_DESIGN_CRITERIA_SUFFIXES = new Set([
@@ -1417,19 +1451,11 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
     "targetTS", "thickenedSolids", "captureRate", "organicLoadingRate",
   ]);
 
-  const RECALCULABLE_OUTPUT_STREAM_SUFFIXES = new Set([
-    "avgFlowScfm",
-  ]);
-
   const isRecalculableField = (fieldKey: string): boolean => {
     if (RECALCULABLE_EXACT_KEYS.has(fieldKey)) return true;
     if (fieldKey.includes("designCriteria.")) {
       const lastPart = fieldKey.split(".").pop() || "";
       return RECALCULABLE_DESIGN_CRITERIA_SUFFIXES.has(lastPart);
-    }
-    if (fieldKey.includes("outputStream.")) {
-      const lastPart = fieldKey.split(".").pop() || "";
-      return RECALCULABLE_OUTPUT_STREAM_SUFFIXES.has(lastPart);
     }
     return false;
   };
@@ -1828,7 +1854,6 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
                       locks={locks}
                       onSaveOverride={handleSaveOverride}
                       onToggleLock={handleToggleLock}
-                      isRecalculableField={isRecalculableField}
                     />
                   </TabsContent>
                 )}

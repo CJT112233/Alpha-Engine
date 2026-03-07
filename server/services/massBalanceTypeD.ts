@@ -255,8 +255,8 @@ export function calculateMassBalanceTypeD(upif: UpifRecord, designOverrides?: De
   const hrt = defaults.digester.hrt.value;
   const olr = defaults.digester.organicLoadingRate.value;
   const gasYield = defaults.digester.gasYield.value;
-  const ch4Pct = defaults.digester.ch4Content.value;
-  const h2sPpmv = defaults.digester.h2sContent.value;
+  const ch4Pct = designOverrides?.ch4Pct ?? defaults.digester.ch4Content.value;
+  const h2sPpmv = designOverrides?.h2sPpmv ?? defaults.digester.h2sContent.value;
 
   let vsDestroyedKgPerDay = totalVSLoad * vsDestruction;
   let biogasM3PerDay = vsDestroyedKgPerDay * gasYield;
@@ -359,7 +359,9 @@ export function calculateMassBalanceTypeD(upif: UpifRecord, designOverrides?: De
   };
   adStages.push(conditioningStage);
 
-  const methaneRecovery = prodevDesign.gasUpgrading.methaneRecovery.value / 100;
+  const methaneRecovery = designOverrides?.methaneRecovery !== undefined
+    ? designOverrides.methaneRecovery / 100
+    : prodevDesign.gasUpgrading.methaneRecovery.value / 100;
   const productCH4 = prodevDesign.gasUpgrading.productCH4.value;
   let rngCH4M3PerDay = ch4M3PerDay * methaneRecovery;
   let rngM3PerDay = rngCH4M3PerDay / (productCH4 / 100);

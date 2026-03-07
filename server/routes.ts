@@ -3130,9 +3130,8 @@ export async function registerRoutes(
       const existingLocks = (run.locks || {}) as Record<string, boolean>;
 
       const { extractDesignOverrides, isRecalculableField } = await import("./services/designOverrides");
-      const existingResults = run.results as any;
-      const adStages = existingResults?.adStages as Array<{ type?: string }> | undefined;
-      const designOverrides = extractDesignOverrides(existingOverrides, existingLocks, adStages);
+      console.log(`Mass Balance Recompute: Override keys: [${Object.keys(existingOverrides).join(", ")}], Lock keys: [${Object.keys(existingLocks).filter(k => existingLocks[k]).join(", ")}]`);
+      const designOverrides = extractDesignOverrides(existingOverrides, existingLocks);
       const hasDesignOverrides = Object.keys(designOverrides).length > 0;
 
       let results;

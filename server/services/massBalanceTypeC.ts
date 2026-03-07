@@ -127,11 +127,11 @@ export function calculateMassBalanceTypeC(upif: UpifRecord, designOverrides?: De
     };
   }
 
-  const ch4Pct = getSpecValue(fs, ["ch4", "methane", "ch₄"], 60);
-  const co2Pct = getSpecValue(fs, ["co2", "carbon dioxide", "co₂"], 100 - ch4Pct - 2);
+  const ch4Pct = designOverrides?.ch4Pct ?? getSpecValue(fs, ["ch4", "methane", "ch₄"], 60);
+  const co2Pct = designOverrides?.co2Pct ?? getSpecValue(fs, ["co2", "carbon dioxide", "co₂"], 100 - ch4Pct - 2);
   const n2Pct = getSpecValue(fs, ["n2", "nitrogen"], 1);
   const o2Pct = getSpecValue(fs, ["o2", "oxygen"], 0.5);
-  const h2sPpmv = getSpecValue(fs, ["h2s", "hydrogen sulfide", "h₂s"], 1500);
+  const h2sPpmv = designOverrides?.h2sPpmv ?? getSpecValue(fs, ["h2s", "hydrogen sulfide", "h₂s"], 1500);
   const siloxanePpbv = getSpecValue(fs, ["siloxane", "siloxanes"], 5000);
 
   const biogasMaxScfm = getSpecValue(fs, ["max flow", "maxFlowScfm", "maximum flow", "peak flow"], biogasScfm * 1.3);
@@ -207,7 +207,9 @@ export function calculateMassBalanceTypeC(upif: UpifRecord, designOverrides?: De
   };
   adStages.push(conditioningStage);
 
-  const methaneRecovery = prodevDesign.gasUpgrading.methaneRecovery.value / 100;
+  const methaneRecovery = designOverrides?.methaneRecovery !== undefined
+    ? designOverrides.methaneRecovery / 100
+    : prodevDesign.gasUpgrading.methaneRecovery.value / 100;
   const productCH4 = prodevDesign.gasUpgrading.productCH4.value;
   let ch4ScfPerDay = biogasScfPerDay * (ch4Pct / 100);
   let rngCH4ScfPerDay = ch4ScfPerDay * methaneRecovery;

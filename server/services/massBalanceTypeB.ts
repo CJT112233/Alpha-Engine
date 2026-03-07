@@ -341,8 +341,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
     };
   }
 
-  const avgTS = weightedTS / totalWeightForAvg;
-  const avgVS = weightedVS / totalWeightForAvg;
+  let avgTS = designOverrides?.totalSolidsPct ?? (weightedTS / totalWeightForAvg);
+  let avgVS = designOverrides?.volatileSolidsPct ?? (weightedVS / totalWeightForAvg);
   const avgBMP = totalVSLoadKgPerDay > 0 ? weightedBMP / totalVSLoadKgPerDay : 0.30;
   const avgCN = weightedCN / totalWeightForAvg;
   const avgCOD = weightedCOD / totalWeightForAvg;
@@ -680,9 +680,9 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
   const hrt = defaults.digester.hrt.value;
   const olr = defaults.digester.organicLoadingRate.value;
   const gasYield = defaults.digester.gasYield.value;
-  const ch4Pct = defaults.digester.ch4Content.value;
-  const co2Pct = defaults.digester.co2Content.value;
-  const h2sPpmv = defaults.digester.h2sContent.value;
+  let ch4Pct = designOverrides?.ch4Pct ?? defaults.digester.ch4Content.value;
+  let co2Pct = designOverrides?.co2Pct ?? defaults.digester.co2Content.value;
+  let h2sPpmv = designOverrides?.h2sPpmv ?? defaults.digester.h2sContent.value;
   const headspacePct = defaults.digester.headspacePct.value / 100;
 
   let vsDestroyedKgPerDay = eqVSLoadKgPerDay * vsDestruction;
@@ -1117,7 +1117,9 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
   // ══════════════════════════════════════════════════════════
   // STAGE 8: GAS UPGRADING TO RNG (Prodeval VALOPUR®)
   // ══════════════════════════════════════════════════════════
-  const methaneRecovery = prodevDesign.gasUpgrading.methaneRecovery.value / 100;
+  const methaneRecovery = designOverrides?.methaneRecovery !== undefined
+    ? designOverrides.methaneRecovery / 100
+    : prodevDesign.gasUpgrading.methaneRecovery.value / 100;
   const productCH4 = prodevDesign.gasUpgrading.productCH4.value;
   let rngCH4M3PerDay = ch4M3PerDay * methaneRecovery;
   let rngM3PerDay = rngCH4M3PerDay / (productCH4 / 100);

@@ -38,13 +38,34 @@ export interface DesignOverrides {
   volatileSolidsPct?: number;
 }
 
+export const SUMMARY_INPUT_KEYS = new Set([
+  "totalFeedRate",
+  "totalSolidsPct",
+  "volatileSolidsPct",
+  "hrt",
+  "vsDestruction",
+  "biogasAvgFlowScfm",
+  "rngAvgFlowScfm",
+  "biogasCH4",
+  "biogasCO2",
+  "biogasH2S",
+  "methaneRecovery",
+]);
+
 const RECALCULABLE_FIELDS: Record<string, keyof DesignOverrides> = {
   "summary.hrt": "hrtDays",
   "summary.vsDestruction": "vsDestructionPct",
   "summary.biogasAvgFlowScfm": "biogasScfm",
   "summary.rngAvgFlowScfm": "rngScfm",
+  "summary.totalFeedRate": "feedTpd",
   "summary.feedTpd": "feedTpd",
   "summary.totalFeedTpd": "feedTpd",
+  "summary.totalSolidsPct": "totalSolidsPct",
+  "summary.volatileSolidsPct": "volatileSolidsPct",
+  "summary.biogasCH4": "ch4Pct",
+  "summary.biogasCO2": "co2Pct",
+  "summary.biogasH2S": "h2sPpmv",
+  "summary.methaneRecovery": "methaneRecovery",
 
   "adStages.3.designCriteria.hrt": "hrtDays",
   "adStages.3.designCriteria.olr": "olrTarget",
@@ -81,6 +102,8 @@ export function extractDesignOverrides(
     ...Object.keys(locks || {}).filter(k => locks[k]),
   ]);
 
+  console.log(`extractDesignOverrides: Processing ${allOverrideKeys.size} override keys: [${Array.from(allOverrideKeys).join(", ")}]`);
+
   for (const fieldKey of allOverrideKeys) {
     const override = overrides[fieldKey];
     if (!override || override.value === undefined) continue;
@@ -90,6 +113,7 @@ export function extractDesignOverrides(
       const numVal = parseFloat(String(override.value).replace(/,/g, ""));
       if (!isNaN(numVal)) {
         (result as any)[designKey] = numVal;
+        console.log(`  Mapped: ${fieldKey} → ${designKey} = ${numVal}`);
       }
       continue;
     }
@@ -99,72 +123,14 @@ export function extractDesignOverrides(
       const numVal = parseFloat(String(override.value).replace(/,/g, ""));
       if (!isNaN(numVal)) {
         (result as any)[match] = numVal;
+        console.log(`  Mapped (criteria): ${fieldKey} → ${match} = ${numVal}`);
       }
       continue;
     }
-
-    const outputMatch = stages
-      ? matchOutputStreamKeyWithContext(fieldKey, stages)
-      : matchOutputStreamKey(fieldKey);
-    if (outputMatch) {
-      const numVal = parseFloat(String(override.value).replace(/,/g, ""));
-      if (!isNaN(numVal)) {
-        (result as any)[outputMatch] = numVal;
-      }
-    }
   }
 
+  console.log(`extractDesignOverrides: Result = ${JSON.stringify(result)}`);
   return result;
-}
-
-function matchOutputStreamKey(fieldKey: string): keyof DesignOverrides | null {
-  if (!fieldKey.includes("outputStream.")) return null;
-  const lastPart = fieldKey.split(".").pop() || "";
-  if (lastPart !== "avgFlowScfm") return null;
-
-  if (fieldKey.includes("adStages.3.")) {
-    return "biogasScfm";
-  }
-
-  return null;
-}
-
-let stageTypeMap: Map<number, string> | null = null;
-
-export function setStageTypeMap(stages: Array<{ type?: string }>) {
-  stageTypeMap = new Map();
-  stages.forEach((stage, idx) => {
-    if (stage.type) {
-      stageTypeMap!.set(idx, stage.type);
-    }
-  });
-}
-
-export function matchOutputStreamKeyWithContext(fieldKey: string, stages?: Array<{ type?: string }>): keyof DesignOverrides | null {
-  if (!fieldKey.includes("outputStream.")) return null;
-  const lastPart = fieldKey.split(".").pop() || "";
-  if (lastPart !== "avgFlowScfm") return null;
-
-  const stageIdx = fieldKey.match(/adStages\.(\d+)\./);
-  if (!stageIdx) return null;
-  const idx = parseInt(stageIdx[1]);
-
-  const stageTypes = stages || (stageTypeMap ? Array.from(stageTypeMap.entries()).reduce((acc, [i, t]) => { acc[i] = { type: t }; return acc; }, [] as Array<{ type?: string }>) : null);
-
-  if (stageTypes && stageTypes[idx]) {
-    const stageType = stageTypes[idx].type?.toLowerCase() || "";
-    if (stageType === "digester" || stageType === "anaerobic digester" || stageType === "ad") {
-      return "biogasScfm";
-    }
-    if (stageType === "gasupgrading" || stageType === "gas upgrading" || stageType === "rng" || stageType === "membrane") {
-      return "rngScfm";
-    }
-  }
-
-  if (idx === 3) return "biogasScfm";
-  if (idx >= 6) return "rngScfm";
-
-  return null;
 }
 
 function matchDesignCriteriaKey(fieldKey: string): keyof DesignOverrides | null {
@@ -204,6 +170,10 @@ function matchDesignCriteriaKey(fieldKey: string): keyof DesignOverrides | null 
   return null;
 }
 
+export function isSummaryInputField(summaryKey: string): boolean {
+  return SUMMARY_INPUT_KEYS.has(summaryKey);
+}
+
 export function isRecalculableField(fieldKey: string): boolean {
   if (RECALCULABLE_FIELDS[fieldKey]) return true;
   if (fieldKey.includes("designCriteria.")) {
@@ -218,9 +188,6 @@ export function isRecalculableField(fieldKey: string): boolean {
       "targetTS", "thickenedSolids", "captureRate",
     ];
     return criteriaKeys.includes(lastPart);
-  }
-  if (fieldKey.includes("outputStream.")) {
-    return matchOutputStreamKey(fieldKey) !== null;
   }
   return false;
 }
