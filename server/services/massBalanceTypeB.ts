@@ -69,15 +69,33 @@ const AD_DESIGN_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
 
 function parseFeedstockVolume(fs: FeedstockEntry): { tpd: number; unit: string } {
   const vol = parseFloat((fs.feedstockVolume || "0").replace(/,/g, ""));
-  const unit = (fs.feedstockUnit || "").toLowerCase();
+  const unit = (fs.feedstockUnit || "").toLowerCase().trim();
   if (isNaN(vol) || vol <= 0) return { tpd: 0, unit: "tons/day" };
+
   if (unit.includes("ton") && unit.includes("year")) return { tpd: vol / 365, unit: "tons/day" };
   if (unit.includes("ton") && unit.includes("day")) return { tpd: vol, unit: "tons/day" };
   if (unit.includes("ton") && unit.includes("week")) return { tpd: vol / 7, unit: "tons/day" };
-  if (unit.includes("lb") && unit.includes("day")) return { tpd: vol / 2000, unit: "tons/day" };
-  if (unit.includes("kg") && unit.includes("day")) return { tpd: vol / 1000, unit: "tons/day" };
-  if (unit.includes("gallon") && unit.includes("day")) return { tpd: vol * 8.34 / 2000, unit: "tons/day" };
+  if (unit.includes("ton") && unit.includes("month")) return { tpd: vol / 30, unit: "tons/day" };
   if (unit.includes("ton")) return { tpd: vol / 365, unit: "tons/day" };
+
+  if (unit.includes("lb") && unit.includes("day")) return { tpd: vol / 2000, unit: "tons/day" };
+  if (unit.includes("kg") && unit.includes("day")) return { tpd: vol / 907.185, unit: "tons/day" };
+  if (unit.includes("kg")) return { tpd: vol / 907.185, unit: "tons/day" };
+
+  if (unit === "mgd" || unit === "mg/d" || (unit.includes("million") && unit.includes("gallon")))
+    return { tpd: vol * 1_000_000 * 8.34 / 2000, unit: "tons/day" };
+  if (unit === "gpd" || (unit.includes("gallon") && unit.includes("day")) || (unit === "gal/day") || (unit === "gal/d"))
+    return { tpd: vol * 8.34 / 2000, unit: "tons/day" };
+  if (unit === "gpm" || (unit.includes("gallon") && unit.includes("min")))
+    return { tpd: vol * 1440 * 8.34 / 2000, unit: "tons/day" };
+  if (unit === "gph" || (unit.includes("gallon") && unit.includes("hour")))
+    return { tpd: vol * 24 * 8.34 / 2000, unit: "tons/day" };
+
+  if ((unit.includes("m³") || unit.includes("m3")) && (unit.includes("day") || unit.includes("/d")))
+    return { tpd: vol * 264.172 * 8.34 / 2000, unit: "tons/day" };
+  if (unit.includes("liter") && unit.includes("day")) return { tpd: vol * 0.264172 * 8.34 / 2000, unit: "tons/day" };
+
+  console.warn(`parseFeedstockVolume: Unrecognized unit "${fs.feedstockUnit}" for feedstock "${fs.feedstockType}", treating ${vol} as tons/day`);
   return { tpd: vol, unit: "tons/day" };
 }
 

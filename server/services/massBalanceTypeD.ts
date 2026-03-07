@@ -81,14 +81,33 @@ function getSpecValue(fs: FeedstockEntry, keys: string[], defaultVal: number): n
 
 function parseFeedstockVolume(fs: FeedstockEntry): number {
   const vol = parseFloat((fs.feedstockVolume || "0").replace(/,/g, ""));
-  const unit = (fs.feedstockUnit || "").toLowerCase();
+  const unit = (fs.feedstockUnit || "").toLowerCase().trim();
   if (isNaN(vol) || vol <= 0) return 0;
+
   if (unit.includes("ton") && unit.includes("year")) return vol / 365;
   if (unit.includes("ton") && unit.includes("day")) return vol;
   if (unit.includes("ton") && unit.includes("week")) return vol / 7;
-  if (unit.includes("lb") && unit.includes("day")) return vol / 2000;
-  if (unit.includes("kg") && unit.includes("day")) return vol / 1000;
+  if (unit.includes("ton") && unit.includes("month")) return vol / 30;
   if (unit.includes("ton")) return vol / 365;
+
+  if (unit.includes("lb") && unit.includes("day")) return vol / 2000;
+  if (unit.includes("kg") && unit.includes("day")) return vol / 907.185;
+  if (unit.includes("kg")) return vol / 907.185;
+
+  if (unit === "mgd" || unit === "mg/d" || (unit.includes("million") && unit.includes("gallon")))
+    return vol * 1_000_000 * 8.34 / 2000;
+  if (unit === "gpd" || (unit.includes("gallon") && unit.includes("day")) || unit === "gal/day" || unit === "gal/d")
+    return vol * 8.34 / 2000;
+  if (unit === "gpm" || (unit.includes("gallon") && unit.includes("min")))
+    return vol * 1440 * 8.34 / 2000;
+  if (unit === "gph" || (unit.includes("gallon") && unit.includes("hour")))
+    return vol * 24 * 8.34 / 2000;
+
+  if ((unit.includes("m³") || unit.includes("m3")) && (unit.includes("day") || unit.includes("/d")))
+    return vol * 264.172 * 8.34 / 2000;
+  if (unit.includes("liter") && unit.includes("day")) return vol * 0.264172 * 8.34 / 2000;
+
+  console.warn(`parseFeedstockVolume (Type D): Unrecognized unit "${fs.feedstockUnit}" for feedstock "${fs.feedstockType}", treating ${vol} as tons/day`);
   return vol;
 }
 
