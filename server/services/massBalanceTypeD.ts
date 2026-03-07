@@ -19,6 +19,8 @@ import type { DesignOverrides } from "./designOverrides";
 
 type DesignCriterion = { value: number; unit: string; source: string };
 
+const KG_PER_US_TON = 907.185;
+
 const AD_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
   sludgeThickening: {
     thickenedSolids: { value: 5, unit: "% TS", source: "WEF MOP 8" },
@@ -210,7 +212,7 @@ export function calculateMassBalanceTypeD(upif: UpifRecord, designOverrides?: De
     if (tpd <= 0) continue;
     const ts = getSpecValue(fs, ["totalSolids", "total solids", "ts"], defaults.truckedFeedstock.defaultTS.value);
     const vsOfTs = getSpecValue(fs, ["volatileSolids", "volatile solids", "vs", "vs/ts"], defaults.truckedFeedstock.defaultVS.value);
-    const feedKg = tpd * 1000;
+    const feedKg = tpd * KG_PER_US_TON;
     const tsKg = feedKg * (ts / 100);
     const vsKg = tsKg * (vsOfTs / 100);
     truckedTSKgPerDay += tsKg;

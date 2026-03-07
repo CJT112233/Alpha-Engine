@@ -15,6 +15,8 @@ import type { DesignOverrides } from "./designOverrides";
 
 type DesignCriterion = { value: number; unit: string; source: string };
 
+const KG_PER_US_TON = 907.185;
+
 const AD_DESIGN_DEFAULTS: Record<string, Record<string, DesignCriterion>> = {
   receiving: {
     receivingCapacity: { value: 1.5, unit: "x design throughput", source: "Engineering practice" },
@@ -314,7 +316,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
     const tpMgL = getSpecValue(fs, ["tp", "total phosphorus", "totalPhosphorus"], 0);
     const scodPct = getSpecValue(fs, ["solubleCOD", "soluble cod", "scod", "scod fraction"], 30);
 
-    const feedKgPerDay = tpd * 1000;
+    const feedKgPerDay = tpd * KG_PER_US_TON;
     const tsKg = feedKgPerDay * (ts / 100);
     const vsKg = tsKg * (vsOfTs / 100);
 
@@ -459,7 +461,8 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
   };
   adStages.push(receivingStage);
 
-  const storageVolM3 = (totalFeedTpd * 1000 / 1.05) * defaults.receiving.storageTime.value;
+  const storageDays = defaults.receiving.storageTime.value;
+  const storageVolM3 = (totalFeedTpd * 907.185 / 1050) * storageDays;
   const receivingVolGal = roundTo(m3ToGal(storageVolM3));
   const receivingDims = rectDimensions(receivingVolGal, 10);
   equipment.push({
@@ -470,14 +473,14 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
     quantity: feedstocks.length > 2 ? 2 : 1,
     specs: {
       volume: { value: String(receivingVolGal), unit: "gal" },
-      storageTime: { value: "3", unit: "days" },
+      storageTime: { value: String(storageDays), unit: "days" },
       capacity: { value: String(roundTo(totalFeedTpd * 1.5)), unit: "tons/day" },
       dimensionsL: { value: String(receivingDims.lengthFt), unit: "ft" },
       dimensionsW: { value: String(receivingDims.widthFt), unit: "ft" },
       dimensionsH: { value: String(receivingDims.heightFt), unit: "ft" },
       power: { value: String(roundTo(totalFeedTpd * 2, 0)), unit: "HP" },
     },
-    designBasis: "1.5x design throughput with 3-day storage",
+    designBasis: `1.5x design throughput with ${storageDays}-day storage`,
     notes: "Includes weigh scale, odor control, and leak detection",
     isOverridden: false,
     isLocked: false,
@@ -567,7 +570,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
   const dilutionWaterTpd = needsDilution ? postMacerationTpd * ((avgTS / targetEqTS) - 1) : 0;
   const eqOutputTpd = postMacerationTpd + dilutionWaterTpd;
   const eqOutputTS = needsDilution ? targetEqTS : avgTS;
-  const eqVolumeM3 = (eqOutputTpd * 1000 / 1.02) * eqRetentionDays;
+  const eqVolumeM3 = (eqOutputTpd * KG_PER_US_TON / 1020) * eqRetentionDays;
   const eqVSLoadKgPerDay = totalVSLoadKgPerDay * (1 - rejectRate);
 
   if (needsDilution) {
@@ -603,7 +606,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
   };
   adStages.push(eqStage);
 
-  const heatDutyKW = roundTo(eqOutputTpd * 1000 * 4.18 * (defaults.equalization.preheatTemp.value - 15) / 3600, 0);
+  const heatDutyKW = roundTo(eqOutputTpd * KG_PER_US_TON * 4.18 * (defaults.equalization.preheatTemp.value - 15) / 3600, 0);
 
   const eqTankVolGal = roundTo(m3ToGal(eqVolumeM3));
   const eqTankDims = cylinderDimensions(eqTankVolGal, 1.2);
@@ -669,7 +672,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
     isLocked: false,
   });
 
-  const feedPumpGPM = roundTo(m3PerMinToGpm(eqOutputTpd * 1000 / 24 / 60), 1);
+  const feedPumpGPM = roundTo(m3PerMinToGpm(eqOutputTpd * KG_PER_US_TON / 1020 / 24 / 60), 1);
   const feedPumpPowerHP = roundTo(Math.max(5, feedPumpGPM * 43.56 * 0.7 / (3960 * 0.6)), 1);
   equipment.push({
     id: makeId("feed-pump"),
@@ -718,7 +721,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
     console.log(`Mass Balance Type B: Biogas flow overridden to ${biogasScfm} SCFM (calculated: ${roundTo(eqVSLoadKgPerDay * vsDestruction * gasYield * 35.3147 / 1440)} SCFM)`);
   }
 
-  const dailyFeedVolM3 = eqOutputTpd * 1000 / 1.02;
+  const dailyFeedVolM3 = eqOutputTpd * KG_PER_US_TON / 1020;
   const digesterVolumeByHRT = dailyFeedVolM3 * hrt;
   const digesterVolumeByOLR = eqVSLoadKgPerDay / olr;
   const activeDigesterVolM3 = Math.max(digesterVolumeByHRT, digesterVolumeByOLR);
@@ -897,11 +900,11 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
   // ══════════════════════════════════════════════════════════
   const centSolidsCaptureEff = defaults.centrifuge.solidsCaptureEff.value / 100;
   const centCakeSolidsPct = defaults.centrifuge.cakeSolids.value;
-  const digestateTSKgPerDay = digestateTPD * 1000 * (digestateTS / 100);
+  const digestateTSKgPerDay = digestateTPD * KG_PER_US_TON * (digestateTS / 100);
   const cakeSolidsKgPerDay = digestateTSKgPerDay * centSolidsCaptureEff;
-  const cakeTPD = cakeSolidsKgPerDay / (centCakeSolidsPct / 100) / 1000;
+  const cakeTPD = cakeSolidsKgPerDay / (centCakeSolidsPct / 100) / KG_PER_US_TON;
   const centrateTPD = digestateTPD - cakeTPD;
-  const centrateTSSMgL = digestateTSKgPerDay * (1 - centSolidsCaptureEff) / (centrateTPD * 1000) * 1_000_000;
+  const centrateTSSMgL = digestateTSKgPerDay * (1 - centSolidsCaptureEff) / (centrateTPD * KG_PER_US_TON) * 1_000_000;
 
   assumptions.push({ parameter: "Centrifuge Solids Capture", value: `${roundTo(centSolidsCaptureEff * 100)}%`, source: "Decanter centrifuge typical" });
   assumptions.push({ parameter: "Cake Solids", value: `${centCakeSolidsPct}% TS`, source: "Decanter centrifuge typical" });
@@ -973,7 +976,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
     isLocked: false,
   });
 
-  const cakeStorageVolGal = roundTo(m3ToGal(cakeTPD * 3 / 1.1));
+  const cakeStorageVolGal = roundTo(m3ToGal(cakeTPD * KG_PER_US_TON / 1100 * 3));
   const cakeStorageDims = rectDimensions(cakeStorageVolGal, 8);
   equipment.push({
     id: makeId("cake-conveyor"),
@@ -1000,13 +1003,13 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
   // ══════════════════════════════════════════════════════════
   const dafTSSRemoval = defaults.daf.tssRemoval.value / 100;
   const dafFOGRemoval = defaults.daf.fogRemoval.value / 100;
-  const centrateFlowGPD = centrateTPD * 1000 / 3.785;
+  const centrateFlowGPD = centrateTPD * KG_PER_US_TON / 3.785;
   const centrateFlowGPM = centrateFlowGPD / 1440;
   const dafSurfaceAreaFt2 = centrateFlowGPM / defaults.daf.hydraulicLoading.value;
   const dafEffluentTSSMgL = centrateTSSMgL * (1 - dafTSSRemoval);
   const dafFloatTPD = centrateTPD * 0.03;
   const dafEffluentTPD = centrateTPD - dafFloatTPD;
-  const dafEffluentGPD = roundTo(dafEffluentTPD * 1000 / 3.785, 0);
+  const dafEffluentGPD = roundTo(dafEffluentTPD * KG_PER_US_TON / 3.785, 0);
 
   const dafEffluentLbPerDay = dafEffluentTPD * 2000;
   const dafEffTSLbPerDay = centrateTSLbPerDay * (1 - dafTSSRemoval) * 0.7;
@@ -1076,7 +1079,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
     isLocked: false,
   });
 
-  const centrateTankVolGal = roundTo(centrateTPD * 1000 / 1.0 * 0.5 * 0.264172);
+  const centrateTankVolGal = roundTo(m3ToGal(centrateTPD * KG_PER_US_TON / 1000 * 0.5));
   const centrateTankDims = cylinderDimensions(centrateTankVolGal, 1.0);
   equipment.push({
     id: makeId("centrate-tank"),
@@ -1303,7 +1306,7 @@ export function calculateMassBalanceTypeB(upif: UpifRecord, designOverrides?: De
       source: "DAF",
       destination: "Digester",
       flow: roundTo(dafFloatTPD),
-      loads: { TSS: roundTo(dafFloatTPD * 1000 * 0.05) },
+      loads: { TSS: roundTo(dafFloatTPD * KG_PER_US_TON * 0.05) },
     },
   ];
 

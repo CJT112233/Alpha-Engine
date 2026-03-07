@@ -86,6 +86,7 @@ const RECALCULABLE_FIELDS: Record<string, keyof DesignOverrides> = {
   "adStages.5.designCriteria.hydraulicLoading": "dafHydraulicLoading",
 
   "adStages.0.designCriteria.storageDays": "storageDays",
+  "adStages.0.designCriteria.storageTime": "storageDays",
   "adStages.1.designCriteria.targetParticleSize": "targetParticleSize",
   "adStages.1.designCriteria.depackagingRejectRate": "depackagingRejectRate",
 };
@@ -150,6 +151,7 @@ function matchDesignCriteriaKey(fieldKey: string): keyof DesignOverrides | null 
     fogRemoval: "dafFogRemoval",
     hydraulicLoading: "dafHydraulicLoading",
     storageDays: "storageDays",
+    storageTime: "storageDays",
     targetParticleSize: "targetParticleSize",
     depackagingRejectRate: "depackagingRejectRate",
     headspacePct: "headspacePct",
@@ -182,7 +184,7 @@ export function isRecalculableField(fieldKey: string): boolean {
       "hrt", "olr", "organicLoadingRate", "vsDestruction", "temperature",
       "digesterVolume", "mixingPower",
       "retentionTime", "solidsCaptureEfficiency", "cakeSolids", "polymerDosing",
-      "tssRemoval", "fogRemoval", "hydraulicLoading", "storageDays",
+      "tssRemoval", "fogRemoval", "hydraulicLoading", "storageDays", "storageTime",
       "targetParticleSize", "depackagingRejectRate", "headspacePct",
       "gasYield", "ch4Content", "co2Content", "h2sContent", "preheatTemp",
       "targetTS", "thickenedSolids", "captureRate",

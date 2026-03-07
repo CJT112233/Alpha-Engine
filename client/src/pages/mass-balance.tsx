@@ -1328,7 +1328,7 @@ export function MassBalanceContent({ scenarioId }: { scenarioId: string }) {
   const RECALCULABLE_DESIGN_CRITERIA_SUFFIXES = new Set([
     "hrt", "olr", "vsDestruction", "temperature", "digesterVolume", "mixingPower",
     "retentionTime", "solidsCaptureEfficiency", "cakeSolids", "polymerDosing",
-    "tssRemoval", "fogRemoval", "hydraulicLoading", "storageDays",
+    "tssRemoval", "fogRemoval", "hydraulicLoading", "storageDays", "storageTime",
     "targetParticleSize", "depackagingRejectRate", "headspacePct",
     "gasYield", "ch4Content", "co2Content", "h2sContent", "preheatTemp",
     "targetTS", "thickenedSolids", "captureRate", "organicLoadingRate",
