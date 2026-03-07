@@ -1,5 +1,5 @@
 import type { MassBalanceResults, ADProcessStage, EquipmentItem } from "@shared/schema";
-import { FEEDSTOCK_LIBRARY, type FeedstockProfile } from "@shared/feedstock-library";
+import { FEEDSTOCK_LIBRARY, WASTEWATER_INFLUENT_LIBRARY, type FeedstockProfile, type WastewaterInfluentProfile } from "@shared/feedstock-library";
 import {
   selectProdevalUnit,
   getProdevalEquipmentList,
@@ -82,13 +82,112 @@ function matchFeedstockLibrary(feedstockType: string): FeedstockProfile | null {
     const words = searchTerm.split(/\s+/);
     for (const word of words) {
       if (word.length < 4 || STOP_WORDS.has(word)) continue;
-      if (profile.name.toLowerCase().includes(word)) return profile;
-      for (const alias of profile.aliases) {
-        if (alias.includes(word)) return profile;
+      const wordRe = new RegExp(`(?:^|\\s)${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s|$)`, "i");
+      if (wordRe.test(profile.name.toLowerCase())) return profile;
+    }
+  }
+  const wwMatch = matchWastewaterAsFS(searchTerm);
+  if (wwMatch) return wwMatch;
+  return null;
+}
+
+function matchWastewaterAsFS(searchTerm: string): FeedstockProfile | null {
+  for (const wwProfile of WASTEWATER_INFLUENT_LIBRARY) {
+    if (wwProfile.name.toLowerCase() === searchTerm) {
+      return wastewaterToFeedstockProfile(wwProfile);
+    }
+    for (const alias of wwProfile.aliases) {
+      if (alias.length >= 4 && searchTerm.includes(alias)) {
+        return wastewaterToFeedstockProfile(wwProfile);
+      }
+      if (alias.includes(searchTerm)) {
+        return wastewaterToFeedstockProfile(wwProfile);
+      }
+    }
+  }
+  const WW_STOP_WORDS = new Set(["wastewater", "waste", "water", "sludge", "liquid", "solid", "mixed", "organic", "processing", "residual", "residuals"]);
+  const words = searchTerm.split(/\s+/).filter(w => w.length >= 4 && !WW_STOP_WORDS.has(w));
+  for (const wwProfile of WASTEWATER_INFLUENT_LIBRARY) {
+    for (const word of words) {
+      const wordRe = new RegExp(`(?:^|\\s)${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\s|$)`, "i");
+      if (wordRe.test(wwProfile.name.toLowerCase())) {
+        return wastewaterToFeedstockProfile(wwProfile);
       }
     }
   }
   return null;
+}
+
+function wastewaterToFeedstockProfile(ww: WastewaterInfluentProfile): FeedstockProfile {
+  const props = ww.properties;
+  let derivedTs = "5";
+  if (props.tss?.value) {
+    const tssMgL = parseMidpoint(props.tss.value);
+    if (tssMgL > 0) {
+      derivedTs = String(Math.round((tssMgL / 10000) * 1.3 * 10) / 10);
+    }
+  }
+  return {
+    name: `${ww.name} (as feedstock)`,
+    aliases: ww.aliases,
+    category: ww.category,
+    properties: {
+      totalSolids: {
+        value: derivedTs,
+        unit: "% wet basis",
+        confidence: "low" as const,
+        provenance: `Derived from TSS ${props.tss?.value || 'N/A'} mg/L in wastewater influent library (TSS/10000 × 1.3)`,
+        group: "physical",
+        displayName: "Total Solids (TS)",
+        sortOrder: 3,
+      },
+      volatileSolids: {
+        value: "80",
+        unit: "% of TS",
+        confidence: "low" as const,
+        provenance: "Default assumption for industrial wastewater solids used as AD feedstock",
+        group: "physical",
+        displayName: "Volatile Solids (VS)",
+        sortOrder: 4,
+      },
+      methanePotential: {
+        value: "0.30",
+        unit: "m³ CH₄/kg VS",
+        confidence: "low" as const,
+        provenance: "Conservative default BMP for industrial wastewater solids; actual value depends on waste stream composition",
+        group: "biochemical",
+        displayName: "Biochemical Methane Potential (BMP)",
+        sortOrder: 10,
+      },
+      biodegradableFraction: {
+        value: "70",
+        unit: "% of VS",
+        confidence: "low" as const,
+        provenance: "Default biodegradable fraction for industrial wastewater solids",
+        group: "biochemical",
+        displayName: "Biodegradable Fraction of VS",
+        sortOrder: 9,
+      },
+      inertFraction: {
+        value: "5",
+        unit: "% by mass",
+        confidence: "low" as const,
+        provenance: "Default inert fraction for industrial wastewater",
+        group: "contaminants",
+        displayName: "Inert/Contaminant Fraction",
+        sortOrder: 11,
+      },
+      tkn: {
+        value: props.tkn?.value || "3.0",
+        unit: "g/kg wet",
+        confidence: "low" as const,
+        provenance: props.tkn?.provenance || "Default TKN for industrial wastewater",
+        group: "extended",
+        displayName: "Total Kjeldahl Nitrogen (TKN)",
+        sortOrder: 13,
+      },
+    },
+  };
 }
 
 function parseVolumeToTonsPerYear(volume: string, unit: string): number {
