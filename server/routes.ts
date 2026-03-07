@@ -3133,21 +3133,19 @@ export async function registerRoutes(
       let results;
       const ptLower = projectType.toLowerCase().trim();
 
-      if (hasDesignOverrides) {
-        console.log(`Mass Balance Recompute: Deterministic recalculation with design overrides: ${JSON.stringify(designOverrides)}`);
-        if (ptLower === "b" || ptLower.includes("type b") || ptLower.includes("greenfield")) {
-          const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
-          results = calculateMassBalanceTypeB(upif, designOverrides);
-        } else if (ptLower === "c" || ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
-          const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
-          results = calculateMassBalanceTypeC(upif, designOverrides);
-        } else if (ptLower === "d" || ptLower.includes("type d") || ptLower.includes("hybrid")) {
-          const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
-          results = calculateMassBalanceTypeD(upif, designOverrides);
-        } else {
-          const { calculateMassBalance } = await import("./services/massBalance");
-          results = calculateMassBalance(upif);
-        }
+      const isRngType = ptLower === "b" || ptLower === "c" || ptLower === "d"
+        || ptLower.includes("type b") || ptLower.includes("type c") || ptLower.includes("type d")
+        || ptLower.includes("greenfield") || ptLower.includes("bolt-on") || ptLower.includes("bolt on") || ptLower.includes("hybrid");
+
+      if (isRngType) {
+        console.log(`Mass Balance Recompute: Deterministic recalculation${hasDesignOverrides ? ` with design overrides: ${JSON.stringify(designOverrides)}` : ""}`);
+        const { generateDeterministicMassBalance } = await import("./services/massBalanceDeterministic");
+        const detResult = generateDeterministicMassBalance(upif, projectType, hasDesignOverrides ? designOverrides : undefined);
+        results = detResult.results;
+      } else if (hasDesignOverrides) {
+        console.log(`Mass Balance Recompute: Type A deterministic recalculation with design overrides: ${JSON.stringify(designOverrides)}`);
+        const { calculateMassBalance } = await import("./services/massBalance");
+        results = calculateMassBalance(upif);
       } else {
         const preferredModel = (scenario?.preferredModel || "gpt5") as LLMProvider;
         try {
@@ -3157,19 +3155,8 @@ export async function registerRoutes(
           console.log(`Mass Balance Recompute: AI succeeded using ${aiResult.providerLabel}`);
         } catch (aiError) {
           console.warn(`Mass Balance Recompute: AI failed, falling back to deterministic:`, (aiError as Error).message);
-          if (ptLower === "b" || ptLower.includes("type b") || ptLower.includes("greenfield")) {
-            const { calculateMassBalanceTypeB } = await import("./services/massBalanceTypeB");
-            results = calculateMassBalanceTypeB(upif);
-          } else if (ptLower === "c" || ptLower.includes("type c") || ptLower.includes("bolt-on") || ptLower.includes("bolt on")) {
-            const { calculateMassBalanceTypeC } = await import("./services/massBalanceTypeC");
-            results = calculateMassBalanceTypeC(upif);
-          } else if (ptLower === "d" || ptLower.includes("type d") || ptLower.includes("hybrid")) {
-            const { calculateMassBalanceTypeD } = await import("./services/massBalanceTypeD");
-            results = calculateMassBalanceTypeD(upif);
-          } else {
-            const { calculateMassBalance } = await import("./services/massBalance");
-            results = calculateMassBalance(upif);
-          }
+          const { calculateMassBalance } = await import("./services/massBalance");
+          results = calculateMassBalance(upif);
         }
       }
 
