@@ -1048,7 +1048,7 @@ function buildAssumptions(feedstocks: ParsedFeedstock[], calc: BiogasCalcResult,
     assumptions.push(
       { parameter: `${fs.name} — Total Solids`, value: `${fs.tsPct}%`, source: src },
       { parameter: `${fs.name} — Volatile Solids`, value: `${fs.vsPctOfTs}% of TS`, source: src },
-      { parameter: `${fs.name} — BMP`, value: `${fs.bmpM3CH4PerKgVS} m³ CH₄/kg VS`, source: src },
+      { parameter: `${fs.name} — Energy Yield`, value: `${(fs.bmpM3CH4PerKgVS * (fs.tsPct / 100) * (fs.vsPctOfTs / 100) * 907.185 * 35.315 * 1012 / 1e6).toFixed(2)} MMBTU/ton`, source: src },
     );
   }
 
@@ -1947,7 +1947,7 @@ function generateTypeDMassBalance(upif: any): DeterministicMBResult {
     assumptions.push(
       { parameter: `${fs.name} — Total Solids`, value: `${fs.tsPct}%`, source: src },
       { parameter: `${fs.name} — Volatile Solids`, value: `${fs.vsPctOfTs}% of TS`, source: src },
-      { parameter: `${fs.name} — BMP`, value: `${fs.bmpM3CH4PerKgVS} m³ CH₄/kg VS`, source: src },
+      { parameter: `${fs.name} — Energy Yield`, value: `${(fs.bmpM3CH4PerKgVS * (fs.tsPct / 100) * (fs.vsPctOfTs / 100) * 907.185 * 35.315 * 1012 / 1e6).toFixed(2)} MMBTU/ton`, source: src },
     );
   }
 

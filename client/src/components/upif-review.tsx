@@ -238,10 +238,53 @@ function FeedstockSpecsTable({
 }) {
   const avgFlowGPD = projectType === "A" ? extractAvgFlowGPD(specs, feedstockVolume, feedstockUnit) : null;
 
+  const hiddenKeys = new Set(["methanePotential"]);
+
+  const enrichedSpecs = { ...specs };
+  if (enrichedSpecs.methanePotential && !enrichedSpecs.energyYield) {
+    const bmpSpec = enrichedSpecs.methanePotential;
+    const tsSpec = enrichedSpecs.totalSolids;
+    const vsSpec = enrichedSpecs.volatileSolids;
+    const bmpVal = bmpSpec.value?.replace(/[–—]/g, "-");
+    const bmpMatch = bmpVal?.match(/([\d.]+)\s*[-]\s*([\d.]+)/);
+    const bmpMid = bmpMatch ? (parseFloat(bmpMatch[1]) + parseFloat(bmpMatch[2])) / 2 : parseFloat(bmpVal || "0");
+    let bmpM3 = bmpMid;
+    const bmpUnit = bmpSpec.unit || "";
+    if (/scf.*lb/i.test(bmpUnit)) bmpM3 = bmpM3 * 2.20462 / 35.315;
+    else if (/ml/i.test(bmpUnit)) bmpM3 = bmpM3 / 1000;
+    else if (!/m³|m3/i.test(bmpUnit) && bmpM3 > 10) bmpM3 = bmpM3 / 1000;
+    const tsMid = (() => { const v = tsSpec?.value?.replace(/[–—]/g, "-"); const m = v?.match(/([\d.]+)\s*[-]\s*([\d.]+)/); return m ? (parseFloat(m[1]) + parseFloat(m[2])) / 2 : parseFloat(v || "15"); })();
+    const vsMid = (() => { const v = vsSpec?.value?.replace(/[–—]/g, "-"); const m = v?.match(/([\d.]+)\s*[-]\s*([\d.]+)/); return m ? (parseFloat(m[1]) + parseFloat(m[2])) / 2 : parseFloat(v || "85"); })();
+    const mmbtu = bmpM3 * (tsMid / 100) * (vsMid / 100) * 907.185 * 35.315 * 1012 / 1e6;
+    if (mmbtu > 0 && isFinite(mmbtu)) {
+      let mmbtuLow = mmbtu, mmbtuHigh = mmbtu;
+      if (bmpMatch) {
+        let lo = parseFloat(bmpMatch[1]), hi = parseFloat(bmpMatch[2]);
+        if (/scf.*lb/i.test(bmpUnit)) { lo = lo * 2.20462 / 35.315; hi = hi * 2.20462 / 35.315; }
+        else if (/ml/i.test(bmpUnit)) { lo = lo / 1000; hi = hi / 1000; }
+        else if (!/m³|m3/i.test(bmpUnit) && lo > 10) { lo = lo / 1000; hi = hi / 1000; }
+        mmbtuLow = lo * (tsMid / 100) * (vsMid / 100) * 907.185 * 35.315 * 1012 / 1e6;
+        mmbtuHigh = hi * (tsMid / 100) * (vsMid / 100) * 907.185 * 35.315 * 1012 / 1e6;
+      }
+      const valueStr = mmbtuLow === mmbtuHigh ? mmbtu.toFixed(2) : `${mmbtuLow.toFixed(2)}-${mmbtuHigh.toFixed(2)}`;
+      enrichedSpecs.energyYield = {
+        value: valueStr,
+        unit: "MMBTU/ton",
+        source: bmpSpec.source,
+        confidence: bmpSpec.confidence,
+        provenance: `BMP ${bmpM3.toFixed(2)} m³ CH₄/kg VS × ${tsMid}% TS × ${vsMid}% VS/TS × 907.185 kg/ton × 35.315 scf/m³ × 1,012 BTU/scf ÷ 1,000,000 = ${mmbtu.toFixed(2)} MMBTU/ton`,
+        group: "biochemical",
+        displayName: "Energy Yield",
+        sortOrder: 10.5,
+      };
+    }
+  }
+
   const grouped: Record<string, Array<[string, EnrichedFeedstockSpec]>> = {};
 
-  for (const [key, spec] of Object.entries(specs)) {
+  for (const [key, spec] of Object.entries(enrichedSpecs)) {
     if (deletedKeys?.has(key)) continue;
+    if (hiddenKeys.has(key)) continue;
     const group = spec.group || "extended";
     if (!grouped[group]) {
       grouped[group] = [];

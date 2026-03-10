@@ -60,7 +60,6 @@ export function getDefaultOpexAssumptions(projectType: string, massBalanceResult
       { key: "ad_heat_supply_efficiency", parameter: "AD Heat Supply Efficiency", value: 82, unit: "%", source: "Burnham OpEx Model", category: "Energy", description: "Heat distribution system efficiency" },
       { key: "ad_import_temp", parameter: "AD Import Temperature", value: 76, unit: "°F", source: "Burnham OpEx Model", category: "Energy", description: "Temperature of incoming feedstock/influent" },
       { key: "ad_operating_temp", parameter: "AD Operating Temperature", value: 95, unit: "°F", source: "Burnham OpEx Model", category: "Energy", description: "Target digester operating temperature" },
-      { key: "feedstock_receiving_cost", parameter: "Feedstock Receiving & Handling", value: pt === "b" ? 15 : 5, unit: "$/ton", source: "Industry estimate", category: "Chemical", description: "Cost for feedstock receiving, screening, and preprocessing" },
       { key: "guu_consumables_per_scfm", parameter: "GUU Consumables", value: 90, unit: "$/scfm biogas", source: "Burnham OpEx Model", category: "Chemical", description: "Annual consumables cost per scfm biogas for gas upgrading unit" },
       { key: "liquid_digestate_disposal_cost", parameter: "Liquid Digestate Disposal", value: 0.01, unit: "$/gal", source: "Burnham OpEx Model", category: "Disposal", description: "Cost to haul and dispose of liquid digestate fraction" },
       { key: "solid_digestate_disposal_cost", parameter: "Solid Digestate Disposal", value: 10, unit: "$/ton", source: "Burnham OpEx Model", category: "Disposal", description: "Cost to haul and land-apply solid digestate fraction" },
@@ -399,37 +398,6 @@ export function calculateAllDeterministicLineItems(
       scalingBasis: `${flowMGD} MGD × 365 days`,
       costBasis: `Deterministic: $${chemicalCostPerMG}/MG × ${annualMG.toLocaleString()} MG/yr`,
       source: "EPA CWNS benchmark",
-      notes: "",
-      isOverridden: false,
-      isLocked: false,
-    });
-  }
-
-  const feedstockReceivingCost = getVal("feedstock_receiving_cost");
-  if (feedstockReceivingCost > 0 && isRNG) {
-    let annualTons = 0;
-    if (summary) {
-      for (const [key, val] of Object.entries(summary)) {
-        if (key.toLowerCase().includes("feedstock") && val.unit?.toLowerCase().includes("ton")) {
-          const v = parseFloat(String(val.value).replace(/,/g, ""));
-          if (!isNaN(v) && v > 0) annualTons = v * 365;
-        }
-      }
-    }
-    if (annualTons <= 0) annualTons = 36500;
-    const annualCost = Math.round(feedstockReceivingCost * annualTons);
-    lineItems.push({
-      id: makeId(),
-      category: "Chemical",
-      equipmentArea: "AD",
-      description: `Feedstock receiving & handling ($${feedstockReceivingCost}/ton × ${annualTons.toLocaleString()} tons/yr)`,
-      annualCost: annualCost,
-      unitCost: feedstockReceivingCost,
-      unitBasis: "$/ton",
-      costPerMMBtu: annualRngMMBtu > 0 ? Math.round((annualCost / annualRngMMBtu) * 100) / 100 : undefined,
-      scalingBasis: `${annualTons.toLocaleString()} tons/yr throughput`,
-      costBasis: `Deterministic: $${feedstockReceivingCost}/ton × ${annualTons.toLocaleString()} tons/yr`,
-      source: "Industry estimate",
       notes: "",
       isOverridden: false,
       isLocked: false,

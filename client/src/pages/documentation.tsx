@@ -217,7 +217,7 @@ export default function Documentation() {
                   </p>
                   <div className="text-xs space-y-1">
                     <p className="font-medium">Key Inputs:</p>
-                    <p className="text-muted-foreground">Feedstock tonnage (tons/day), TS%, VS/TS, BMP, C:N ratio</p>
+                    <p className="text-muted-foreground">Feedstock tonnage (tons/day), TS%, VS/TS, Energy Yield (MMBTU/ton), C:N ratio</p>
                     <p className="font-medium mt-1">Outputs:</p>
                     <p className="text-muted-foreground">Pipeline-quality RNG, solid digestate, liquid centrate</p>
                   </div>
@@ -263,7 +263,7 @@ export default function Documentation() {
                   </p>
                   <div className="text-xs space-y-1">
                     <p className="font-medium">Key Inputs:</p>
-                    <p className="text-muted-foreground">Influent flow + analytes AND trucked feedstock specs (TS/VS/BMP/C:N)</p>
+                    <p className="text-muted-foreground">Influent flow + analytes AND trucked feedstock specs (TS/VS/Energy Yield/C:N)</p>
                     <p className="font-medium mt-1">Outputs:</p>
                     <p className="text-muted-foreground">Treated effluent, RNG, dewatered biosolids</p>
                   </div>
@@ -290,7 +290,7 @@ export default function Documentation() {
                 <FlowStep step={2} icon={Sparkles} title="Parameter Extraction" badges={["AI", "Type-Specific"]}
                   description="Using the classified type, a type-specific AI prompt extracts every technical parameter from user text and uploaded documents. Returns structured JSON with feedstock specs, location, outputs, and constraints." />
                 <FlowStep step={3} icon={Database} title="Feedstock & Output Enrichment" badges={["Knowledge Base"]}
-                  description="Extracted feedstock types are matched against a built-in library of AD feedstock characteristics. Missing parameters (TS%, VS/TS, BMP, C:N, etc.) are filled with industry defaults. Output profiles are enriched with acceptance criteria." />
+                  description="Extracted feedstock types are matched against a built-in library of AD feedstock characteristics. Missing parameters (TS%, VS/TS, Energy Yield, C:N, etc.) are filled with industry defaults. Output profiles are enriched with acceptance criteria." />
                 <FlowStep step={4} icon={Shield} title="Validation Pipeline" badges={["10 Guardrails"]}
                   description="A multi-step validation pipeline runs 10 guardrails to ensure data integrity: biosolids rejection, output spec sanitization, type-specific feedstock validation, TS/TSS guardrail, swap detection, biogas vs. RNG separation, and design driver completeness." />
                 <FlowStep step={5} icon={FileText} title="UPIF Generation & Review" badges={["Interactive"]}
@@ -379,7 +379,7 @@ export default function Documentation() {
                     <p className="text-sm text-muted-foreground">
                       Focuses on influent/effluent characterization. Extracts flow rates (GPD/MGD), 
                       concentrations (BOD, COD, TSS, FOG, TKN, pH in mg/L), discharge permits, 
-                      and effluent limits. Blocks solids-basis parameters (TS%, VS/TS, BMP) which don't apply to liquid wastewater.
+                      and effluent limits. Blocks solids-basis parameters (TS%, VS/TS, Energy Yield) which don't apply to liquid wastewater.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="secondary">Flow (GPD/MGD)</Badge>
@@ -405,19 +405,19 @@ export default function Documentation() {
                   <AccordionContent className="space-y-3">
                     <p className="text-sm text-muted-foreground">
                       Extracts solid/semi-solid feedstock properties: tonnage (tons/day or tons/year), 
-                      total solids (TS%), volatile solids ratio (VS/TS), biochemical methane potential (BMP), 
+                      total solids (TS%), volatile solids ratio (VS/TS), energy yield (MMBTU/ton), 
                       C:N ratio, delivery schedule, and preprocessing requirements.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="secondary">Tonnage (tons/day)</Badge>
                       <Badge variant="secondary">TS%</Badge>
                       <Badge variant="secondary">VS/TS</Badge>
-                      <Badge variant="secondary">BMP (scf/lb VS)</Badge>
+                      <Badge variant="secondary">Energy Yield (MMBTU/ton)</Badge>
                       <Badge variant="secondary">C:N Ratio</Badge>
                       <Badge variant="secondary">Bulk Density</Badge>
                     </div>
                     <PromptLink name="Extraction - Type B (RNG Greenfield)" promptKey="extraction_type_b"
-                      description="Solid feedstock extraction with tonnage, solids content, and methane potential." />
+                      description="Solid feedstock extraction with tonnage, solids content, and energy yield." />
                   </AccordionContent>
                 </AccordionItem>
 
@@ -455,13 +455,13 @@ export default function Documentation() {
                   </AccordionTrigger>
                   <AccordionContent className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Combines wastewater parameters (flow, analytes) with trucked feedstock specs (TS/VS/BMP/C:N).
+                      Combines wastewater parameters (flow, analytes) with trucked feedstock specs (TS/VS/Energy Yield/C:N).
                       Must identify both wastewater streams and solid co-digestion feedstocks.
                       Hard separation enforced: wastewater carries flow + mg/L analytes, trucked feedstocks carry solids-basis parameters.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="secondary">WW: Flow + Analytes</Badge>
-                      <Badge variant="secondary">Trucked: TS/VS/BMP</Badge>
+                      <Badge variant="secondary">Trucked: TS/VS/Energy Yield</Badge>
                       <Badge variant="secondary">Sludge Specs</Badge>
                       <Badge variant="secondary">Co-digestion</Badge>
                     </div>
@@ -504,7 +504,7 @@ export default function Documentation() {
                       <div className="flex flex-wrap gap-1">
                         <Badge variant="secondary" className="text-xs">TS%</Badge>
                         <Badge variant="secondary" className="text-xs">VS/TS</Badge>
-                        <Badge variant="secondary" className="text-xs">BMP</Badge>
+                        <Badge variant="secondary" className="text-xs">Energy Yield</Badge>
                         <Badge variant="secondary" className="text-xs">C:N Ratio</Badge>
                         <Badge variant="secondary" className="text-xs">Bulk Density</Badge>
                         <Badge variant="secondary" className="text-xs">pH Range</Badge>
@@ -636,7 +636,7 @@ export default function Documentation() {
                   </AccordionTrigger>
                   <AccordionContent className="space-y-2">
                     <GuardrailItem code="V2" name="Solids Parameter Block" severity="error"
-                      description="If mg/L analytes (BOD/COD/TSS/FOG/TKN/TP) or flow units (MGD/GPD) are detected, ALL solids-basis parameters are hard-blocked: VS/TS, BMP, C:N, bulk density, moisture%, delivery form, preprocessing. Also blocks primary/WAS sludge terminology." />
+                      description="If mg/L analytes (BOD/COD/TSS/FOG/TKN/TP) or flow units (MGD/GPD) are detected, ALL solids-basis parameters are hard-blocked: VS/TS, Energy Yield, C:N, bulk density, moisture%, delivery form, preprocessing. Also blocks primary/WAS sludge terminology." />
                     <GuardrailItem code="V2" name="Fail-Fast Check" severity="error"
                       description="Type A requires at minimum: influent flow rate AND at least one mg/L analyte before UPIF can be generated. Missing either triggers an error that blocks generation." />
                   </AccordionContent>
@@ -651,7 +651,7 @@ export default function Documentation() {
                   </AccordionTrigger>
                   <AccordionContent>
                     <GuardrailItem code="V2b" name="Hard Stream Separation" severity="warning"
-                      description="For Type D (Hybrid): wastewater streams must carry flow + mg/L analytes only. Trucked feedstocks must carry TS/VS/BMP/C:N only. Cross-contaminated parameters are stripped and moved to the correct stream or unmapped." />
+                      description="For Type D (Hybrid): wastewater streams must carry flow + mg/L analytes only. Trucked feedstocks must carry TS/VS/Energy Yield/C:N only. Cross-contaminated parameters are stripped and moved to the correct stream or unmapped." />
                   </AccordionContent>
                 </AccordionItem>
 
@@ -699,7 +699,7 @@ export default function Documentation() {
                   </AccordionTrigger>
                   <AccordionContent>
                     <GuardrailItem code="V4" name="Misassignment Detection" severity="warning"
-                      description="Wastewater-labeled streams containing solids-basis parameters (TS%, moisture%, BMP) but no flow rate or mg/L analytes are flagged as potential misassignments. The solids parameters are moved to unmapped and a warning is issued." />
+                      description="Wastewater-labeled streams containing solids-basis parameters (TS%, moisture%, Energy Yield) but no flow rate or mg/L analytes are flagged as potential misassignments. The solids parameters are moved to unmapped and a warning is issued." />
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
