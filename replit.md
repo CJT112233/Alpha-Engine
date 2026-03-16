@@ -29,7 +29,6 @@ Unit conventions (US-based):
 - **Configurable Prompt Templates**: AI prompts are customizable via a Documentation page.
 - **Editable Reference Libraries**: Feedstock, wastewater influent, and output criteria profiles are editable.
 - **Editable Validation Config**: Validation thresholds and rules are configurable via a Documentation page.
-- **Databricks Sync**: All configuration edits are automatically synced to Databricks.
 - **Generation Stats**: Tracks timing and metadata for all AI-generated documents (UPIF, Mass Balance, CapEx).
 - **AI-Powered Mass Balance**: Generates mass balances using LLMs for Type A (Wastewater). Type B/C/D use deterministic calculators only (no AI fallback). Both initial generation AND recompute for RNG types use `massBalanceDeterministic.ts` (BMP-based biogas calculation per feedstock via feedstock library lookup). The older `massBalanceTypeB.ts` (gasYield-based) is deprecated and no longer called from routes. Prodeval gas upgrading supports 6 tiers: 400, 800, 1,200 SCFM (standard) and 1,500, 1,800, 2,100 SCFM (bespoke). Max capacity 2,100 SCFM. No finalization gate — CapEx/OpEx can be generated from any mass balance regardless of status. Unit conversion constant: `KG_PER_US_TON = 907.185` used in Type B and Type D deterministic calculators for all mass (tpd → kg) and volume (tpd → m³ via density in kg/m³) conversions. Design criteria override key `storageTime` maps to `storageDays` in `DesignOverrides`. parseFeedstockVolume handles: MGD, GPD, GPM, GPH, gal/day, m³/d, liters/day, tons (day/week/month/year), lb/day, kg/day. BMP unit conversion is unit-aware: divide by 1000 only if unit contains "mL"; keep as-is if unit contains "m³"; divide by 1000 only if bare number > 10 (assume mL). Feedstock library matching uses stop words ("wastewater", "waste", "sludge", etc.) to prevent false word-level matches. TS% derivation fallback: if no TS from specs or library, derives from TSS (TSS mg/L / 10,000 × 1.3). FEEDSTOCK_LIBRARY has 36 entries including 10 distillery/brewery types (pot ale, spent wash, thin/whole/thick stillage, draff, sugarcane vinasse, tequila vinasse, corn ethanol stillage, brewery wastewater) with literature-sourced BMP/TS/VS data. UPIF displays "Energy Yield" (MMBTU/ton) instead of BMP — stored as `energyYield` property in feedstock library; `methanePotential` hidden from UI but retained internally for mass balance. Conversion: MMBTU/ton = BMP × TS% × VS/TS% × 907.185 × 35.315 × 1,012 ÷ 1,000,000. UI dynamically computes energyYield from methanePotential for backward-compatible display of existing stored UPIFs. Mass balance assumptions output also shows Energy Yield (MMBTU/ton). Cross-library bridge: if no feedstock library match, `matchFeedstockLibrary()` falls back to WASTEWATER_INFLUENT_LIBRARY via `wastewaterToFeedstockProfile()`, deriving TS from TSS and using conservative defaults for VS (80%) and BMP (0.30 m³ CH₄/kg VS). This allows wastewater types (e.g., meat processing, dairy processing) to be used as feedstock in Type B/D projects.
 - **Output Value Cascade**: Summary fields are split into Design Inputs (editable, trigger recalculation) and Calculated Outputs (read-only). Input fields: totalFeedRate, totalSolidsPct, volatileSolidsPct, hrt, vsDestruction, biogasAvgFlowScfm, rngAvgFlowScfm, biogasCH4, biogasCO2, biogasH2S, methaneRecovery. Defined in `SUMMARY_INPUT_KEYS` in `designOverrides.ts`. AD stage designCriteria = inputs (editable), outputStream = outputs (read-only). Override fields in `DesignOverrides` interface: `biogasScfm`, `rngScfm`, `feedTpd`, `totalSolidsPct`, `volatileSolidsPct`, `ch4Pct`, `co2Pct`, `h2sPpmv`, `methaneRecovery`. UI shows inputs with blue border + pencil icon under "Design Inputs" header; outputs shown as plain text under "Calculated Outputs" header.
@@ -47,7 +46,6 @@ Unit conventions (US-based):
 - **Backend**: Express.js, TypeScript, RESTful API, Multer.
 - **Data Storage**: PostgreSQL, Drizzle ORM.
 - **Shared Architecture**: Shared types/schemas, modular UI components.
-- **Databricks Migration**: Transitioning to a Databricks environment with FastAPI (Python) backend, Delta tables, and Databricks Model Serving. Existing React frontend remains.
 
 ## External Dependencies
 
@@ -79,22 +77,3 @@ Unit conventions (US-based):
 - Stripe SDK
 - Nodemailer
 
-### Databricks Specific
-- Databricks Model Serving
-- ReportLab (for PDF generation)
-- openpyxl (for Excel generation)
-
-## Databricks App Port Status (Python/FastAPI)
-Ported services in `databricks_app/services/`:
-- `capex_pricing_library.py` - Burnham CapEx Model V5.1 with Prodeval pricing at 400/800/1200 SCFM tiers
-- `capex_deterministic.py` - Deterministic CapEx generation (hybrid AI+deterministic for RNG types)
-- `opex_recompute.py` - OpEx deterministic recalculation with editable assumptions and unit costs
-- `design_overrides.py` - Dynamic mass balance recalculation when design parameters change
-- `financial_model.py` - 20-year pro-forma with IRR/NPV/MOIC/payback, 45Z tax credits, feedstock economics
-- `export_service.py` - Project Summary PDF export combining UPIF + MB + CapEx + OpEx + Financial Model
-- `storage.py` - Delta table CRUD for opex_estimates and financial_models
-
-API routes added to `databricks_app/api/routes.py`:
-- OpEx CRUD + recompute, CapEx deterministic, design overrides/recalculate
-- Financial model CRUD + recalculate, Project Summary PDF export
-- All routes use camelCase JSON keys for React frontend compatibility

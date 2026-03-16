@@ -18,7 +18,6 @@ import { insertProjectSchema, insertScenarioSchema, insertTextEntrySchema, type 
 import { z } from "zod";
 import { type EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import { enrichFeedstockSpecsFromDb, enrichBiogasSpecsFromDb } from "./enrichment-db";
-import { syncPromptToDatabricks, syncLibraryProfileToDatabricks, syncValidationConfigToDatabricks } from "./databricks-sync";
 import { enrichOutputSpecs, matchOutputType, type EnrichedOutputSpec } from "@shared/output-criteria-library";
 import * as XLSX from "xlsx";
 import mammoth from "mammoth";
@@ -769,9 +768,6 @@ export async function registerRoutes(
         template: template.trim(),
         isSystemPrompt: defaults.isSystemPrompt,
       });
-      syncPromptToDatabricks(key, template.trim()).catch(err =>
-        console.error("[Databricks Sync] Background prompt sync failed:", err)
-      );
       res.json({
         ...saved,
         availableVariables: defaults.availableVariables,
@@ -906,17 +902,6 @@ export async function registerRoutes(
       if (!updated) {
         return res.status(404).json({ error: "Profile not found" });
       }
-      syncLibraryProfileToDatabricks({
-        libraryType: updated.libraryType,
-        name: updated.name,
-        aliases: updated.aliases || [],
-        category: updated.category || "",
-        properties: updated.properties,
-        sortOrder: updated.sortOrder || 0,
-        isCustomized: updated.isCustomized || false,
-      }).catch(err =>
-        console.error("[Databricks Sync] Background library profile sync failed:", err)
-      );
       res.json(updated);
     } catch (error) {
       console.error("Error updating library profile:", error);
@@ -936,17 +921,6 @@ export async function registerRoutes(
         sortOrder: sortOrder || 0,
         isCustomized: true,
       });
-      syncLibraryProfileToDatabricks({
-        libraryType: profile.libraryType,
-        name: profile.name,
-        aliases: profile.aliases || [],
-        category: profile.category || "",
-        properties: profile.properties,
-        sortOrder: profile.sortOrder || 0,
-        isCustomized: true,
-      }).catch(err =>
-        console.error("[Databricks Sync] Background new library profile sync failed:", err)
-      );
       res.status(201).json(profile);
     } catch (error) {
       console.error("Error creating library profile:", error);
@@ -1009,14 +983,6 @@ export async function registerRoutes(
       });
       const { invalidateValidationConfigCache } = await import("./validation-config-loader");
       invalidateValidationConfigCache();
-      syncValidationConfigToDatabricks({
-        configKey: updated.configKey,
-        configValue: updated.configValue,
-        description: updated.description || "",
-        category: updated.category || "",
-      }).catch(err =>
-        console.error("[Databricks Sync] Background validation config sync failed:", err)
-      );
       res.json(updated);
     } catch (error) {
       console.error("Error updating validation config:", error);
