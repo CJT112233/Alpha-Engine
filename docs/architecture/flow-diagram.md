@@ -321,4 +321,4 @@ All prompts are user-editable via `/docs/prompts` page and stored in DB.
 
 5. **Every LLM step has a fallback.** Pattern-matching for extraction, deterministic calculators for mass balance, and provider failover for all steps.
 
-6. **Dual deployment.** The system runs on both Node.js/Express (Replit) and Python/FastAPI (Databricks), with identical logic mirrored across both stacks.
+6. **Single deployment.** The system runs on Node.js/Express (Replit).
