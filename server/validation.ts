@@ -1,7 +1,40 @@
+/**
+ * UPIF Validation Pipeline
+ *
+ * Sequential validator chain that sanitizes AI-extracted project parameters before
+ * they become part of the Unified Project Intake Form. Each validator targets a
+ * specific class of misclassification that commonly occurs when LLMs extract
+ * structured data from unstructured project descriptions.
+ *
+ * Pipeline order (as called from the UPIF generation route):
+ *   1. rejectBiosolidsOutputProfile — blocks land-application digestate output profile
+ *   2. validateAndSanitizeOutputSpecs — sanitizes RNG gas quality specs (solids in gas
+ *      section, raw biogas methane <90%, moisture with non-gas units)
+ *   3. validateBiogasVsRng — catches methane <90% = raw biogas, not pipeline RNG
+ *   4. validateFeedstocksForTypeA — blocks solids-basis params (VS/TS, BMP, C:N) from
+ *      wastewater influent; requires flow rate + mg/L analytes
+ *   5. validateFeedstocksForTypeD — requires both WW flow AND co-digestion feedstocks
+ *   6. validateTypeADesignDrivers — auto-populates BOD/COD/TSS/FOG/TKN drivers +
+ *      avg/min/peak flow from industry-specific defaults
+ *   7. applyTsTssGuardrail — prevents TS default when only TSS was provided (TSS ≠ TS)
+ *   8. applySwapDetection — detects WW-labeled streams with solid specs + no flow =
+ *      mis-assigned feedstock data
+ *   9. deduplicateParameters — removes duplicate extracted params, keeping highest confidence
+ *  10. validateSectionAssignment — catches unit/section mismatches (gas units on solids params)
+ *
+ * Each validator returns { warnings, feedstocks/sanitized } so the caller can accumulate
+ * all warnings and apply all transformations in sequence.
+ */
+
 import type { EnrichedOutputSpec } from "@shared/output-criteria-library";
 import type { FeedstockEntry, EnrichedFeedstockSpecRecord } from "@shared/schema";
 import { getValidationConfigValue } from "./validation-config-loader";
 
+/**
+ * ValidationWarning: Structured warning/error emitted by each validator step.
+ * Accumulated across the full pipeline and returned to the client for display.
+ * Severity levels: "error" = blocks/removes data, "warning" = flags concern, "info" = informational.
+ */
 export interface ValidationWarning {
   field: string;
   section: string;
@@ -11,6 +44,11 @@ export interface ValidationWarning {
   originalUnit?: string;
 }
 
+/**
+ * PerformanceTarget: Removal efficiency targets extracted from output specs.
+ * Separated from concentration limits because they represent design goals
+ * (e.g., ">90% BOD removal") rather than discharge limits (e.g., "≤30 mg/L BOD").
+ */
 export interface PerformanceTarget {
   displayName: string;
   value: string;
@@ -20,12 +58,14 @@ export interface PerformanceTarget {
   group: string;
 }
 
+/** Units that only appear in gas-phase specifications — used to detect misplaced solids data in RNG output profiles */
 const GAS_ONLY_UNITS = new Set([
   "lb/mmscf", "ppmv", "mg/m³", "mg/m3", "°f", "°c",
   "dewpoint", "grain/100 scf", "btu/scf", "% ch₄", "% co₂",
   "% n₂", "% o₂", "%", "psig", "psi",
 ]);
 
+/** Patterns indicating solids-phase data — triggers rejection when found in RNG gas quality section */
 const SOLIDS_INDICATOR_PATTERNS = [
   /% ?ts/i,
   /% ?solids/i,
@@ -37,6 +77,7 @@ const SOLIDS_INDICATOR_PATTERNS = [
   /dry basis/i,
 ];
 
+/** Patterns for removal efficiency values — separated from concentration limits into PerformanceTargets */
 const REMOVAL_EFFICIENCY_PATTERNS = [
   /% ?removal/i,
   /removal ?%/i,
@@ -45,22 +86,30 @@ const REMOVAL_EFFICIENCY_PATTERNS = [
   /reduction/i,
 ];
 
+/** Moisture/water fields in RNG specs that must have gas-phase units (lb/MMscf, ppmv, dewpoint) */
 const RNG_GAS_MOISTURE_KEYS = new Set([
   "waterContent", "moistureContent", "waterDewpoint",
 ]);
 
+/** Terms that signal wastewater flow data — used by detectWastewaterContext to confirm liquid influent */
 const WASTEWATER_FLOW_INDICATORS = [
   "flow", "gpd", "mgd", "gpm", "m³/d", "m3/d", "gallons per day",
   "million gallons", "liters per day", "l/d", "cubic meters",
 ];
 
+/** Analyte patterns for wastewater influent characterization (mg/L concentrations) */
 const WASTEWATER_ANALYTE_PATTERNS = [
   /\bbod\b/i, /\bcod\b/i, /\btss\b/i, /\bfog\b/i, /\btkn\b/i, /\btp\b/i,
   /\btotal suspended/i, /\bbiochemical oxygen/i, /\bchemical oxygen/i,
 ];
 
+/** Unit patterns that confirm wastewater-style data (mg/L, GPD, MGD, etc.) */
 const WASTEWATER_UNIT_INDICATORS = [/mg\/l/i, /mg\/L/i, /gpd/i, /mgd/i, /gpm/i, /m³\/d/i, /m3\/d/i];
 
+/**
+ * Explicit sludge terminology — when detected, indicates the AI extracted sludge/biosolids
+ * data instead of raw wastewater influent. Sludge is a WWTP byproduct, not an input stream.
+ */
 const SLUDGE_EXPLICIT_TERMS = [
   "primary sludge", "was ", "waste activated", "sludge blend",
   "sludge thickening", "thickened sludge", "biosolids",
@@ -68,21 +117,29 @@ const SLUDGE_EXPLICIT_TERMS = [
   "waste activated sludge",
 ];
 
+/** Spec keys that only make sense for sludge, not wastewater influent */
 const SLUDGE_ONLY_SPEC_KEYS = new Set([
   "deliveryForm", "receivingCondition", "preprocessingRequirement",
 ]);
 
+/** Spec keys that are solids-basis assumptions — blocked for wastewater influent characterization */
 const SLUDGE_ASSUMPTION_KEYS = new Set([
   "totalSolids", "volatileSolids", "vsTs", "moistureContent",
   "bulkDensity", "cnRatio", "methanePotential", "biodegradableFraction", "inertFraction",
 ]);
 
+/** Solids-basis spec keys used by applySwapDetection to identify mis-assigned feedstock data */
 const FEEDSTOCK_SOLID_SPEC_KEYS = new Set([
   "totalSolids", "volatileSolids", "vsTs", "cnRatio",
   "methanePotential", "biodegradableFraction", "inertFraction",
   "bulkDensity", "moistureContent",
 ]);
 
+/**
+ * Hard-block keys for Type A wastewater projects — these parameters are unconditionally
+ * removed from wastewater influent specs because they describe solids, not liquid influent.
+ * Includes identity keys (deliveryForm, receivingCondition) that only apply to trucked feedstocks.
+ */
 const WASTEWATER_HARD_BLOCK_KEYS = new Set([
   "totalSolids", "volatileSolids", "vsTs",
   "methanePotential", "biodegradableFraction", "inertFraction",
@@ -90,6 +147,11 @@ const WASTEWATER_HARD_BLOCK_KEYS = new Set([
   "deliveryForm", "receivingCondition", "preprocessingRequirement",
 ]);
 
+/**
+ * Primary sludge / WAS terminology — blocks feedstock names and spec values containing
+ * these terms. Wastewater influent projects should describe the incoming liquid stream,
+ * not downstream sludge products.
+ */
 const PRIMARY_WAS_TERMS = [
   "primary sludge", "waste activated sludge", "was ", "was/",
   "/was", "primary/was", "was blend", "sludge blend",
@@ -97,6 +159,11 @@ const PRIMARY_WAS_TERMS = [
   "biosolids", "return activated", "ras ", "ras/",
 ];
 
+/**
+ * Scans extracted parameters for wastewater-specific signals (flow rates and mg/L analytes).
+ * Used by multiple validators to determine if the project describes a liquid influent stream
+ * vs. a solids-basis feedstock. Both flow and analytes must be present for full WW confirmation.
+ */
 function detectWastewaterContext(
   extractedParams: Array<{ name: string; value?: string | null; unit?: string | null }>,
 ): { hasFlowRate: boolean; hasAnalytes: boolean; detectedAnalytes: string[] } {
@@ -119,6 +186,10 @@ function detectWastewaterContext(
   return { hasFlowRate, hasAnalytes, detectedAnalytes };
 }
 
+/**
+ * Checks if extracted parameters contain explicit sludge/biosolids terminology.
+ * Used by Type D validator — sludge context suggests the AI confused influent with sludge.
+ */
 function detectSludgeContext(
   extractedParams: Array<{ name: string; value?: string | null }>,
 ): boolean {
@@ -126,6 +197,11 @@ function detectSludgeContext(
   return SLUDGE_EXPLICIT_TERMS.some(s => allText.includes(s));
 }
 
+/**
+ * Validator #1: Rejects the "Solid Digestate - Land Application" output profile entirely.
+ * This system produces RNG and/or treated effluent — land-applied biosolids are not a valid
+ * output. All criteria from the rejected profile are moved to Unmapped for reference.
+ */
 export function rejectBiosolidsOutputProfile(
   outputSpecs: Record<string, Record<string, EnrichedOutputSpec>>,
 ): { sanitized: Record<string, Record<string, EnrichedOutputSpec>>; unmapped: Record<string, EnrichedOutputSpec>; warnings: ValidationWarning[] } {
@@ -155,6 +231,13 @@ export function rejectBiosolidsOutputProfile(
   return { sanitized, unmapped, warnings };
 }
 
+/**
+ * Validator #2: Sanitizes output specifications across all output profiles.
+ * For RNG profiles: rejects solids-indicator specs in gas section, catches non-gas moisture
+ * units, flags raw biogas methane (<90%) masquerading as pipeline RNG (≥96%), and validates
+ * composition field units. For effluent profiles: separates removal efficiency values
+ * (e.g., ">90% BOD removal") into PerformanceTargets, keeping only concentration limits.
+ */
 export function validateAndSanitizeOutputSpecs(
   outputSpecs: Record<string, Record<string, EnrichedOutputSpec>>,
   projectType: string | null,
@@ -295,6 +378,14 @@ export function validateAndSanitizeOutputSpecs(
   return { sanitized, unmapped, performanceTargets, warnings };
 }
 
+/**
+ * Validator #4: Type A (Wastewater Treatment) feedstock sanitization.
+ * Enforces that wastewater projects describe liquid influent, not solids:
+ * - Requires at least one flow rate (GPD/MGD/m³/d) AND one mg/L analyte (BOD/COD/TSS)
+ * - Hard-blocks all solids-basis parameters (VS/TS, BMP, C:N, delivery form, etc.)
+ * - Rejects BMP units (m³/kg VS, L/kg VS, ft³/lb) which are solids-basis metrics
+ * - Blocks primary/WAS sludge terminology in spec names and values
+ */
 export function validateFeedstocksForTypeA(
   feedstocks: FeedstockEntry[],
   extractedParams: Array<{ name: string; value?: string | null; category: string; unit?: string | null }>,
@@ -436,6 +527,12 @@ export function validateFeedstocksForTypeA(
   return { feedstocks: sanitizedFeedstocks, warnings, missingRequired };
 }
 
+/**
+ * Validator #5: Type D (Hybrid) feedstock completeness check.
+ * Hybrid projects require BOTH wastewater flow/analytes AND trucked-in co-digestion feedstocks.
+ * Also applies the same solids-basis blocking as Type A for any wastewater-labeled streams,
+ * while allowing solids-basis specs on the co-digestion feedstock streams.
+ */
 export function validateFeedstocksForTypeD(
   feedstocks: FeedstockEntry[],
   extractedParams: Array<{ name: string; value?: string | null; category: string; unit?: string | null }>,
@@ -566,6 +663,13 @@ export function validateFeedstocksForTypeD(
   return { feedstocks: sanitizedFeedstocks, warnings, missingRequired };
 }
 
+/**
+ * Validator #8: Swap detection for mis-assigned feedstock data.
+ * Catches the case where a wastewater-labeled stream (e.g., "Municipal Wastewater") contains
+ * solids-basis specs (TS%, VS%, BMP) but NO flow rate or mg/L analytes exist anywhere in
+ * the extracted parameters. This pattern indicates the AI confused a trucked feedstock
+ * (e.g., food waste) with wastewater. The solids specs are moved to Unmapped for review.
+ */
 export function applySwapDetection(
   feedstocks: FeedstockEntry[],
   extractedParams: Array<{ name: string; value?: string | null; unit?: string | null }>,
@@ -623,6 +727,12 @@ export function applySwapDetection(
   return { feedstocks: sanitized, warnings, swappedSpecs };
 }
 
+/**
+ * Validator #3: Biogas vs RNG methane content check.
+ * Raw biogas has 55-65% CH₄; pipeline-quality RNG requires ≥96% CH₄.
+ * If any methane field in the RNG output profile shows <90%, it's raw biogas data
+ * that was incorrectly placed in the RNG section. Moved to Unmapped with error severity.
+ */
 export function validateBiogasVsRng(
   outputSpecs: Record<string, Record<string, EnrichedOutputSpec>>,
 ): { sanitized: Record<string, Record<string, EnrichedOutputSpec>>; unmapped: Record<string, EnrichedOutputSpec>; warnings: ValidationWarning[] } {
@@ -671,6 +781,13 @@ export function validateBiogasVsRng(
   return { sanitized, unmapped, warnings };
 }
 
+/**
+ * Validator #7: TS/TSS disambiguation guardrail.
+ * TSS (Total Suspended Solids, mg/L) ≠ TS (Total Solids, % wet basis).
+ * If the user provided TSS but NOT TS, the library may have auto-populated a TS default.
+ * This validator removes that TS default to prevent confusion — TSS is a water quality
+ * analyte while TS is a solids characterization parameter.
+ */
 export function applyTsTssGuardrail(
   feedstocks: FeedstockEntry[],
   extractedParams: Array<{ name: string; value?: string | null; unit?: string | null }>,
@@ -702,6 +819,12 @@ export function applyTsTssGuardrail(
   return { feedstocks: sanitized, warnings };
 }
 
+/**
+ * Validator #9: Removes duplicate extracted parameters, keeping the one with highest confidence.
+ * Duplicates are identified by category + normalized name. When the AI extracts from multiple
+ * document sections, the same parameter may appear twice with different confidence levels.
+ * Confidence ranking: high (3) > medium (2) > low (1).
+ */
 export function deduplicateParameters(
   params: Array<{ name: string; value?: string | null; category: string; confidence?: string | null; unit?: string | null; source?: string | null }>,
 ): Array<{ name: string; value?: string | null; category: string; confidence?: string | null; unit?: string | null; source?: string | null }> {
@@ -725,6 +848,12 @@ export function deduplicateParameters(
   return Array.from(seen.values());
 }
 
+/**
+ * Validator #10: Cross-checks parameter units against their assigned section.
+ * Catches physically impossible combinations like solids parameters (TSS, sludge) with
+ * gas-phase units (ppmv, lb/MMscf), or gas parameters (methane, H₂S) with solids units
+ * (mg/kg, dry basis). Mismatched items are moved to Unmapped.
+ */
 export function validateSectionAssignment(
   params: Array<{ name: string; value?: string | null; category: string; unit?: string | null }>,
 ): { valid: typeof params; unmapped: typeof params; warnings: ValidationWarning[] } {
@@ -773,6 +902,12 @@ export function validateSectionAssignment(
   return { valid, unmapped: unmappedParams, warnings };
 }
 
+/**
+ * Core wastewater design drivers that must be present in the UPIF for Type A/D projects.
+ * Each driver defines matching rules (by key and display name patterns) so the validator
+ * can check whether the AI successfully extracted it from the user's input.
+ * Missing drivers are auto-populated from INDUSTRY_DEFAULTS based on feedstock type.
+ */
 const TYPE_A_DESIGN_DRIVER_SPECS: Array<{
   label: string;
   matchKeys: string[];
@@ -902,6 +1037,12 @@ interface IndustryDefaults {
   peakFlowMultiplier: number;
 }
 
+/**
+ * Industry-specific influent characterization defaults (all concentrations in mg/L).
+ * Used by validateTypeADesignDrivers to auto-populate missing design drivers.
+ * Values are typical ranges from industry literature and EPA CWNS data.
+ * peakFlowMultiplier: ratio of peak daily flow to average daily flow.
+ */
 const INDUSTRY_DEFAULTS: Record<string, IndustryDefaults> = {
   dairy:    { bod: "2,000-6,000", cod: "4,000-10,000", tss: "500-2,000",   fog: "200-800",  tkn: "50-150",   ph: "4.0-7.0",  peakFlowMultiplier: 2.0 },
   meat:     { bod: "1,500-5,000", cod: "3,000-8,000",  tss: "800-3,000",   fog: "100-500",  tkn: "80-200",   ph: "6.0-7.5",  peakFlowMultiplier: 2.5 },
@@ -916,6 +1057,11 @@ const INDUSTRY_DEFAULTS: Record<string, IndustryDefaults> = {
   default:  { bod: "1,000-4,000", cod: "2,000-7,000",  tss: "500-2,000",   fog: "100-400",  tkn: "30-100",   ph: "5.0-7.0",  peakFlowMultiplier: 2.0 },
 };
 
+/**
+ * Matches feedstock type names against industry keywords to select the appropriate
+ * set of default influent characteristics. Falls back to generic "default" profile
+ * if no industry match is found. Handles synonyms (e.g., "cheese" → dairy).
+ */
 function detectIndustryType(feedstocks: FeedstockEntry[]): IndustryDefaults {
   const allText = feedstocks.map(fs => (fs.feedstockType || "").toLowerCase()).join(" ");
   for (const [key, defaults] of Object.entries(INDUSTRY_DEFAULTS)) {
@@ -935,6 +1081,14 @@ function detectIndustryType(feedstocks: FeedstockEntry[]): IndustryDefaults {
   return INDUSTRY_DEFAULTS.default;
 }
 
+/**
+ * Validator #6: Type A/D design driver completeness + auto-population.
+ * Checks for all core wastewater design drivers (flow avg/min/peak, BOD, COD, TSS, FOG, TKN, pH).
+ * Missing drivers from the AUTO_POPULATE set are filled with industry-typical defaults based on
+ * feedstock type (e.g., dairy → 2,000-6,000 mg/L BOD). Min/peak flow are derived from average
+ * flow using configurable multipliers (min: 0.6x default, peak: industry-specific 1.5-3.0x).
+ * For Type D, only targets wastewater-labeled feedstock streams (not co-digestion streams).
+ */
 export async function validateTypeADesignDrivers(
   feedstocks: FeedstockEntry[],
   extractedParams: Array<{ name: string; value?: string | null; unit?: string | null; category?: string }>,

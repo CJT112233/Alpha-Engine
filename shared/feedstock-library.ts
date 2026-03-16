@@ -1,3 +1,35 @@
+/**
+ * Feedstock Reference Library & Enrichment Engine
+ *
+ * Contains three reference libraries used to enrich AI-extracted feedstock data with
+ * literature-sourced defaults:
+ *
+ *   1. FEEDSTOCK_LIBRARY (36 entries): Solid/semi-solid feedstocks for RNG projects (B/C/D).
+ *      Includes potato waste, dairy manure, food waste, FOG, poultry litter, swine manure,
+ *      municipal biosolids, distillery/brewery types, etc. Each entry has TS%, VS/TS%, BMP,
+ *      energyYield, C:N ratio, bulk density, contaminant risks, and preprocessing requirements.
+ *      All values include literature provenance (EPA AgSTAR, ASAE D384.2, Labatut et al., etc.).
+ *
+ *   2. WASTEWATER_INFLUENT_LIBRARY: Liquid influent profiles for Type A (Wastewater) projects.
+ *      Characterizes incoming liquid streams by BOD/COD/TSS/FOG/TKN/pH concentrations (mg/L)
+ *      rather than solids-basis properties. Industry-specific profiles (dairy processing,
+ *      meat processing, beverage, etc.).
+ *
+ *   3. BIOGAS_PROFILES: Raw biogas composition profiles by source (WWTP digester, landfill,
+ *      dairy digester, food waste digester). Used for Type C (Bolt-On) projects where existing
+ *      biogas is being upgraded to RNG.
+ *
+ * Key functions:
+ *   - matchFeedstockType / matchWastewaterInfluentType: Exact + alias matching against libraries
+ *   - enrichFeedstockSpecs: Overlays user-provided values onto library defaults via paramKeyMap
+ *     (100+ normalized name mappings). User values always override library defaults.
+ *   - enrichBiogasSpecs: Same pattern for biogas composition data.
+ *
+ * Energy Yield conversion: MMBTU/ton = BMP × TS% × VS/TS% × 907.185 × 35.315 × 1,012 ÷ 1,000,000
+ *   where 907.185 = kg/US ton, 35.315 = scf/m³, 1,012 = BTU/scf CH₄
+ */
+
+/** A single feedstock property from the reference library (e.g., TS%, BMP, bulk density) */
 export interface FeedstockProperty {
   value: string;
   unit: string;
@@ -8,6 +40,7 @@ export interface FeedstockProperty {
   sortOrder: number;
 }
 
+/** A feedstock reference profile with name, aliases for matching, and full property set */
 export interface FeedstockProfile {
   name: string;
   aliases: string[];
@@ -15,6 +48,10 @@ export interface FeedstockProfile {
   properties: Record<string, FeedstockProperty>;
 }
 
+/**
+ * Enriched feedstock spec — the result of overlaying user-provided or AI-inferred values
+ * onto library defaults. source tracks data provenance for confidence display in the UI.
+ */
 export interface EnrichedFeedstockSpec {
   value: string;
   unit: string;
@@ -26,6 +63,7 @@ export interface EnrichedFeedstockSpec {
   sortOrder: number;
 }
 
+/** Display labels for feedstock property groups — used in the UPIF feedstock section UI */
 export const feedstockGroupLabels: Record<string, string> = {
   identity: "Identity & Flow",
   physical: "Physical Characteristics",
@@ -5332,6 +5370,11 @@ export const WASTEWATER_INFLUENT_LIBRARY: WastewaterInfluentProfile[] = [
   },
 ];
 
+/**
+ * Matches a feedstock name against the WASTEWATER_INFLUENT_LIBRARY using exact name
+ * match first, then substring alias matching (bidirectional). Used for Type A projects
+ * to find the appropriate liquid influent profile.
+ */
 export function matchWastewaterInfluentType(feedstockName: string): WastewaterInfluentProfile | undefined {
   const lower = feedstockName.toLowerCase().trim();
   for (const profile of WASTEWATER_INFLUENT_LIBRARY) {
@@ -5343,6 +5386,11 @@ export function matchWastewaterInfluentType(feedstockName: string): WastewaterIn
   return undefined;
 }
 
+/**
+ * Matches a feedstock name against the FEEDSTOCK_LIBRARY using exact name match first,
+ * then substring alias matching (bidirectional). Used for RNG projects (B/C/D) to find
+ * the appropriate solids-basis feedstock profile with TS%, VS%, BMP, etc.
+ */
 export function matchFeedstockType(feedstockName: string): FeedstockProfile | undefined {
   const lower = feedstockName.toLowerCase().trim();
   for (const profile of FEEDSTOCK_LIBRARY) {
@@ -5354,12 +5402,14 @@ export function matchFeedstockType(feedstockName: string): FeedstockProfile | un
   return undefined;
 }
 
+/** Spec keys that only apply to sludge/trucked solids — not applicable to wastewater influent */
 const SLUDGE_ONLY_KEYS = new Set([
   "deliveryForm",
   "receivingCondition",
   "preprocessingRequirement",
 ]);
 
+/** Spec keys that describe solids properties — blocked for Type A wastewater influent */
 const SOLIDS_ONLY_KEYS = new Set([
   "totalSolids",
   "volatileSolids",
@@ -5372,6 +5422,22 @@ const SOLIDS_ONLY_KEYS = new Set([
   "inertFraction",
 ]);
 
+/**
+ * Main feedstock enrichment function — merges user-provided parameter values onto
+ * library defaults for the matched feedstock type.
+ *
+ * Process:
+ *   1. Match feedstock type against FEEDSTOCK_LIBRARY (for RNG) or WASTEWATER_INFLUENT_LIBRARY
+ *      (for Type A) to get baseline property set
+ *   2. Build a paramKeyMap with 100+ normalized name aliases (e.g., "ts%" → "totalSolids",
+ *      "bmp" → "methanePotential", "fats oils grease" → "fogContent")
+ *   3. For each user-provided param, find the matching library key via exact or substring match
+ *   4. Override library defaults with user values, preserving source provenance tracking
+ *
+ * AI-extracted params get source="ai_inferred" with medium confidence.
+ * User-provided params get source="user_provided" with high confidence.
+ * Unmatched library defaults keep source="estimated_default".
+ */
 export function enrichFeedstockSpecs(
   feedstockType: string,
   userProvidedParams: Record<string, { value: string; unit?: string; extractionSource?: string }>,
@@ -5659,6 +5725,11 @@ const BIOGAS_PROFILES: BiogasProfile[] = [
   },
 ];
 
+/**
+ * Matches a biogas source type against BIOGAS_PROFILES (WWTP digester, landfill, dairy, food waste).
+ * Falls back to WWTP digester profile (index 0) if no match — this is the most common case
+ * for Type C bolt-on projects at existing wastewater treatment plants.
+ */
 function matchBiogasProfile(sourceType: string): BiogasProfile | null {
   const lower = sourceType.toLowerCase();
   for (const profile of BIOGAS_PROFILES) {
@@ -5670,6 +5741,12 @@ function matchBiogasProfile(sourceType: string): BiogasProfile | null {
   return BIOGAS_PROFILES[0];
 }
 
+/**
+ * Enriches biogas composition specs for Type C (Bolt-On) projects.
+ * Same pattern as enrichFeedstockSpecs: matches against BIOGAS_PROFILES to get defaults
+ * (CH₄%, CO₂%, H₂S, flow, pressure, heating value), then overlays user-provided values.
+ * Handles common naming variations (e.g., "methane" → "ch4", "heating value" → "btuPerScf").
+ */
 export function enrichBiogasSpecs(
   biogasSourceType: string,
   userProvidedParams: Record<string, { value: string; unit?: string; extractionSource?: string }>,

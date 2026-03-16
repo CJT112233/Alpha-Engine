@@ -1,3 +1,30 @@
+/**
+ * Mass Balance AI Service
+ *
+ * Generates process mass balances for all 4 project types. The generation strategy
+ * depends on project type:
+ *
+ *   Type A (Wastewater): Full AI generation via LLM — uses customizable prompt templates
+ *     to generate process stages (screening, EQ, primary clarification, aeration, etc.),
+ *     equipment lists, and summary. AI path uses parallel split (stages+summary vs equipment
+ *     list) for ~40% faster wall time, with monolithic fallback if parallel fails.
+ *
+ *   Types B/C/D (RNG): Deterministic calculator first (massBalanceDeterministic.ts) —
+ *     uses BMP-based biogas calculation per feedstock. Falls back to AI only if
+ *     deterministic calculation fails. No AI fallback for normal operation.
+ *
+ * Post-generation enforcement:
+ *   enforceProdevalEquipment — validates that AI-generated equipment lists include
+ *   required Prodeval VALOGAZ/VALOPACK/VALOPUR gas train components for RNG projects.
+ *   Missing components are injected from the prodeval-equipment-library based on
+ *   estimated biogas flow (SCFM).
+ *
+ * JSON resilience:
+ *   repairTruncatedJSON — iteratively closes unclosed brackets/braces on truncated LLM
+ *   responses (up to 20 attempts). This handles the common case where the LLM hits
+ *   max_tokens mid-JSON-output.
+ */
+
 import { llmComplete, isProviderAvailable, getAvailableProviders, providerLabels, type LLMProvider } from "../llm";
 import type { MassBalanceResults, EquipmentItem } from "@shared/schema";
 import type { PromptKey } from "@shared/default-prompts";
@@ -9,6 +36,7 @@ import {
 } from "@shared/prodeval-equipment-library";
 import { generateDeterministicMassBalance } from "./massBalanceDeterministic";
 
+/** Maps normalized project type letter to the corresponding prompt template key in the database/defaults */
 const massBalancePromptMap: Record<string, PromptKey> = {
   a: "mass_balance_type_a",
   b: "mass_balance_type_b",
@@ -16,6 +44,11 @@ const massBalancePromptMap: Record<string, PromptKey> = {
   d: "mass_balance_type_d",
 };
 
+/**
+ * Normalizes user-facing project type strings to single-letter codes (a/b/c/d).
+ * Handles both short forms ("A", "b") and full names ("Type B", "Greenfield", "Bolt-On").
+ * Defaults to "a" (wastewater) for unrecognized types.
+ */
 function normalizeProjectType(projectType: string): string {
   const pt = projectType.toLowerCase().trim();
   if (pt.includes("type a") || pt.includes("wastewater") || pt === "a") return "a";
@@ -25,6 +58,12 @@ function normalizeProjectType(projectType: string): string {
   return "a";
 }
 
+/**
+ * Serializes UPIF data into a structured text format for inclusion in LLM prompts.
+ * Includes project type, location, all feedstock specs with values/units, output
+ * specifications grouped by profile, and constraints. This becomes the {{UPIF_DATA}}
+ * placeholder replacement in the prompt template.
+ */
 function buildUpifDataString(upif: any): string {
   const sections: string[] = [];
 
@@ -80,6 +119,11 @@ function buildUpifDataString(upif: any): string {
   return sections.join("\n\n");
 }
 
+/**
+ * Retrieves prompt template from database (user-customized) or falls back to built-in defaults.
+ * This allows users to modify mass balance prompts via the Documentation page without
+ * code changes. Falls back silently to DEFAULT_PROMPTS if database lookup fails.
+ */
 async function getPromptTemplate(key: PromptKey, storage?: any): Promise<string> {
   if (storage && typeof storage.getPromptTemplateByKey === "function") {
     try {
@@ -91,6 +135,13 @@ async function getPromptTemplate(key: PromptKey, storage?: any): Promise<string>
   return DEFAULT_PROMPTS[key].template;
 }
 
+/**
+ * Validates and normalizes parsed LLM output into the MassBalanceResults schema.
+ * Ensures all required fields exist with proper defaults — LLM output is unpredictable,
+ * so this acts as a defensive normalization layer. Adds missing influent/effluent objects
+ * to stages, missing inputStream/outputStream to AD stages, and generates random IDs
+ * for equipment items that lack them.
+ */
 function validateMassBalanceResults(parsed: any): MassBalanceResults {
   const results: MassBalanceResults = {
     projectType: parsed.projectType || "A",
@@ -130,6 +181,12 @@ function validateMassBalanceResults(parsed: any): MassBalanceResults {
   return results;
 }
 
+/**
+ * Attempts to repair truncated JSON from LLM responses that hit max_tokens.
+ * Strategy: iteratively strip trailing commas and append missing closing brackets/braces
+ * until bracket counts balance. Up to 20 repair attempts before giving up.
+ * This is critical for large mass balance outputs that may exceed token limits.
+ */
 function repairTruncatedJSON(raw: string): any {
   let s = raw.trim();
   const maxAttempts = 20;
@@ -159,6 +216,11 @@ function repairTruncatedJSON(raw: string): any {
 
 const RNG_PROJECT_TYPES = new Set(["b", "c", "d"]);
 
+/**
+ * Keywords used to identify Prodeval gas upgrading equipment in AI-generated equipment lists.
+ * Includes brand names (Prodeval, VALOGAZ, VALOPACK, VALOPUR) and functional unit codes
+ * (FU 100-800) from Prodeval's product line.
+ */
 const PRODEVAL_EQUIPMENT_IDENTIFIERS = [
   "prodeval",
   "valogaz",
@@ -171,6 +233,13 @@ const PRODEVAL_EQUIPMENT_IDENTIFIERS = [
   "fu 800",
 ];
 
+/**
+ * Extracts the biogas flow rate (SCFM) from mass balance results for Prodeval unit sizing.
+ * Searches in priority order: (1) AD stage output streams, (2) digester equipment specs,
+ * (3) summary fields. Handles SCFM/SCFH/SCFD unit conversion.
+ * Returns 300 SCFM as a safe fallback if no biogas flow is found — this is the minimum
+ * Prodeval unit size (400 SCFM tier handles flows from ~250 SCFM).
+ */
 function extractBiogasScfmFromResults(results: MassBalanceResults): number {
   for (const stage of (results.adStages || [])) {
     const output = stage.outputStream || {};
@@ -234,6 +303,16 @@ function isProdevalEquipment(eq: EquipmentItem): boolean {
   return PRODEVAL_EQUIPMENT_IDENTIFIERS.some(id => searchText.includes(id));
 }
 
+/**
+ * Post-generation enforcement: ensures RNG projects (B/C/D) include all required Prodeval
+ * gas upgrading equipment. If the AI omitted any of the 9 required component categories
+ * (condenser, blower, AC filter, dust filter, mixing bottle, biogas compressor, HP filtration,
+ * membrane system, RNG compressor), this function:
+ *   1. Removes any non-Prodeval gas train equipment the AI may have hallucinated
+ *   2. Injects missing Prodeval components from the prodeval-equipment-library
+ *   3. Sizes them based on estimated biogas flow (SCFM)
+ *   4. Places them before flare/thermal oxidizer in the equipment list
+ */
 function enforceProdevalEquipment(
   results: MassBalanceResults,
   normalizedType: string,
@@ -350,6 +429,14 @@ export interface MassBalanceAIResult {
 
 const DETERMINISTIC_PROJECT_TYPES = new Set(["b", "c", "d"]);
 
+/**
+ * Main entry point for mass balance generation.
+ * Routing logic:
+ *   - Types B/C/D (RNG): tries deterministic calculator first (BMP-based, no AI cost).
+ *     Falls back to AI only if deterministic fails (e.g., missing feedstock data).
+ *   - Type A (Wastewater): always uses AI generation (no deterministic path available).
+ * Returns the mass balance results along with provider info for generation stats tracking.
+ */
 export async function generateMassBalanceWithAI(
   upif: any,
   projectType: string,
@@ -381,6 +468,12 @@ export async function generateMassBalanceWithAI(
   return generateMassBalanceWithLLM(upif, projectType, preferredModel, storage, normalizedType);
 }
 
+/**
+ * Parses LLM JSON output with repair fallback for truncated responses.
+ * First strips any markdown code fences (```json ... ```), then attempts
+ * standard JSON.parse. If that fails (common with truncated outputs),
+ * falls back to repairTruncatedJSON which closes unclosed brackets/braces.
+ */
 function parseAndRepairJSON(rawContent: string, label: string): any {
   let cleaned = rawContent.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
 
@@ -399,6 +492,14 @@ function parseAndRepairJSON(rawContent: string, label: string): any {
   }
 }
 
+/**
+ * Parallel AI generation strategy: splits mass balance into 2 independent LLM calls
+ * for ~40% faster wall time vs. a single monolithic call.
+ *   Call 1: Process stages, summary, assumptions, warnings, recycle streams (no equipment)
+ *   Call 2: Complete equipment list with specs, quantities, design basis
+ * Both calls share the same system prompt (UPIF data). Results are merged after both complete.
+ * Each call uses 32K max tokens (vs. 64K for monolithic) since the workload is split.
+ */
 async function generateMassBalanceParallel(
   systemPrompt: string,
   model: LLMProvider,
@@ -480,6 +581,12 @@ Keep descriptions concise. Return valid JSON only.`;
   return validateMassBalanceResults(merged);
 }
 
+/**
+ * Internal LLM-based mass balance generation (called when deterministic path is skipped
+ * or fails). Loads the appropriate prompt template, builds UPIF data string, and
+ * attempts parallel generation first, falling back to monolithic if parallel fails.
+ * After generation, enforces Prodeval equipment for RNG project types.
+ */
 async function generateMassBalanceWithLLM(
   upif: any,
   projectType: string,

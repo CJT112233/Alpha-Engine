@@ -1,3 +1,28 @@
+/**
+ * Output Criteria Reference Library & Enrichment Engine
+ *
+ * Contains 3 output profiles that define acceptance criteria for project outputs:
+ *
+ *   1. "Renewable Natural Gas (RNG) - Pipeline Injection": Gas quality specs per FERC/NAESB
+ *      pipeline standards — methane ≥95%, CO₂ ≤2%, H₂S ≤4 ppm, heating value 950-1,050 BTU/scf,
+ *      water content ≤7 lb/MMscf, delivery pressure 200-800 psig, plus Wobbe index.
+ *
+ *   2. "Solid Digestate - Land Application": Dewatered cake specs — moisture 50-70%,
+ *      N/P/K nutrient content, application rate, regulatory framework (state permits).
+ *      Note: This profile is typically rejected by the validation pipeline (rejectBiosolidsOutputProfile)
+ *      since the system focuses on RNG and effluent outputs.
+ *
+ *   3. "Liquid Effluent - Discharge to WWTP": Industrial pretreatment limits — BOD ≤250-500 mg/L,
+ *      COD ≤500-1,000 mg/L, TSS ≤250-400 mg/L, FOG ≤100-150 mg/L, pH 6.0-9.0,
+ *      ammonia and surcharge risk flags.
+ *
+ * Key functions:
+ *   - matchOutputType: Exact name + bidirectional alias matching against OUTPUT_CRITERIA_LIBRARY
+ *   - enrichOutputSpecs: Overlays user-provided criteria onto library defaults via criterionKeyMap
+ *     (100+ normalized name mappings). Location context is appended to provenance strings.
+ */
+
+/** A single output criterion from the reference library (e.g., methane content, BOD limit) */
 export interface OutputCriterion {
   value: string;
   unit: string;
@@ -8,6 +33,7 @@ export interface OutputCriterion {
   sortOrder: number;
 }
 
+/** An output profile with name, aliases for matching, and full criteria set */
 export interface OutputProfile {
   name: string;
   aliases: string[];
@@ -15,6 +41,11 @@ export interface OutputProfile {
   criteria: Record<string, OutputCriterion>;
 }
 
+/**
+ * Enriched output spec — the result of overlaying user-provided values onto library defaults.
+ * source tracks data provenance: "typical_industry_standard" for high-confidence library values,
+ * "estimated_requirement" for medium/low-confidence defaults, "user_provided" for overrides.
+ */
 export interface EnrichedOutputSpec {
   value: string;
   unit: string;
@@ -26,6 +57,7 @@ export interface EnrichedOutputSpec {
   sortOrder: number;
 }
 
+/** Display labels for output criteria groups — used in the UPIF output section UI */
 export const outputGroupLabels: Record<string, string> = {
   rng_flow: "RNG Flow & Pressure",
   rng_composition: "RNG Gas Composition",
@@ -476,6 +508,11 @@ export const OUTPUT_CRITERIA_LIBRARY: OutputProfile[] = [
   },
 ];
 
+/**
+ * Matches an output type description against OUTPUT_CRITERIA_LIBRARY profiles.
+ * Uses exact name match first, then bidirectional substring alias matching
+ * (input contains alias OR alias contains input). Returns undefined if no match.
+ */
 export function matchOutputType(outputDescription: string): OutputProfile | undefined {
   const lower = outputDescription.toLowerCase().trim();
   for (const profile of OUTPUT_CRITERIA_LIBRARY) {
@@ -487,6 +524,18 @@ export function matchOutputType(outputDescription: string): OutputProfile | unde
   return undefined;
 }
 
+/**
+ * Enriches output specifications by overlaying user-provided criteria onto library defaults.
+ *
+ * Process:
+ *   1. Match output type against OUTPUT_CRITERIA_LIBRARY to get baseline criteria
+ *   2. Set source based on confidence: high → "typical_industry_standard", else "estimated_requirement"
+ *   3. Append location context to provenance if provided (for state/local regulatory awareness)
+ *   4. Build criterionKeyMap with 100+ normalized name mappings for user-provided criteria
+ *      (e.g., "h2s" → "h2sContent", "bod" → "bod", "wobbe" → "wobbIndex")
+ *   5. Override matching library values with user-provided data (source="user_provided", confidence="high")
+ *   6. For fuzzy matching, uses longest-match-wins strategy to avoid ambiguous partial matches
+ */
 export function enrichOutputSpecs(
   outputType: string,
   userProvidedCriteria: Record<string, { value: string; unit?: string }>,
