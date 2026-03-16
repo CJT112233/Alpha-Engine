@@ -206,10 +206,12 @@ function matchDesignCriteriaKey(fieldKey: string): keyof DesignOverrides | null 
   return null;
 }
 
+/** Returns true if the given summary key is an editable "Design Input" (vs read-only "Calculated Output") */
 export function isSummaryInputField(summaryKey: string): boolean {
   return SUMMARY_INPUT_KEYS.has(summaryKey);
 }
 
+/** Returns true if editing this field should trigger a mass balance recalculation */
 export function isRecalculableField(fieldKey: string): boolean {
   if (RECALCULABLE_FIELDS[fieldKey]) return true;
   if (fieldKey.includes("designCriteria.")) {

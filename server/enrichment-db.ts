@@ -110,6 +110,7 @@ export async function enrichFeedstockSpecsFromDb(
   return originalEnrichFeedstockSpecs(feedstockType, userProvidedParams, projectType);
 }
 
+/** Enriches biogas output specs — delegates directly to in-memory library (no DB override needed for outputs) */
 export async function enrichBiogasSpecsFromDb(
   feedstockType: string,
   userProvidedParams: Record<string, { value: string; unit?: string; extractionSource?: string }>,

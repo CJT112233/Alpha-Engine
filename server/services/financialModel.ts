@@ -327,6 +327,11 @@ function calculate45ZRevenuePerMMBtu(fortyFiveZ: FinancialAssumptions["fortyFive
   return pricePerMMBtu * fortyFiveZ.monetizationPct;
 }
 
+/**
+ * Builds default financial assumptions, enriching with project-specific data.
+ * Estimates CI score from feedstocks, calculates RNG production from mass balance
+ * summary, and creates default feedstock economics rows (all default to tip fee @ $0).
+ */
 export function buildDefaultAssumptions(
   mbResults: MassBalanceResults,
   opexResults?: OpexResults,

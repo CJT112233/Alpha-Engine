@@ -319,6 +319,7 @@ export const DEFAULT_BURNHAM_INTERNAL_COSTS: BurnhamInternalCosts = {
   },
 };
 
+/** Sums all Burnham internal cost categories including builder's risk insurance (% of EPC) */
 export function calculateInternalCostsSubtotal(costs: BurnhamInternalCosts, epcTotal: number): number {
   const pm = costs.projectManagement;
   const pmTotal = pm.capitalTeamSitePersonnel + pm.rduDcMgmtExpenses +
@@ -388,6 +389,7 @@ export const DEFAULT_FIELD_TECHNICIANS: FieldTechnicians = {
   hourlyRate: 250,
 };
 
+/** Selects the nearest SCFM tier without interpolation (snap-to-nearest boundary) */
 export function selectCapexTier(biogasScfm: number): CapexSizeTier {
   if (biogasScfm <= 500) return CAPEX_SIZE_TIERS[0];
   if (biogasScfm <= 1000) return CAPEX_SIZE_TIERS[1];
@@ -458,6 +460,7 @@ export function interpolateCapexTier(biogasScfm: number): CapexSizeTier {
   };
 }
 
+/** Returns a human-readable tier label like "800 SCFM GUU" or "1,500 SCFM GUU (Bespoke)" */
 export function getTierLabel(biogasScfm: number): string {
   if (biogasScfm <= 500) return "400 SCFM GUU";
   if (biogasScfm <= 1000) return "800 SCFM GUU";
