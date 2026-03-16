@@ -1,3 +1,26 @@
+/**
+ * Deterministic 20-Year Pro-Forma Financial Model
+ *
+ * Generates cash flow projections for RNG/biogas projects. All calculations
+ * are deterministic (no AI) — purely arithmetic from assumptions + mass balance
+ * + CapEx + OpEx inputs.
+ *
+ * Revenue streams (modeled separately, user-selectable market):
+ *   - RIN credits (compliance market): RNG production × 11.727 RINs/MMBTU × RIN price
+ *   - Natural gas commodity (compliance): RNG × nat gas price - wheel/hub cost
+ *   - Voluntary market: nat gas price + voluntary premium - wheel/hub cost
+ *   - 45Z Clean Fuel Tax Credits: emission factor × credit price × gal/MMBTU conversion
+ *   - Tipping fee revenue: feedstock tip fees (from Financial Model page)
+ *
+ * Key financial metrics:
+ *   - IRR via bisection method (not Newton-Raphson — more robust for edge cases)
+ *   - NPV at user-specified discount rate (default 10%)
+ *   - MOIC = total positive cash flows ÷ initial CapEx
+ *   - Payback year = first year with cumulative cash flow ≥ 0
+ *
+ * ITC (Investment Tax Credit) proceeds are added to Year 1 cash flow only.
+ * Debt service uses standard annuity formula: P × r(1+r)^n / ((1+r)^n - 1)
+ */
 import type {
   FinancialAssumptions,
   FinancialModelResults,
@@ -8,6 +31,7 @@ import type {
   OpexResults,
 } from "@shared/schema";
 
+/** Default financial assumptions — these are overridden by user edits on the Financial Model page */
 const DEFAULT_ASSUMPTIONS: FinancialAssumptions = {
   inflationRate: 0.025,
   projectLifeYears: 20,
@@ -108,6 +132,12 @@ function extractRngMMBtuPerDay(mbResults: MassBalanceResults, biogasScfm: number
   return (biogasScfm * 1440 * biogasBtuPerScf * methaneRecovery * capture) / 1_000_000;
 }
 
+/**
+ * Categorizes OpEx line items into financial model cost buckets by matching
+ * category and description keywords. Revenue offsets (tipping fees, sales credits)
+ * are explicitly excluded — those are handled on the Financial Model page.
+ * Unrecognized items fall through to adminOverheadCost as a catch-all.
+ */
 function extractOpexBreakdown(opexResults: OpexResults): {
   utilityCost: number;
   laborCost: number;
@@ -170,6 +200,13 @@ function extractOpexBreakdown(opexResults: OpexResults): {
   return { utilityCost, laborCost, maintenanceCost, chemicalCost, insuranceCost, feedstockLogisticsCost, digestateManagementCost, adminOverheadCost };
 }
 
+/**
+ * Calculates Internal Rate of Return using the bisection method.
+ * Bisection is used instead of Newton-Raphson because it's more numerically
+ * stable for irregular cash flow patterns (e.g., large ITC in Year 1 followed
+ * by negative years during construction ramp-up).
+ * Returns null if no IRR exists (NPV never crosses zero in the range -99% to 1000%).
+ */
 function calculateIRR(cashFlows: number[], maxIterations = 1000, tolerance = 1e-7): number | null {
   if (cashFlows.length < 2) return null;
 
@@ -214,6 +251,12 @@ function calculateNPV(cashFlows: number[], discountRate: number): number {
   return npv;
 }
 
+/**
+ * Estimates Carbon Intensity (CI) score from feedstock types for 45Z tax credit calculation.
+ * CI values are volume-weighted averages based on CARB/EPA lifecycle analysis data.
+ * Lower CI = larger 45Z credit (dairy manure ~10 gCO₂e/MJ is best; landfill gas ~40 is worst).
+ * Default 25 if no feedstocks provided (conservative mid-range for mixed organics).
+ */
 function estimateCIScore(feedstocks?: any[]): number {
   if (!feedstocks || feedstocks.length === 0) return 25;
 
@@ -268,6 +311,14 @@ function estimateCIScore(feedstocks?: any[]): number {
   return totalWeight > 0 ? Math.round(totalCI / totalWeight) : 25;
 }
 
+/**
+ * 45Z Clean Fuel Production Credit calculation (IRC §45Z, effective 2025-2027+).
+ * Formula: Net 45Z per MMBTU = emissionFactor × creditPrice × galPerMMBtu × monetization%
+ * Where emissionFactor = max(0, (targetCI - CI) / targetCI)
+ *
+ * Read-only constants enforced on both UI and server:
+ *   targetCI = 50 gCO₂e/MJ, conversionGalPerMMBtu = 8.614, rinPerMMBtu = 11.727
+ */
 function calculate45ZRevenuePerMMBtu(fortyFiveZ: FinancialAssumptions["fortyFiveZ"]): number {
   if (!fortyFiveZ.enabled) return 0;
   const emissionFactor = Math.max(0, (fortyFiveZ.targetCI - fortyFiveZ.ciScore) / fortyFiveZ.targetCI);
@@ -331,6 +382,20 @@ export function buildDefaultAssumptions(
   return assumptions;
 }
 
+/**
+ * Main financial model engine — generates the 20-year pro-forma.
+ *
+ * Year-by-year calculation:
+ *   1. Apply biogas growth factor and inflation to base values
+ *   2. Calculate revenue: RIN/nat gas OR voluntary market + 45Z + tipping fees
+ *   3. Escalate OpEx categories at their respective rates (electricity has its own escalator)
+ *   4. Add feedstock costs from Financial Model page (toggled tip_fee=revenue vs cost=expense)
+ *   5. EBITDA = revenue - OpEx
+ *   6. Net cash flow = EBITDA - maintenance CapEx - debt service + ITC (Year 1 only)
+ *   7. Accumulate for IRR, NPV, MOIC, payback calculations
+ *
+ * COD (Commercial Operation Date) = current year + ceil(construction months / 12)
+ */
 export function calculateFinancialModel(
   assumptions: FinancialAssumptions,
   mbResults: MassBalanceResults,

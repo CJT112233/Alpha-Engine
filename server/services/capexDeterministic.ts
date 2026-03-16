@@ -1,3 +1,28 @@
+/**
+ * Deterministic CapEx Calculator — Burnham CapEx Model V5.1
+ *
+ * Generates capital cost estimates for RNG project types (B, C, D) using firm
+ * Prodeval pricing and Burnham internal cost data. Type A (Wastewater) requires
+ * full AI estimation and is rejected here.
+ *
+ * Pricing structure:
+ *   1. Major Equipment — Prodeval GUU (isLocked=true, firm pricing), flare, compressor
+ *   2. Upstream Equipment — AI-estimated line items injected before BOP (optional)
+ *   3. Construction Directs — engineering, civil/structural, piping, electrical,
+ *      instrumentation/controls, non-process infrastructure
+ *   4. General Requirements — 15.95% of construction directs subtotal
+ *   5. Construction Mgmt & Indirects — general conditions, permits, insurance, EPC profit
+ *   6. Interconnect — facility + lateral pipeline (default 2 miles @ $923K/mi)
+ *   7. Burnham Internal Costs — project management, ops during construction, insurance,
+ *      fixtures, utilities (flat values from pricing library)
+ *   8. Commercial / Owner's Costs — contingency (7.5% of EPC), dev costs ($1M flat),
+ *      spare parts (2.5% of equipment), insurance (1.5% of direct costs),
+ *      CPI escalation (5.83%), engineering (7% of EPC)
+ *
+ * Prodeval GUU pricing uses 6 SCFM tiers (400/800/1,200 standard + 1,500/1,800/2,100
+ * bespoke) with continuous linear interpolation between adjacent tiers.
+ * Max capacity: 2,100 SCFM — flows above this throw and fall back to full AI.
+ */
 import type { CapexResults, CapexLineItem, MassBalanceResults } from "@shared/schema";
 import {
   interpolateCapexTier,
@@ -14,6 +39,13 @@ function makeId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).substring(2, 8)}`;
 }
 
+/**
+ * Extracts biogas flow rate (SCFM) from mass balance results.
+ * Uses a priority-based search: first checks specific key names (biogasflow,
+ * rawbiogasflow, etc.), then falls back to fuzzy keyword matching on summary keys,
+ * then checks AD stage output streams. Handles unit conversion from SCFD (÷1440)
+ * and SCFH (÷60) to SCFM.
+ */
 function extractBiogasScfm(massBalanceResults: MassBalanceResults): number | null {
   if (massBalanceResults.summary) {
     const priorityKeys = [
@@ -104,6 +136,11 @@ export interface DeterministicCapexResult {
   providerLabel: string;
 }
 
+/**
+ * Main deterministic CapEx generator. Rejects Type A, validates biogas flow ≤ 2,100 SCFM,
+ * then builds a complete cost estimate from interpolated tier pricing + optional upstream
+ * AI equipment items. The GUU line item is isLocked=true because it uses firm Prodeval pricing.
+ */
 export function generateCapexDeterministic(
   massBalanceResults: MassBalanceResults,
   projectType: string,
@@ -332,6 +369,8 @@ export function generateCapexDeterministic(
   const subtotalConstructionDirects = engineeringTotal + civStructTotal + pipingTotal +
     tier.electrical + icTotal + nonProcessTotal;
 
+  // 15.95% general requirements is a standard Burnham markup on construction directs
+  // covering mobilization, site management, quality control, safety, and cleanup
   const generalRequirements = Math.round(subtotalConstructionDirects * 0.1595);
   lineItems.push({
     id: makeId("genreq"),
@@ -408,6 +447,7 @@ export function generateCapexDeterministic(
     isLocked: false,
   });
 
+  // EPC (Engineering, Procurement, Construction) is the base for contingency, insurance, and engineering %
   const totalEPC = subtotalEquipment + totalConstructionDirects + subtotalConstMgmt + subtotalInterconnect;
 
   const comm = DEFAULT_COMMERCIAL_ITEMS;

@@ -1,3 +1,35 @@
+/**
+ * OpEx Estimation Service — Hybrid Deterministic + AI
+ *
+ * Generates annual operating cost estimates for biogas/RNG projects.
+ * Uses a two-layer approach:
+ *
+ *   1. Deterministic pre-calculation (calculateAllDeterministicLineItems):
+ *      Computes known line items from editable assumptions before any AI call.
+ *      Categories: R&M, membrane replacement, energy (electrical + natural gas),
+ *      labor, water/sewer, disposal, GUU consumables, lab testing, insurance.
+ *      R&M base = upstreamEquipmentCost for RNG types (excludes Prodeval/GUU
+ *      since those are covered by membrane replacement). For Type A, uses
+ *      totalEquipmentCost.
+ *
+ *   2. AI estimation (parallel split):
+ *      Call 1: utilities, chemicals, disposal, consumables
+ *      Call 2: staffing, insurance, admin, management
+ *      AI items are merged with deterministic items — AI-generated items in
+ *      categories already covered by deterministic are marked as skipped.
+ *
+ *   Fallback: buildDeterministicFallback() generates a complete OpEx estimate
+ *   without AI if all LLM calls fail or timeout.
+ *
+ * AD heating uses thermodynamic first-principles:
+ *   Q (MMBtu/yr) = ΔT(°F) × flow(GPD) × 365 × 8.34(lb/gal) ÷ 1,000,000
+ *   Purchased NG = Q ÷ (thermal efficiency × heat supply efficiency)
+ *   Cost = Purchased NG × $/MMBtu
+ *
+ * Energy branching: RNG types (B/C/D) use intensity-based rates (kWh/yr per GPD
+ * for AD, kWh/yr per SCFM for GUU). Type A uses equipment-list motor power
+ * summation with load factor.
+ */
 import { llmComplete, isProviderAvailable, getAvailableProviders, providerLabels, type LLMProvider } from "../llm";
 import type { OpexResults, OpexLineItem, OpexSummary, MassBalanceResults, CapexResults, EquipmentItem, OpexEditableAssumption } from "@shared/schema";
 import type { PromptKey } from "@shared/default-prompts";
@@ -10,6 +42,14 @@ const opexPromptMap: Record<string, PromptKey> = {
   d: "opex_type_d",
 };
 
+/**
+ * Returns editable OpEx assumptions with type-specific defaults.
+ * Type A (Wastewater) uses EPA/WEF benchmarks for staffing and chemical costs.
+ * RNG types (B/C/D) use Burnham OpEx Model intensity-based rates for energy
+ * and Prodeval maintenance schedules for membrane replacement.
+ * All assumptions are user-editable — changing them triggers deterministic
+ * recalculation via POST /api/opex/:id/recompute.
+ */
 export function getDefaultOpexAssumptions(projectType: string, massBalanceResults?: MassBalanceResults, capexResults?: CapexResults | null): OpexEditableAssumption[] {
   const pt = normalizeProjectType(projectType);
   const isWW = pt === "a";
@@ -97,6 +137,23 @@ function extractMBValueWithUnit(summary: Record<string, any> | undefined, keywor
   return 0;
 }
 
+/**
+ * Generates all deterministic OpEx line items from editable assumptions.
+ * Pre-calculates known costs so they're available even if AI fails.
+ *
+ * Energy calculation branching:
+ *   RNG types: uses intensity rates (AD: kWh/yr per GPD, GUU: kWh/yr per SCFM)
+ *     → requires adInfluentGPD and biogasScfm from mass balance summary
+ *   Type A: sums motor HP from equipment list → converts to kW → applies load factor
+ *
+ * AD heating (RNG only):
+ *   Primary: thermodynamic calc from ΔT, flow, and boiler/heat efficiencies
+ *   Fallback: intensity-based rate (MMBtu/yr per GPD) if ΔT is zero
+ *
+ * R&M base selection:
+ *   RNG types: upstreamEquipmentCost (excludes Prodeval — covered by membrane replacement)
+ *   Type A: totalEquipmentCost (all equipment included in R&M)
+ */
 export function calculateAllDeterministicLineItems(
   assumptions: OpexEditableAssumption[],
   massBalanceResults: MassBalanceResults,
@@ -676,6 +733,12 @@ function buildOpexSummaryFromLineItems(lineItems: OpexLineItem[], totalProjectCa
   };
 }
 
+/**
+ * Recalculates all OpEx line items and totals from edited assumptions.
+ * Called by POST /api/opex/:id/recompute after user changes assumption values.
+ * Regenerates all deterministic line items, rebuilds summary, preserves
+ * display-formatted assumptions. Unit cost edits are also handled here.
+ */
 export function recomputeOpexFromAssumptions(
   editableAssumptions: OpexEditableAssumption[],
   massBalanceResults: MassBalanceResults,
@@ -1054,6 +1117,14 @@ export interface OpexAIResult {
   providerLabel: string;
 }
 
+/**
+ * Parallel split AI generation — runs two LLM calls concurrently:
+ *   Call 1: utilities, chemicals, disposal, consumables
+ *   Call 2: staffing, insurance, admin, management
+ * Each call receives a note about deterministic categories to skip (skipNote)
+ * to avoid double-counting with pre-calculated items.
+ * ~40% faster wall time vs monolithic single call.
+ */
 async function generateOpexParallel(
   systemPrompt: string,
   model: LLMProvider,
@@ -1144,6 +1215,17 @@ Return valid JSON only.`;
   };
 }
 
+/**
+ * Main OpEx generation entry point — orchestrates deterministic + AI.
+ * Flow:
+ *   1. Pre-calculate deterministic line items (R&M, energy, labor, etc.)
+ *   2. Build skip note listing categories already covered
+ *   3. Try parallel AI generation (utilities vs staffing split)
+ *   4. If parallel fails, try monolithic single-call AI
+ *   5. If all AI fails, fall back to buildDeterministicFallback()
+ *   6. Merge AI items with deterministic items, build summary
+ * Revenue offsets (tipping fees) are excluded — handled on Financial Model page.
+ */
 export async function generateOpexWithAI(
   upif: any,
   massBalanceResults: MassBalanceResults,
@@ -1277,6 +1359,12 @@ export async function generateOpexWithAI(
   };
 }
 
+/**
+ * Complete deterministic OpEx fallback — used when ALL AI calls fail or timeout.
+ * Generates a valid OpexResults using only the editable assumptions and mass
+ * balance/CapEx data, without any AI involvement. Ensures the user always gets
+ * an OpEx estimate even if LLM services are unavailable.
+ */
 function buildDeterministicFallback(
   projectType: string,
   massBalanceResults: MassBalanceResults,

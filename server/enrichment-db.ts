@@ -1,3 +1,19 @@
+/**
+ * Database-First Enrichment Layer
+ *
+ * Wraps the in-memory feedstock/wastewater enrichment functions with a
+ * database-first lookup strategy. When a user customizes a library profile
+ * via the Documentation page (isCustomized=true), those customized values
+ * take precedence over the hardcoded in-memory FEEDSTOCK_LIBRARY.
+ *
+ * Lookup order:
+ *   1. Check PostgreSQL for matching profile with isCustomized=true
+ *   2. If found: use DB profile properties, then overlay user-provided params
+ *   3. If not found: fall back to in-memory library (originalEnrichFeedstockSpecs)
+ *
+ * Type A (Wastewater) projects use the "wastewater_influent" library type;
+ * all other project types use the "feedstock" library type.
+ */
 import { storage } from "./storage";
 import type { FeedstockProfile, FeedstockProperty, WastewaterInfluentProfile, EnrichedFeedstockSpec } from "@shared/feedstock-library";
 import type { LibraryProfile } from "@shared/schema";
@@ -21,6 +37,11 @@ function profileToWastewater(p: LibraryProfile): WastewaterInfluentProfile {
   };
 }
 
+/**
+ * Searches the database for a matching library profile by name or alias.
+ * Uses simple case-insensitive exact match + substring alias matching.
+ * Returns undefined if no match found (caller falls back to in-memory library).
+ */
 async function matchFromDb(feedstockName: string, libraryType: string): Promise<LibraryProfile | undefined> {
   const profiles = await storage.getLibraryProfilesByType(libraryType);
   const lower = feedstockName.toLowerCase().trim();
@@ -34,6 +55,11 @@ async function matchFromDb(feedstockName: string, libraryType: string): Promise<
   return undefined;
 }
 
+/**
+ * Main enrichment entry point — checks DB for customized profiles first,
+ * falls back to in-memory library if no customized DB match exists.
+ * User-provided parameters always override library defaults regardless of source.
+ */
 export async function enrichFeedstockSpecsFromDb(
   feedstockType: string,
   userProvidedParams: Record<string, { value: string; unit?: string; extractionSource?: string }>,
@@ -91,6 +117,12 @@ export async function enrichBiogasSpecsFromDb(
   return originalEnrichBiogasSpecs(feedstockType, userProvidedParams);
 }
 
+/**
+ * Overlays user-provided parameters onto library-derived specs.
+ * Uses a key mapping (e.g., "total solids" → "totalSolids", "bod5" → "bod")
+ * to handle variations in parameter naming from AI extraction.
+ * User-provided values get "high" confidence; AI-inferred values retain their source tag.
+ */
 function applyUserParams(
   specs: Record<string, EnrichedFeedstockSpec>,
   userProvidedParams: Record<string, { value: string; unit?: string; extractionSource?: string }>,

@@ -1,3 +1,19 @@
+/**
+ * Design Overrides — Maps UI-editable fields to mass balance recalculation parameters.
+ *
+ * When users edit design criteria or summary values on the mass balance page,
+ * those edits are stored as overrides and fed back into the deterministic calculator.
+ * This module handles the mapping between UI field paths (e.g., "summary.hrt",
+ * "adStages.3.designCriteria.temperature") and the DesignOverrides interface
+ * properties used by massBalanceDeterministic.ts.
+ *
+ * SUMMARY_INPUT_KEYS defines which summary fields are editable "Design Inputs"
+ * (shown with blue border + pencil icon) vs read-only "Calculated Outputs".
+ * Changes to input fields trigger a full mass balance recalculation.
+ *
+ * Note: "storageTime" in the UI maps to "storageDays" in DesignOverrides — this
+ * is a deliberate key remapping to match the internal naming convention.
+ */
 export interface DesignOverrides {
   hrtDays?: number;
   vsDestructionPct?: number;
@@ -38,6 +54,11 @@ export interface DesignOverrides {
   volatileSolidsPct?: number;
 }
 
+/**
+ * Summary fields that are editable "Design Inputs" — changing these triggers
+ * mass balance recalculation. All other summary fields are read-only "Calculated Outputs".
+ * UI shows inputs with blue border + pencil icon under "Design Inputs" header.
+ */
 export const SUMMARY_INPUT_KEYS = new Set([
   "totalFeedRate",
   "totalSolidsPct",
@@ -52,6 +73,13 @@ export const SUMMARY_INPUT_KEYS = new Set([
   "methaneRecovery",
 ]);
 
+/**
+ * Maps UI field paths to DesignOverrides properties.
+ * Stage indices are 0-based: Stage 0 = receiving, 1 = preparation, 2 = EQ tank,
+ * 3 = digester (most editable fields), 4 = centrifuge, 5 = DAF.
+ * Multiple UI paths can map to the same override (e.g., both "summary.hrt" and
+ * "adStages.3.designCriteria.hrt" map to "hrtDays").
+ */
 const RECALCULABLE_FIELDS: Record<string, keyof DesignOverrides> = {
   "summary.hrt": "hrtDays",
   "summary.vsDestruction": "vsDestructionPct",
@@ -91,6 +119,12 @@ const RECALCULABLE_FIELDS: Record<string, keyof DesignOverrides> = {
   "adStages.1.designCriteria.depackagingRejectRate": "depackagingRejectRate",
 };
 
+/**
+ * Extracts design overrides from the UI override map.
+ * Processes both explicit overrides (user-changed values) and locked fields
+ * (values the user wants preserved during recalculation).
+ * Falls back to matchDesignCriteriaKey() for fields not in the explicit mapping.
+ */
 export function extractDesignOverrides(
   overrides: Record<string, any>,
   locks: Record<string, boolean>,

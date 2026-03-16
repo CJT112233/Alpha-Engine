@@ -1,3 +1,22 @@
+/**
+ * Burnham CapEx Pricing Library — V5.1, February 2026
+ *
+ * Contains firm pricing data for Prodeval gas upgrading equipment and
+ * BOP (Balance of Plant) construction costs at 6 SCFM tiers:
+ *   Standard tiers: 400, 800, 1,200 SCFM
+ *   Bespoke tiers:  1,500, 1,800, 2,100 SCFM
+ *
+ * For flows between tiers, interpolateCapexTier() uses linear interpolation
+ * (lerp) across all cost categories to provide continuous pricing.
+ *
+ * Also contains Burnham internal costs (project management, operations during
+ * construction, insurance, fixtures, utilities), construction indirect rates
+ * (general conditions, permits, insurance/G&A, EPC profit), commercial items
+ * (dev costs, contingency, escalation), and interconnect defaults.
+ *
+ * These are the authoritative cost data — used by capexDeterministic.ts.
+ * Colors for Excel export: header #323F4F, sections #00B050, subtotals #4472C4.
+ */
 export interface CapexSizeTier {
   scfm: number;
   majorEquipment: {
@@ -29,6 +48,12 @@ export interface CapexSizeTier {
   };
 }
 
+/**
+ * Pricing data at each of the 6 SCFM tiers.
+ * Tiers 0-2 (400/800/1,200) are standard Prodeval configurations.
+ * Tiers 3-5 (1,500/1,800/2,100) are bespoke — pricing is extrapolated from
+ * vendor discussions and engineering estimates for larger multi-train systems.
+ */
 export const CAPEX_SIZE_TIERS: CapexSizeTier[] = [
   {
     scfm: 400,
@@ -219,6 +244,7 @@ export interface ConstructionIndirectRates {
   epcProfitPct: number;
 }
 
+/** Construction management markups applied to total construction directs (incl. general requirements) */
 export const DEFAULT_CONSTRUCTION_INDIRECT_RATES: ConstructionIndirectRates = {
   generalConditionsPct: 20.49,
   buildingPermitsPct: 0.97,
@@ -259,6 +285,7 @@ export interface BurnhamInternalCosts {
   };
 }
 
+/** Burnham-specific internal costs — flat dollar amounts independent of project size */
 export const DEFAULT_BURNHAM_INTERNAL_COSTS: BurnhamInternalCosts = {
   projectManagement: {
     capitalTeamSitePersonnel: 913_996,
@@ -322,6 +349,11 @@ export interface CommercialItems {
   escalationPct: number;
 }
 
+/**
+ * Commercial / owner's cost defaults.
+ * Dev costs = $1M flat, contingency = 7.5% of EPC, escalation = 5.83% (BLS CPI-based).
+ * Dev fee is 0% by default (can be overridden per project).
+ */
 export const DEFAULT_COMMERCIAL_ITEMS: CommercialItems = {
   utilityConnectionFee: 250_000,
   devCosts: 1_000_000,
@@ -336,6 +368,7 @@ export interface InterconnectDefaults {
   defaultLateralMiles: number;
 }
 
+/** Pipeline interconnect defaults: $2.2M facility + $923K/mile lateral (default 2 miles) */
 export const DEFAULT_INTERCONNECT: InterconnectDefaults = {
   interconnectFacilityBase: 2_200_000,
   lateralCostPerMile: 923_403,
@@ -348,6 +381,7 @@ export interface FieldTechnicians {
   hourlyRate: number;
 }
 
+/** Vendor field technician hours for commissioning (included in I&C line item) */
 export const DEFAULT_FIELD_TECHNICIANS: FieldTechnicians = {
   prodevalTechHours: 80,
   otherVendorTechHours: 80,
@@ -363,10 +397,16 @@ export function selectCapexTier(biogasScfm: number): CapexSizeTier {
   return CAPEX_SIZE_TIERS[5];
 }
 
+/** Linear interpolation with rounding — used to get continuous pricing between discrete SCFM tiers */
 function lerp(a: number, b: number, t: number): number {
   return Math.round(a + (b - a) * t);
 }
 
+/**
+ * Interpolates all cost categories between the two nearest SCFM tiers.
+ * Clamps at boundaries: ≤400 SCFM returns tier[0], ≥2,100 returns tier[5].
+ * t = (flow - lower.scfm) / (upper.scfm - lower.scfm) for position within tier range.
+ */
 export function interpolateCapexTier(biogasScfm: number): CapexSizeTier {
   const tiers = CAPEX_SIZE_TIERS;
   if (biogasScfm <= tiers[0].scfm) return tiers[0];

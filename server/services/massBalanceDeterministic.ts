@@ -1,3 +1,28 @@
+/**
+ * Deterministic Mass Balance Calculator
+ *
+ * Generates engineering mass balances for anaerobic digestion (AD) projects
+ * WITHOUT AI — all calculations use first-principles stoichiometry and
+ * industry-standard design parameters.
+ *
+ * Supports 3 project types:
+ *   Type B (RNG Greenfield) — full feedstock-to-RNG: receiving → preparation →
+ *     EQ tank → CSTR digester → centrifuge → DAF → Prodeval gas upgrading
+ *   Type C (RNG Bolt-On) — biogas upgrading only: existing biogas source →
+ *     conditioning → membrane separation → pipeline injection
+ *   Type D (Hybrid) — wastewater treatment + co-digestion: headworks →
+ *     primary clarifier → activated sludge → secondary clarifier → AD with
+ *     co-digested feedstocks → gas upgrading
+ *
+ * Core biogas calculation:
+ *   CH₄ (m³/d) = Σ [VS destroyed per feedstock (kg/d) × BMP (m³ CH₄/kg VS)]
+ *   Biogas (SCFD) = CH₄ (m³/d) × 35.3147 (m³→SCF) ÷ CH₄%
+ *   RNG (SCFD) = conditioned biogas × CH₄% × methane recovery ÷ product CH₄%
+ *
+ * Feedstock library matching uses a 3-pass strategy with stop-word filtering
+ * to prevent false matches on generic terms like "wastewater" or "sludge".
+ * Falls back to wastewater influent library if no feedstock match is found.
+ */
 import type { MassBalanceResults, ADProcessStage, EquipmentItem } from "@shared/schema";
 import { FEEDSTOCK_LIBRARY, WASTEWATER_INFLUENT_LIBRARY, type FeedstockProfile, type WastewaterInfluentProfile } from "@shared/feedstock-library";
 import {
@@ -44,6 +69,7 @@ interface BiogasCalcResult {
   centrateLbPerDay: number;
 }
 
+/** Extracts a single numeric value from a range string like "250-400" by averaging endpoints */
 function parseMidpoint(rangeStr: string): number {
   const cleaned = rangeStr.replace(/,/g, "").trim();
   const match = cleaned.match(/([\d.]+)\s*[-–—]\s*([\d.]+)/);
@@ -54,6 +80,11 @@ function parseMidpoint(rangeStr: string): number {
   return isNaN(num) ? 0 : num;
 }
 
+/**
+ * Checks if an alias appears as a whole word within the search term.
+ * Aliases shorter than 4 chars are rejected to avoid false matches on
+ * short common substrings (e.g., "fat" matching "sulfate").
+ */
 function aliasMatchesAsWholeWord(searchTerm: string, alias: string): boolean {
   if (alias.length < 4) return false;
   const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -61,22 +92,37 @@ function aliasMatchesAsWholeWord(searchTerm: string, alias: string): boolean {
   return re.test(` ${searchTerm} `);
 }
 
+/**
+ * 3-pass feedstock library matching strategy:
+ *   Pass 1: Exact name match (highest confidence)
+ *   Pass 2: Substring alias match (alias within search term, or vice versa)
+ *   Pass 3: Whole-word alias match within the search term
+ *   Pass 4: Stop-word-filtered word-level match — strips generic terms like
+ *           "wastewater", "sludge" etc. to find meaningful content words,
+ *           then matches against profile names
+ *   Fallback: Cross-library bridge to wastewater influent library via
+ *             wastewaterToFeedstockProfile() with conservative defaults
+ */
 function matchFeedstockLibrary(feedstockType: string): FeedstockProfile | null {
   const searchTerm = feedstockType.toLowerCase().trim();
+  // Pass 1: exact name match
   for (const profile of FEEDSTOCK_LIBRARY) {
     if (profile.name.toLowerCase() === searchTerm) return profile;
   }
+  // Pass 2: substring alias match
   for (const profile of FEEDSTOCK_LIBRARY) {
     for (const alias of profile.aliases) {
       if (alias.length >= 4 && searchTerm.includes(alias)) return profile;
       if (alias.includes(searchTerm)) return profile;
     }
   }
+  // Pass 3: whole-word alias match
   for (const profile of FEEDSTOCK_LIBRARY) {
     for (const alias of profile.aliases) {
       if (aliasMatchesAsWholeWord(searchTerm, alias)) return profile;
     }
   }
+  // Pass 4: stop-word-filtered word-level match against profile names
   const STOP_WORDS = new Set(["wastewater", "waste", "water", "sludge", "liquid", "solid", "mixed", "organic", "processing", "residual", "residuals"]);
   for (const profile of FEEDSTOCK_LIBRARY) {
     const words = searchTerm.split(/\s+/);
@@ -91,6 +137,12 @@ function matchFeedstockLibrary(feedstockType: string): FeedstockProfile | null {
   return null;
 }
 
+/**
+ * Cross-library bridge: searches the wastewater influent library and converts
+ * matches into feedstock profiles with conservative AD assumptions.
+ * This allows wastewater types (e.g., meat processing, dairy processing) to be
+ * used as feedstock in Type B/D co-digestion projects.
+ */
 function matchWastewaterAsFS(searchTerm: string): FeedstockProfile | null {
   for (const wwProfile of WASTEWATER_INFLUENT_LIBRARY) {
     if (wwProfile.name.toLowerCase() === searchTerm) {
@@ -118,6 +170,16 @@ function matchWastewaterAsFS(searchTerm: string): FeedstockProfile | null {
   return null;
 }
 
+/**
+ * Converts a wastewater influent profile into a feedstock profile for AD modeling.
+ *
+ * TS% derivation from TSS: TSS (mg/L) / 10,000 × 1.3
+ *   - Division by 10,000 converts mg/L to % (1 mg/L = 0.0001%)
+ *   - 1.3× multiplier accounts for dissolved solids not captured by TSS measurement
+ *
+ * Uses conservative defaults when data is unavailable:
+ *   VS/TS = 80%, BMP = 0.30 m³ CH₄/kg VS, biodegradable fraction = 70%
+ */
 function wastewaterToFeedstockProfile(ww: WastewaterInfluentProfile): FeedstockProfile {
   const props = ww.properties;
   let derivedTs = "5";
@@ -190,6 +252,11 @@ function wastewaterToFeedstockProfile(ww: WastewaterInfluentProfile): FeedstockP
   };
 }
 
+/**
+ * Converts feedstock volume from any supported unit to US short tons per year.
+ * Handles: TPY, TPD (×365), TPM (×12), lb/day, GPD (×8.34 lb/gal), MGD,
+ * kg/day (×2.205 lb/kg), metric tonnes (×1.1023).
+ */
 function parseVolumeToTonsPerYear(volume: string, unit: string): number {
   const val = parseFloat(volume.replace(/,/g, ""));
   if (isNaN(val)) return 0;
@@ -237,6 +304,16 @@ function getSpecByDisplayName(specs: any, displayName: string): string | null {
   return null;
 }
 
+/**
+ * Extracts and normalizes feedstock data from the UPIF.
+ * For each feedstock:
+ *   1. Converts volume to tons/year using parseVolumeToTonsPerYear()
+ *   2. Matches against feedstock library for design parameters (TS, VS, BMP)
+ *   3. Falls back to user-provided specs, then library defaults, then hardcoded defaults
+ *   4. Normalizes BMP units: divides by 1000 if unit contains "mL";
+ *      keeps as-is if unit contains "m³"; divides by 1000 if bare number > 10
+ *      (assumes mL CH₄/g VS which needs conversion to m³ CH₄/kg VS)
+ */
 function parseFeedstocks(upif: any): ParsedFeedstock[] {
   const feedstocks: ParsedFeedstock[] = [];
   const entries = upif.feedstocks || [];
@@ -285,6 +362,11 @@ function parseFeedstocks(upif: any): ParsedFeedstock[] {
     const inertStr = getSpecValue(specs, "inertFraction") || libProps.inertFraction?.value || "3";
     const tknStr = getSpecValue(specs, "tkn") || libProps.tkn?.value || "3.0";
 
+    // BMP unit-aware normalization to m³ CH₄/kg VS:
+    // - If unit says "mL": divide by 1000 (mL→m³ equivalent per kg)
+    // - If unit says "m³": keep as-is
+    // - If bare number > 10: assume mL CH₄/g VS, divide by 1000
+    //   (valid BMP in m³/kg is typically 0.10–0.80; values >10 indicate mL units)
     let bmpM3 = parseMidpoint(bmpStr);
     const unitIsML = /\bml\b|milliliter/i.test(bmpUnit);
     const unitIsM3 = /m³|m3|cubic\s*met/i.test(bmpUnit);
@@ -317,6 +399,25 @@ function parseFeedstocks(upif: any): ParsedFeedstock[] {
   return feedstocks;
 }
 
+/**
+ * Core biogas production calculation from feedstock characteristics.
+ *
+ * For each feedstock:
+ *   1. TPD → lb/day → subtract depackaging rejects → net feed
+ *   2. TS (lb/d) = net feed × TS%
+ *   3. VS (lb/d) = TS × VS/TS%
+ *   4. VS destroyed (lb/d) = VS × VS destruction% (default 58%)
+ *   5. CH₄ (m³/d) = VS destroyed (kg/d) × BMP (m³ CH₄/kg VS)
+ *      Note: BMP is applied per-feedstock, then CH₄ totaled — this preserves
+ *      accuracy for mixed feedstocks with different methane potentials
+ *   6. Biogas (SCFD) = CH₄ (SCFD) ÷ CH₄% (default 60%)
+ *   7. RNG calculation via Prodeval membrane specs:
+ *      RNG (SCFD) = conditioned biogas × CH₄% × methane recovery ÷ product CH₄%
+ *   8. Digestate = feed - (VS destroyed × 0.95) — 95% of destroyed VS leaves as gas
+ *   9. Dewatering: 92% solids capture, 28% cake TS (centrifuge design standard)
+ *
+ * Unit conversions: KG_TO_LB=2.20462, M3_TO_SCF=35.3147, RNG_BTU_PER_SCF=1012
+ */
 function calculateBiogasProduction(feedstocks: ParsedFeedstock[], overrides?: DesignOverrides): BiogasCalcResult {
   let totalTonsPerYear = 0;
   let totalTsLbPerDay = 0;
@@ -1055,6 +1156,12 @@ function buildAssumptions(feedstocks: ParsedFeedstock[], calc: BiogasCalcResult,
   return assumptions;
 }
 
+/**
+ * Builds the mass balance summary used by downstream OpEx and CapEx calculations.
+ * adInfluentGPD is critical — OpEx deterministic calculations (AD electrical,
+ * GUU electrical, digester heating gas) depend on this field being present.
+ * Density assumed at 8.5 lb/gal for feedstock slurry (slightly heavier than water).
+ */
 function buildSummary(calc: BiogasCalcResult): Record<string, { value: string; unit: string }> {
   const adInfluentGPD = calc.totalFeedLbPerDay / 8.5;
   return {
@@ -1355,15 +1462,23 @@ function buildTypeCSummary(bg: BiogasInputParams, scaledUnit?: ReturnType<typeof
   };
 }
 
+/** Maximum single-site Prodeval gas upgrading capacity — flows above this require AI estimation */
 const MAX_PRODEVAL_CAPACITY_SCFM = 2100;
 const MAX_TYPE_C_CAPACITY_SCFM = 2100;
 
+/** Selects Prodeval equipment config and reports if multi-train scaling was needed (>3 trains = bespoke) */
 function selectProdevalUnitScaled(biogasScfm: number): { unit: ReturnType<typeof selectProdevalUnit>; extraTrains: number } {
   const unit = selectProdevalUnit(biogasScfm);
   const extraTrains = unit.numberOfTrains > 3 ? unit.numberOfTrains - 3 : 0;
   return { unit, extraTrains };
 }
 
+/**
+ * Type C (Bolt-On) mass balance — biogas upgrading only, no feedstock receiving or digestion.
+ * Reads existing biogas flow/composition from UPIF outputSpecs, then models the Prodeval
+ * gas conditioning (VALOGAZ/VALOPACK) and membrane separation (VALOPUR) stages.
+ * RNG = conditioned biogas × CH₄% × methane recovery ÷ product CH₄%
+ */
 function generateTypeCMassBalance(upif: any): DeterministicMBResult {
   console.log(`Deterministic MB: Starting Type C (Bolt-On) calculation`);
   const startTime = Date.now();
@@ -1448,6 +1563,13 @@ function generateTypeCMassBalance(upif: any): DeterministicMBResult {
   return { results, feedstocks: [], calculations: dummyCalc };
 }
 
+/**
+ * Type D (Hybrid) mass balance — combines wastewater treatment with co-digestion.
+ * Two parallel paths feed the anaerobic digester:
+ *   1. WW sludge from primary/secondary clarifiers (BMP = 0.22 m³ CH₄/kg VS, conservative)
+ *   2. Co-digestion feedstocks from UPIF (matched against feedstock library for BMP)
+ * Includes full WWTP train: headworks → primary → activated sludge → secondary → AD → gas upgrading
+ */
 function generateTypeDMassBalance(upif: any): DeterministicMBResult {
   console.log(`Deterministic MB: Starting Type D (Hybrid) calculation`);
   const startTime = Date.now();
@@ -2051,6 +2173,12 @@ export interface DeterministicMBResult {
   calculations: BiogasCalcResult;
 }
 
+/**
+ * Main entry point — routes to the correct type-specific calculator.
+ * Type A (Wastewater) is NOT handled here — it uses AI-generated mass balance.
+ * Type B defaults here; Type C and D have dedicated generators.
+ * Throws if feedstock volume is zero or biogas flow exceeds Prodeval max capacity (2,100 SCFM).
+ */
 export function generateDeterministicMassBalance(upif: any, projectType: string, designOverrides?: DesignOverrides): DeterministicMBResult {
   const ptLower = projectType.toLowerCase().trim();
 

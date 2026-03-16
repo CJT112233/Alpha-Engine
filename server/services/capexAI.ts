@@ -1,3 +1,23 @@
+/**
+ * AI-Powered CapEx Estimation
+ *
+ * Two modes of operation:
+ *   1. Full AI (Type A or flows >2,100 SCFM) — generates complete CapEx via LLM
+ *      using parallel split: call1 = process equipment + civil/structural,
+ *      call2 = electrical + site/I&C. Falls back to monolithic call if parallel fails.
+ *
+ *   2. Upstream-only AI (hybrid with deterministic) — estimates ONLY the process
+ *      equipment NOT covered by Prodeval/BOP firm pricing. Equipment is filtered
+ *      using DETERMINISTIC_EQUIPMENT_PATTERNS regex list. The estimated upstream
+ *      items are injected into the deterministic model by capexDeterministic.ts.
+ *
+ * Engineering % is enforced at 7% for RNG types (B/C/D) regardless of AI response,
+ * because Burnham uses a fixed engineering rate for these project types.
+ *
+ * JSON repair: LLM responses sometimes get truncated at the token limit.
+ * repairTruncatedJSON() iteratively closes unmatched brackets/braces to recover
+ * partial but usable cost data rather than failing entirely.
+ */
 import { llmComplete, isProviderAvailable, getAvailableProviders, providerLabels, type LLMProvider } from "../llm";
 import type { CapexResults, CapexLineItem, MassBalanceResults, EquipmentItem } from "@shared/schema";
 import type { PromptKey } from "@shared/default-prompts";
@@ -94,6 +114,12 @@ async function getPromptTemplate(key: PromptKey, storage?: any): Promise<string>
   return DEFAULT_PROMPTS[key].template;
 }
 
+/**
+ * Validates and normalizes AI-generated CapEx results.
+ * Fills in missing calculated fields (installedCost, contingencyCost, totalCost),
+ * computes summary totals, and enforces 7% engineering for RNG types regardless
+ * of what the AI returned (Burnham uses a fixed engineering rate for RNG).
+ */
 function validateCapexResults(parsed: any, projectType?: string): CapexResults {
   const lineItems: CapexLineItem[] = Array.isArray(parsed.lineItems)
     ? parsed.lineItems.map((item: any, idx: number) => ({
@@ -251,6 +277,12 @@ function buildFilteredEquipmentDataString(
   return sections.join("\n\n");
 }
 
+/**
+ * Regex patterns identifying equipment covered by the deterministic pricing model.
+ * Equipment matching these patterns is EXCLUDED from AI upstream estimation to
+ * avoid double-counting — Prodeval GUU, membrane system, flare, compressor, etc.
+ * are all priced from firm Prodeval quotes in capexDeterministic.ts.
+ */
 const DETERMINISTIC_EQUIPMENT_PATTERNS = [
   /prodeval/i, /valogaz/i, /valopack/i, /valopur/i,
   /gas\s*upgrad/i, /membrane\s*system/i, /rng\s*compressor/i,
@@ -258,11 +290,13 @@ const DETERMINISTIC_EQUIPMENT_PATTERNS = [
   /biogas\s*compressor/i, /enclosed\s*flare/i,
 ];
 
+/** Tests if a mass balance equipment item is already priced by the deterministic model */
 export function isEquipmentCoveredByDeterministic(eq: EquipmentItem): boolean {
   const text = `${eq.equipmentType} ${eq.process} ${eq.description}`.toLowerCase();
   return DETERMINISTIC_EQUIPMENT_PATTERNS.some(p => p.test(text));
 }
 
+/** Returns mass balance equipment items that need AI cost estimation (not covered by deterministic) */
 export function getUncoveredEquipment(massBalanceResults: MassBalanceResults): EquipmentItem[] {
   return (massBalanceResults.equipment || []).filter(eq => !isEquipmentCoveredByDeterministic(eq));
 }
@@ -273,6 +307,13 @@ export interface CapexUpstreamAIResult {
   providerLabel: string;
 }
 
+/**
+ * Estimates costs for upstream process equipment not covered by deterministic pricing.
+ * These are items like digesters, macerators, depackaging units, EQ tanks, pumps,
+ * heat exchangers, centrifuges, DAF units, and storage tanks.
+ * Uses a single LLM call (not parallel) since the equipment list is typically small.
+ * Contingency is set to 0% because it's applied globally by the deterministic model.
+ */
 export async function estimateUpstreamEquipmentCosts(
   upif: any,
   massBalanceResults: MassBalanceResults,
@@ -515,6 +556,13 @@ Do NOT include major process equipment, digesters, tanks, or civil/structural. R
   return validateCapexResults(merged, projectType || merged.projectType);
 }
 
+/**
+ * Full AI CapEx generation — used for Type A (Wastewater) or as fallback when
+ * deterministic model can't handle the project (e.g., >2,100 SCFM).
+ * Strategy: parallel split first (process+civil vs electrical+site), then
+ * monolithic fallback if parallel fails. Uses configurable prompt templates
+ * that can be customized via the Documentation page.
+ */
 export async function generateCapexWithAI(
   upif: any,
   massBalanceResults: MassBalanceResults,
